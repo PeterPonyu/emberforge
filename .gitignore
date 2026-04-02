@@ -1,0 +1,6 @@
+/target
+/rust/target
+.omx/
+.clawd-agents/
+.claw-agents/
+.env
