@@ -10,6 +10,7 @@ The repository is already materially beyond the earlier baseline layout.
 - CLI, runtime, tools, telemetry, plugins, server, and docs have all been expanded
 - terminal UI work is already present: banner modes, intro animation, HUD, markdown rendering, thinking preview/section output
 - background task runtime work has already advanced in the current branch: task manifests, `/tasks list`, `/tasks show`, `/tasks logs`, `/tasks attach`, `/tasks stop`, session/task linkage in the HUD, better log tailing, and stop-aware subagent execution
+- heartbeat-backed supervision is now surfaced explicitly in task reports (`/tasks list`, `/tasks show`, `/tasks logs`, and attach/watch transitions)
 
 ### Latest verification snapshot
 
@@ -37,16 +38,16 @@ These priorities follow `docs/REFINEMENT_PLAN.md` and the comparison audit again
 - `oh-my-codex-main`
 - `claw-code-parity-main`
 
-### Priority 1 — Finish Phase 3 background-task runtime
+### Priority 1 — Continue Phase 3 background-task runtime
 
 Goal: move from improved task inspection toward basic worker supervision.
 
 Recommended slice order:
 
-1. add heartbeat-backed worker supervision for local background tasks
-2. add task activity/audit log entries for lifecycle changes
-3. surface stale/dead-worker reasons more explicitly in `/tasks show`
-4. add recovery/restart policy for interrupted local workers where safe
+1. add task activity/audit log entries for lifecycle changes
+2. add recovery/restart policy for interrupted local workers where safe
+3. surface restart/recovery hints more explicitly in `/tasks show`
+4. decide whether local worker restart should be automatic or operator-triggered
 
 Primary reference:
 
@@ -165,19 +166,19 @@ Before every push:
 
 If continuing immediately after the current branch state, the best next implementation target is:
 
-### Add basic heartbeat-backed worker supervision for local background tasks
+### Add a task activity/audit timeline for lifecycle changes
 
 Why this next:
 
-- it is the most important remaining Phase 3 gap
-- it builds directly on the task/runtime work already completed
-- it improves correctness, observability, and future remote orchestration readiness
+- it builds directly on the new supervision layer
+- it improves observability without forcing automatic restarts yet
+- it prepares the task runtime for richer attach/recovery and future remote orchestration
 
 Suggested acceptance criteria:
 
-- task manifests include heartbeat freshness or supervision metadata
-- stale workers are surfaced clearly in `/tasks show` and `/tasks list`
-- dead-worker transitions are tested
+- task lifecycle changes produce concise activity records
+- `/tasks show` or a related surface can display recent activity entries
+- attach/watch output stays readable and does not duplicate unchanged events
 - focused tests and full workspace tests both pass
 
 ## GitHub publication checklist

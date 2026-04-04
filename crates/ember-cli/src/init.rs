@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const STARTER_CLAW_JSON: &str = concat!(
+const STARTER_EMBER_JSON: &str = concat!(
     "{\n",
     "  \"permissions\": {\n",
     "    \"defaultMode\": \"dontAsk\"\n",
@@ -91,10 +91,10 @@ pub(crate) fn initialize_repo(cwd: &Path) -> Result<InitReport, Box<dyn std::err
         status: ensure_dir(&ember_dir)?,
     });
 
-    let claw_json = cwd.join(".ember.json");
+    let ember_json = cwd.join(".ember.json");
     artifacts.push(InitArtifact {
         name: ".ember.json",
-        status: write_file_if_missing(&claw_json, STARTER_CLAW_JSON)?,
+        status: write_file_if_missing(&ember_json, STARTER_EMBER_JSON)?,
     });
 
     let gitignore = cwd.join(".gitignore");
@@ -103,11 +103,11 @@ pub(crate) fn initialize_repo(cwd: &Path) -> Result<InitReport, Box<dyn std::err
         status: ensure_gitignore_entries(&gitignore)?,
     });
 
-    let claw_md = cwd.join("EMBER.md");
-    let content = render_init_claw_md(cwd);
+    let ember_md = cwd.join("EMBER.md");
+    let content = render_init_ember_md(cwd);
     artifacts.push(InitArtifact {
         name: "EMBER.md",
-        status: write_file_if_missing(&claw_md, &content)?,
+        status: write_file_if_missing(&ember_md, &content)?,
     });
 
     Ok(InitReport {
@@ -164,7 +164,7 @@ fn ensure_gitignore_entries(path: &Path) -> Result<InitStatus, std::io::Error> {
     Ok(InitStatus::Updated)
 }
 
-pub(crate) fn render_init_claw_md(cwd: &Path) -> String {
+pub(crate) fn render_init_ember_md(cwd: &Path) -> String {
     let detection = detect_repo(cwd);
     let mut lines = vec![
         "# EMBER.md".to_string(),
@@ -226,7 +226,7 @@ fn detect_repo(cwd: &Path) -> RepoDetection {
         .unwrap_or_default()
         .to_ascii_lowercase();
     RepoDetection {
-        rust_workspace: cwd.join("rust").join("Cargo.toml").is_file(),
+        rust_workspace: cwd.join("Cargo.toml").is_file() && cwd.join("crates").is_dir(),
         rust_root: cwd.join("Cargo.toml").is_file(),
         python: cwd.join("pyproject.toml").is_file()
             || cwd.join("requirements.txt").is_file()
@@ -240,7 +240,7 @@ fn detect_repo(cwd: &Path) -> RepoDetection {
         nest: package_json_contents.contains("@nestjs"),
         src_dir: cwd.join("src").is_dir(),
         tests_dir: cwd.join("tests").is_dir(),
-        rust_dir: cwd.join("rust").is_dir(),
+        rust_dir: cwd.join("crates").is_dir(),
     }
 }
 
@@ -280,7 +280,7 @@ fn detected_frameworks(detection: &RepoDetection) -> Vec<&'static str> {
 fn verification_lines(cwd: &Path, detection: &RepoDetection) -> Vec<String> {
     let mut lines = Vec::new();
     if detection.rust_workspace {
-        lines.push("- Run Rust verification from `rust/`: `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`".to_string());
+        lines.push("- Run Rust verification from the repo root: `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`".to_string());
     } else if detection.rust_root {
         lines.push("- Run Rust verification from the repo root: `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`".to_string());
     }
@@ -306,7 +306,7 @@ fn repository_shape_lines(detection: &RepoDetection) -> Vec<String> {
     let mut lines = Vec::new();
     if detection.rust_dir {
         lines.push(
-            "- `rust/` contains the Rust workspace and active CLI/runtime implementation."
+            "- `crates/` contains the Rust workspace and active CLI/runtime implementation."
                 .to_string(),
         );
     }
@@ -338,7 +338,7 @@ fn framework_notes(detection: &RepoDetection) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{initialize_repo, render_init_claw_md};
+    use super::{initialize_repo, render_init_ember_md};
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -348,14 +348,14 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("time should be after epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("claw-init-{nanos}"))
+        std::env::temp_dir().join(format!("ember-init-{nanos}"))
     }
 
     #[test]
     fn initialize_repo_creates_expected_files_and_gitignore_entries() {
         let root = temp_dir();
-        fs::create_dir_all(root.join("rust")).expect("create rust dir");
-        fs::write(root.join("rust").join("Cargo.toml"), "[workspace]\n").expect("write cargo");
+        fs::create_dir_all(root.join("crates")).expect("create crates dir");
+        fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("write cargo");
 
         let report = initialize_repo(&root).expect("init should succeed");
         let rendered = report.render();
@@ -368,7 +368,7 @@ mod tests {
         assert!(root.join(".ember.json").is_file());
         assert!(root.join("EMBER.md").is_file());
         assert_eq!(
-            fs::read_to_string(root.join(".ember.json")).expect("read claw json"),
+            fs::read_to_string(root.join(".ember.json")).expect("read ember json"),
             concat!(
                 "{\n",
                 "  \"permissions\": {\n",
@@ -380,9 +380,9 @@ mod tests {
         let gitignore = fs::read_to_string(root.join(".gitignore")).expect("read gitignore");
         assert!(gitignore.contains(".ember/settings.local.json"));
         assert!(gitignore.contains(".ember/sessions/"));
-        let claw_md = fs::read_to_string(root.join("EMBER.md")).expect("read claw md");
-        assert!(claw_md.contains("Languages: Rust."));
-        assert!(claw_md.contains("cargo clippy --workspace --all-targets -- -D warnings"));
+        let ember_md = fs::read_to_string(root.join("EMBER.md")).expect("read EMBER.md");
+        assert!(ember_md.contains("Languages: Rust."));
+        assert!(ember_md.contains("cargo clippy --workspace --all-targets -- -D warnings"));
 
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }
@@ -391,7 +391,7 @@ mod tests {
     fn initialize_repo_is_idempotent_and_preserves_existing_files() {
         let root = temp_dir();
         fs::create_dir_all(&root).expect("create root");
-        fs::write(root.join("EMBER.md"), "custom guidance\n").expect("write existing claw md");
+        fs::write(root.join("EMBER.md"), "custom guidance\n").expect("write existing EMBER.md");
         fs::write(root.join(".gitignore"), ".ember/settings.local.json\n").expect("write gitignore");
 
         let first = initialize_repo(&root).expect("first init should succeed");
@@ -408,7 +408,7 @@ mod tests {
             fs::read_to_string(root.join("EMBER.md")).expect("read existing EMBER.md"),
             "custom guidance\n"
         );
-        let gitignore = fs::read_to_string(root.join(".gitignore")).expect("read gitignore");
+        let _gitignore = fs::read_to_string(root.join(".gitignore")).expect("read gitignore");
 
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }
@@ -425,7 +425,7 @@ mod tests {
         )
         .expect("write package json");
 
-        let rendered = render_init_claw_md(Path::new(&root));
+        let rendered = render_init_ember_md(Path::new(&root));
         assert!(rendered.contains("Languages: Python, TypeScript."));
         assert!(rendered.contains("Frameworks/tooling markers: Next.js, React."));
         assert!(rendered.contains("pyproject.toml"));

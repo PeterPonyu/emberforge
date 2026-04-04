@@ -9,12 +9,6 @@ publish.workspace = true
 name = "ember"
 path = "src/main.rs"
 
-# Legacy alias — same binary, different name for backwards compatibility.
-# Cargo warns about shared path; this is intentional.
-[[bin]]
-name = "claw"
-path = "src/claw_alias.rs"
-
 [dependencies]
 api = { path = "../api" }
 commands = { path = "../commands" }

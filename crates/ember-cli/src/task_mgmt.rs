@@ -11,6 +11,8 @@ use time::OffsetDateTime;
 use crate::{chrono_now_iso8601, truncate_for_summary};
 
 const TASK_LOG_TAIL_LINES: usize = 80;
+const TASK_HEARTBEAT_DELAY_SECS: i64 = 15;
+const TASK_HEARTBEAT_STALLED_SECS: i64 = 45;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct BackgroundTaskCounts {
@@ -420,19 +422,33 @@ fn task_session_badge(record: &TaskManifestRecord, current_session_id: Option<&s
     }
 }
 
-fn task_health_badge(record: &TaskManifestRecord) -> Option<String> {
-    if !record.is_active() {
-        return None;
+fn task_supervision_summary(record: &TaskManifestRecord) -> Option<String> {
+    if let Some(pid) = record.worker_pid() {
+        if !process_is_alive(pid) {
+            return Some(String::from("worker no longer alive"));
+        }
     }
+
+    if !record.is_active() {
+        return (record.status() == "interrupted").then(|| String::from("worker no longer alive"));
+    }
+
     let age = task_heartbeat_age(record)?;
-    (age.whole_seconds() > 15).then(|| format!("heartbeat {}s old", age.whole_seconds()))
+    let seconds = age.whole_seconds();
+    if seconds <= TASK_HEARTBEAT_DELAY_SECS {
+        Some(String::from("healthy"))
+    } else if seconds <= TASK_HEARTBEAT_STALLED_SECS {
+        Some(format!("delayed (heartbeat {seconds}s old)"))
+    } else {
+        Some(format!("stalled (heartbeat {seconds}s old)"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TaskWatchSnapshot {
     status: String,
     detail: Option<String>,
-    health: Option<String>,
+    supervision: Option<String>,
     stop_requested_at: Option<String>,
     stop_reason: Option<String>,
 }
@@ -441,7 +457,7 @@ fn task_watch_snapshot(record: &TaskManifestRecord) -> TaskWatchSnapshot {
     TaskWatchSnapshot {
         status: record.status().to_string(),
         detail: record.status_detail().map(ToOwned::to_owned),
-        health: task_health_badge(record),
+        supervision: task_supervision_summary(record),
         stop_requested_at: record.stop_requested_at_raw().map(ToOwned::to_owned),
         stop_reason: record.stop_reason().map(ToOwned::to_owned),
     }
@@ -482,9 +498,11 @@ fn render_task_watch_update(
             ));
         }
     }
-    if previous.and_then(|snapshot| snapshot.health.as_deref()) != current.health.as_deref() {
-        if let Some(health) = current.health.as_deref() {
-            lines.push(format!("[task] health {health}"));
+    if previous.and_then(|snapshot| snapshot.supervision.as_deref())
+        != current.supervision.as_deref()
+    {
+        if let Some(supervision) = current.supervision.as_deref() {
+            lines.push(format!("[task] supervision {supervision}"));
         }
     }
 
@@ -535,8 +553,8 @@ fn render_task_entry_lines(
     if let Some(detail) = task.status_detail().filter(|detail| !detail.trim().is_empty()) {
         lines.push(format!("         {}", truncate_for_summary(detail, 88)));
     }
-    if let Some(health) = task_health_badge(task) {
-        lines.push(format!("         {health}"));
+    if let Some(supervision) = task_supervision_summary(task).filter(|_| task.is_active()) {
+        lines.push(format!("         supervision {supervision}"));
     }
     lines
 }
@@ -717,8 +735,8 @@ pub(crate) fn render_task_show_report(
     if let Some(heartbeat_at) = task.heartbeat_at_raw() {
         lines.push(format!("  Heartbeat        {heartbeat_at}"));
     }
-    if let Some(health) = task_health_badge(task) {
-        lines.push(format!("  Health           {health}"));
+    if let Some(supervision) = task_supervision_summary(task) {
+        lines.push(format!("  Supervision      {supervision}"));
     }
     if let Some(completed_at) = task.completed_at_raw() {
         lines.push(format!("  Completed        {completed_at}"));
@@ -753,8 +771,8 @@ pub(crate) fn render_task_logs_report(task: &TaskManifestRecord) -> Result<Strin
     if let Some(detail) = task.status_detail().filter(|detail| !detail.trim().is_empty()) {
         lines.push(format!("  Detail           {}", truncate_for_summary(detail, 120)));
     }
-    if let Some(health) = task_health_badge(task) {
-        lines.push(format!("  Health           {health}"));
+    if let Some(supervision) = task_supervision_summary(task) {
+        lines.push(format!("  Supervision      {supervision}"));
     }
     if let Some(stop_requested_at) = task.stop_requested_at_raw() {
         lines.push(format!("  Stop requested   {stop_requested_at}"));
@@ -965,7 +983,7 @@ mod tests {
     }
 
     #[test]
-    fn task_logs_report_includes_detail_stop_reason_and_health() {
+    fn task_logs_report_includes_detail_stop_reason_and_supervision() {
         let root = temp_dir("logs-report");
         fs::create_dir_all(&root).expect("create temp dir");
         let log_path = root.join("agent-123.md");
@@ -997,7 +1015,7 @@ mod tests {
         assert!(report.contains("Task log"));
         assert!(report.contains("Status           stopping"));
         assert!(report.contains("Detail           Stop requested; waiting for the current step to finish"));
-        assert!(report.contains("Health           heartbeat"));
+        assert!(report.contains("Supervision      delayed (heartbeat 20s old)"));
         assert!(report.contains("Stop requested   2026-04-04T00:00:00Z"));
         assert!(report.contains("Stop reason      Requested from /tasks stop"));
         assert!(report.contains("Showing          last 80 of 90 lines"));
@@ -1080,7 +1098,7 @@ mod tests {
         assert!(update.contains("detail Stop requested; waiting for the current step to finish"));
         assert!(update.contains("stop requested 2026-04-04T00:00:00Z"));
         assert!(update.contains("reason Requested from /tasks stop"));
-        assert!(update.contains("health heartbeat"));
+        assert!(update.contains("supervision delayed (heartbeat 25s old)"));
 
         let terminal = make_record(
             &root,
@@ -1096,6 +1114,34 @@ mod tests {
         assert!(final_summary.contains("finished with status cancelled"));
         assert!(final_summary.contains("detail Worker process exited after a stop request"));
         assert!(final_summary.contains("reason Requested from /tasks stop"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn task_show_report_includes_supervision_summary_for_active_tasks() {
+        let root = temp_dir("show-report");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let stale_heartbeat = OffsetDateTime::now_utc()
+            .checked_sub(time::Duration::seconds(50))
+            .expect("subtract heartbeat age")
+            .format(&Rfc3339)
+            .expect("format heartbeat");
+        let record = make_record(
+            &root,
+            json!({
+                "agentId": "agent-999",
+                "status": "running",
+                "description": "Background audit",
+                "lastHeartbeatAt": stale_heartbeat,
+                "workerPid": std::process::id(),
+            }),
+        );
+
+        let report = super::render_task_show_report(&record, None);
+
+        assert!(report.contains("Status           running"));
+        assert!(report.contains("Supervision      stalled (heartbeat 50s old)"));
 
         let _ = fs::remove_dir_all(root);
     }

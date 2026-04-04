@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 96" role="img" aria-labelledby="title desc">
+  <title id="title">Emberforge pixel logo</title>
+  <desc id="desc">Pixel-art ember flame based on the terminal startup animation.</desc>
+  <rect width="132" height="96" fill="none"/>
+  <g transform="translate(12 8)">
+    <rect x="36" y="8" width="12" height="12" rx="2" fill="#ff4d36"/>
+    <rect x="48" y="8" width="12" height="12" rx="2" fill="#ff4d36"/>
+
+    <rect x="24" y="20" width="12" height="12" rx="2" fill="#ff4d36"/>
+    <rect x="36" y="20" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="48" y="20" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="60" y="20" width="12" height="12" rx="2" fill="#ff4d36"/>
+
+    <rect x="12" y="32" width="12" height="12" rx="2" fill="#ff4d36"/>
+    <rect x="24" y="32" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="36" y="32" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="48" y="32" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="60" y="32" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="72" y="32" width="12" height="12" rx="2" fill="#ff4d36"/>
+
+    <rect x="0" y="44" width="12" height="12" rx="2" fill="#ff4d36"/>
+    <rect x="12" y="44" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="24" y="44" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="36" y="44" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="48" y="44" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="60" y="44" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="72" y="44" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="84" y="44" width="12" height="12" rx="2" fill="#ff4d36"/>
+
+    <rect x="12" y="56" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="24" y="56" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="36" y="56" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="48" y="56" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="60" y="56" width="12" height="12" rx="2" fill="#ffd23f"/>
+    <rect x="72" y="56" width="12" height="12" rx="2" fill="#ff8a1f"/>
+
+    <rect x="24" y="68" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="36" y="68" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="48" y="68" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="60" y="68" width="12" height="12" rx="2" fill="#ff8a1f"/>
+
+    <rect x="36" y="80" width="12" height="12" rx="2" fill="#ff8a1f"/>
+    <rect x="48" y="80" width="12" height="12" rx="2" fill="#ff8a1f"/>
+  </g>
+</svg>

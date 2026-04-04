@@ -114,7 +114,7 @@ fn build_http_client() -> Result<Client, String> {
     Client::builder()
         .timeout(Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::limited(10))
-        .user_agent("claw-rust-tools/0.1")
+        .user_agent("emberforge-tools/0.1")
         .build()
         .map_err(|error| error.to_string())
 }
@@ -135,7 +135,9 @@ fn normalize_fetch_url(url: &str) -> Result<String, String> {
 }
 
 fn build_search_url(query: &str) -> Result<reqwest::Url, String> {
-    if let Ok(base) = std::env::var("CLAW_WEB_SEARCH_BASE_URL") {
+    if let Ok(base) = std::env::var("EMBER_WEB_SEARCH_BASE_URL")
+        .or_else(|_| std::env::var("CLAW_WEB_SEARCH_BASE_URL"))
+    {
         let mut url = reqwest::Url::parse(&base).map_err(|error| error.to_string())?;
         url.query_pairs_mut().append_pair("q", query);
         return Ok(url);
@@ -484,7 +486,7 @@ fn todo_store_path() -> Result<std::path::PathBuf, String> {
         return Ok(std::path::PathBuf::from(path));
     }
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
-    Ok(cwd.join(".claw-todos.json"))
+    Ok(cwd.join(".ember-todos.json"))
 }
 
 fn resolve_skill_path(skill: &str) -> Result<std::path::PathBuf, String> {
@@ -644,7 +646,7 @@ where
 }
 
 pub(crate) fn spawn_agent_job(job: AgentJob) -> Result<(), String> {
-    let thread_name = format!("claw-agent-{}", job.manifest.agent_id);
+    let thread_name = format!("ember-agent-{}", job.manifest.agent_id);
     std::thread::Builder::new()
         .name(thread_name)
         .spawn(move || {
@@ -825,7 +827,7 @@ pub(crate) fn allowed_tools_for_subagent(subagent_type: &str) -> BTreeSet<String
             "SendUserMessage",
             "PowerShell",
         ],
-        "claw-guide" => vec![
+        "ember-guide" => vec![
             "read_file",
             "glob_search",
             "grep_search",
@@ -1008,7 +1010,7 @@ fn spawn_agent_heartbeat(
     std::thread::JoinHandle<()>,
 ) {
     let (stop_tx, stop_rx) = std::sync::mpsc::channel();
-    let heartbeat_name = format!("claw-agent-heartbeat-{}", manifest.agent_id);
+    let heartbeat_name = format!("ember-agent-heartbeat-{}", manifest.agent_id);
     let handle = std::thread::Builder::new()
         .name(heartbeat_name)
         .spawn(move || loop {
@@ -1569,7 +1571,9 @@ fn normalize_subagent_type(subagent_type: Option<&str>) -> String {
         "verification" | "verificationagent" | "verify" | "verifier" => {
             String::from("Verification")
         }
-        "clawguide" | "clawguideagent" | "guide" => String::from("claw-guide"),
+        "clawguide" | "clawguideagent" | "guide" | "emberguide" | "emberguideagent" => {
+            String::from("ember-guide")
+        }
         "statusline" | "statuslinesetup" => String::from("statusline-setup"),
         _ => trimmed.to_string(),
     }

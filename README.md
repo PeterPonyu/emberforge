@@ -1,4 +1,6 @@
-# 🐉 Emberforge
+# Emberforge
+
+![Emberforge pixel logo](assets/emberforge-pixel-logo.svg)
 
 **A local-first coding forge for serious developers.**
 
@@ -134,8 +136,6 @@ python3 tests/test_terminal_startup.py --live-render
 # Run with Ollama
 ./target/release/ember
 
-# Legacy alias (deprecated)
-./target/release/claw
 ```
 
 ## License
