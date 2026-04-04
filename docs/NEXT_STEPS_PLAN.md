@@ -14,11 +14,12 @@ The repository is already materially beyond the earlier baseline layout.
 - task lifecycle activity history is now persisted in manifests and surfaced in `/tasks show` plus attach/watch updates
 - `/tasks show` now includes concise restart/recovery hints for stalled and interrupted tasks without polluting healthy task reports
 - interrupted local subagent tasks can now spawn a safe replacement via `/tasks restart <id>` when recoverable prompt/state metadata is available
+- restart lineage is now surfaced in both `/tasks list` (concise ↳/→ tags) and `/tasks show` (Predecessor/Successor fields) using a pre-computed lineage map
 
 ### Latest verification snapshot
 
 - `cargo test --workspace`
-- result: 420 passed, 0 failed, 4 ignored
+- result: 423 passed, 0 failed, 4 ignored
 
 ## GitHub publication status
 
@@ -45,10 +46,9 @@ Goal: move from improved task inspection toward basic worker supervision.
 
 Recommended slice order:
 
-1. surface restart lineage/history if replacement tasks are spawned
-2. decide whether local worker restart should remain operator-triggered or gain an automatic mode
-3. decide whether recovery should reuse the same task id or continue forking successor tasks
-4. clarify restart limits/backoff rules if repeated interruption occurs
+1. decide whether local worker restart should remain operator-triggered or gain an automatic mode
+2. decide whether recovery should reuse the same task id or continue forking successor tasks
+3. clarify restart limits/backoff rules if repeated interruption occurs
 
 Primary reference:
 
@@ -167,19 +167,20 @@ Before every push:
 
 If continuing immediately after the current branch state, the best next implementation target is:
 
-### Surface restart lineage/history if replacement tasks are spawned
+### Decide whether local worker restart should remain operator-triggered or gain an automatic mode
 
 Why this next:
 
-- replacement tasks now exist, but the relationship is only implicit in activity messages
-- users should be able to see restart ancestry and successor linkage without reading raw manifests
-- lineage visibility is the natural next step after adding safe operator-triggered restart
+- restart flow and lineage visibility are both in place
+- the current design requires `/tasks restart <id>` — an explicit operator action
+- deciding between operator-triggered and automatic restart shapes the supervision architecture
+- automatic mode (with backoff/limits) would reduce operator burden for transient failures
 
 Suggested acceptance criteria:
 
-- `/tasks show` can identify whether a task was restarted from another task or produced a successor
-- successor/predecessor linkage stays concise and readable in task reports
-- lineage rendering uses the existing manifest/activity model instead of inventing a second history store
+- document the design decision and rationale clearly
+- if automatic mode is chosen, implement configurable retry policy (max retries, backoff)
+- restart limits should prevent infinite restart loops
 - focused tests and full workspace tests both pass
 
 ## GitHub publication checklist

@@ -144,6 +144,12 @@ impl TaskManifestRecord {
             .and_then(serde_json::Value::as_str)
     }
 
+    fn restarted_from(&self) -> Option<&str> {
+        self.manifest
+            .get("restartedFrom")
+            .and_then(serde_json::Value::as_str)
+    }
+
     fn worker_pid(&self) -> Option<u32> {
         self.manifest
             .get("workerPid")
@@ -867,9 +873,54 @@ fn render_task_terminal_summary(record: &TaskManifestRecord) -> String {
     lines.join("\n")
 }
 
+/// Pre-computed lineage mappings for restart chains.
+///
+/// `successors` maps a task id to the id of the task that replaced it (the
+/// successor).  A task acquires a successor when another task sets
+/// `restartedFrom` pointing at it.
+///
+/// `predecessors` is the reverse: it maps a task id back to the id it was
+/// restarted from.
+struct TaskLineageMap {
+    /// task_id → successor_task_id  (the task that was spawned to replace it)
+    successors: std::collections::HashMap<String, String>,
+    /// task_id → predecessor_task_id  (the task it was restarted from)
+    predecessors: std::collections::HashMap<String, String>,
+}
+
+impl TaskLineageMap {
+    fn build(tasks: &[TaskManifestRecord]) -> Self {
+        let mut successors = std::collections::HashMap::new();
+        let mut predecessors = std::collections::HashMap::new();
+        for task in tasks {
+            if let Some(predecessor_id) = task.restarted_from() {
+                successors
+                    .entry(predecessor_id.to_string())
+                    .or_insert_with(|| task.id().to_string());
+                predecessors
+                    .entry(task.id().to_string())
+                    .or_insert_with(|| predecessor_id.to_string());
+            }
+        }
+        Self {
+            successors,
+            predecessors,
+        }
+    }
+
+    fn successor_of(&self, task_id: &str) -> Option<&str> {
+        self.successors.get(task_id).map(String::as_str)
+    }
+
+    fn predecessor_of(&self, task_id: &str) -> Option<&str> {
+        self.predecessors.get(task_id).map(String::as_str)
+    }
+}
+
 fn render_task_entry_lines(
     task: &TaskManifestRecord,
     current_session_id: Option<&str>,
+    lineage: &TaskLineageMap,
 ) -> Vec<String> {
     let mut lines = vec![format!(
         "  [{label:<4}] {id:<12} {status:<11} {session:<20} {desc}",
@@ -885,6 +936,12 @@ fn render_task_entry_lines(
     if let Some(supervision) = task_supervision_summary(task).filter(|_| task.is_active()) {
         lines.push(format!("         supervision {supervision}"));
     }
+    if let Some(predecessor) = lineage.predecessor_of(task.id()) {
+        lines.push(format!("         ↳ restarted from {}", shorten_task_id(predecessor)));
+    }
+    if let Some(successor) = lineage.successor_of(task.id()) {
+        lines.push(format!("         → replaced by {}", shorten_task_id(successor)));
+    }
     lines
 }
 
@@ -893,13 +950,14 @@ fn push_task_section(
     title: &str,
     tasks: &[&TaskManifestRecord],
     current_session_id: Option<&str>,
+    lineage: &TaskLineageMap,
 ) {
     if tasks.is_empty() {
         return;
     }
     lines.push(title.to_string());
     for task in tasks {
-        lines.extend(render_task_entry_lines(task, current_session_id));
+        lines.extend(render_task_entry_lines(task, current_session_id, lineage));
     }
 }
 
@@ -995,6 +1053,7 @@ pub(crate) fn render_task_list_report(
         return String::from("No background tasks.");
     }
 
+    let lineage = TaskLineageMap::build(tasks);
     let running = tasks.iter().filter(|task| task.is_active()).count();
     let session_running = current_session_id.map_or(0, |session_id| {
         tasks.iter()
@@ -1018,15 +1077,15 @@ pub(crate) fn render_task_list_report(
             .collect::<Vec<_>>();
 
         if !current_tasks.is_empty() {
-            push_task_section(&mut lines, "Current session", &current_tasks, Some(current_session_id));
-            push_task_section(&mut lines, "Other tasks", &other_tasks, Some(current_session_id));
+            push_task_section(&mut lines, "Current session", &current_tasks, Some(current_session_id), &lineage);
+            push_task_section(&mut lines, "Other tasks", &other_tasks, Some(current_session_id), &lineage);
         } else {
             let all_tasks = tasks.iter().collect::<Vec<_>>();
-            push_task_section(&mut lines, "Entries", &all_tasks, Some(current_session_id));
+            push_task_section(&mut lines, "Entries", &all_tasks, Some(current_session_id), &lineage);
         }
     } else {
         let all_tasks = tasks.iter().collect::<Vec<_>>();
-        push_task_section(&mut lines, "Entries", &all_tasks, None);
+        push_task_section(&mut lines, "Entries", &all_tasks, None, &lineage);
     }
     lines.push(String::from("Next"));
     lines.push(String::from("  /tasks show <id>    Inspect manifest metadata"));
@@ -1039,7 +1098,9 @@ pub(crate) fn render_task_list_report(
 pub(crate) fn render_task_show_report(
     task: &TaskManifestRecord,
     current_session_id: Option<&str>,
+    all_tasks: Option<&[TaskManifestRecord]>,
 ) -> String {
+    let lineage = all_tasks.map(TaskLineageMap::build);
     let mut lines = vec![String::from("Task")];
     lines.push(format!("  Id               {}", task.id()));
     lines.push(format!("  Kind             {}", task.task_kind()));
@@ -1048,6 +1109,12 @@ pub(crate) fn render_task_show_report(
     lines.push(format!("  Description      {}", task.description()));
     if let Some(model) = task.model() {
         lines.push(format!("  Model            {model}"));
+    }
+    if let Some(predecessor) = lineage.as_ref().and_then(|l| l.predecessor_of(task.id())) {
+        lines.push(format!("  Predecessor      {predecessor} (restarted from)"));
+    }
+    if let Some(successor) = lineage.as_ref().and_then(|l| l.successor_of(task.id())) {
+        lines.push(format!("  Successor        {successor} (replaced by)"));
     }
     if let Some(detail) = task.status_detail().filter(|detail| !detail.trim().is_empty()) {
         lines.push(format!("  Detail           {}", truncate_for_summary(detail, 120)));
@@ -1565,7 +1632,7 @@ mod tests {
             }),
         );
 
-        let report = super::render_task_show_report(&record, None);
+        let report = super::render_task_show_report(&record, None, None);
 
         assert!(report.contains("Status           running"));
         assert!(report.contains("Supervision      stalled (heartbeat 50s old)"));
@@ -1595,7 +1662,7 @@ mod tests {
             }),
         );
 
-        let report = super::render_task_show_report(&record, None);
+        let report = super::render_task_show_report(&record, None, None);
 
         assert!(report.contains("Supervision      healthy"));
         assert!(!report.contains("  Next action"));
@@ -1620,7 +1687,7 @@ mod tests {
             }),
         );
 
-        let report = super::render_task_show_report(&record, None);
+        let report = super::render_task_show_report(&record, None, None);
 
         assert!(report.contains("Status           interrupted"));
         assert!(report.contains("  Next action"));
@@ -1654,7 +1721,7 @@ mod tests {
             }),
         );
 
-        let report = super::render_task_show_report(&record, None);
+        let report = super::render_task_show_report(&record, None, None);
 
         assert!(report.contains("Status           interrupted"));
         assert!(report.contains("/tasks restart agent-778"));
@@ -1827,11 +1894,149 @@ mod tests {
             }),
         );
 
-        let report = super::render_task_show_report(&record, None);
+        let report = super::render_task_show_report(&record, None, None);
 
         assert!(report.contains("  Activity"));
         assert!(report.contains("2026-04-04T00:00:00Z | created | running | Queued for background execution"));
         assert!(report.contains("2026-04-04T00:00:05Z | terminal | completed | Finished successfully"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn lineage_map_surfaces_predecessor_and_successor() {
+        let root = temp_dir("lineage-map");
+        fs::create_dir_all(&root).expect("root dir");
+
+        let original = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "agent-orig",
+                "name": "do-thing",
+                "description": "Original task",
+                "status": "interrupted"
+            }),
+        );
+        let replacement = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "agent-repl",
+                "name": "do-thing",
+                "description": "Replacement task",
+                "status": "running",
+                "restartedFrom": "agent-orig"
+            }),
+        );
+
+        let tasks = vec![original, replacement];
+        let lineage = super::TaskLineageMap::build(&tasks);
+
+        assert_eq!(lineage.successor_of("agent-orig"), Some("agent-repl"));
+        assert_eq!(lineage.predecessor_of("agent-repl"), Some("agent-orig"));
+        assert_eq!(lineage.predecessor_of("agent-orig"), None);
+        assert_eq!(lineage.successor_of("agent-repl"), None);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn show_report_renders_lineage_fields_when_tasks_provided() {
+        let root = temp_dir("lineage-show");
+        fs::create_dir_all(&root).expect("root dir");
+
+        let original = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "agent-orig",
+                "name": "do-thing",
+                "description": "Original task",
+                "status": "interrupted"
+            }),
+        );
+        let replacement = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "agent-repl",
+                "name": "do-thing",
+                "description": "Replacement task",
+                "status": "running",
+                "restartedFrom": "agent-orig"
+            }),
+        );
+
+        let tasks = vec![original.clone(), replacement.clone()];
+
+        let orig_report = super::render_task_show_report(&original, None, Some(&tasks));
+        assert!(
+            orig_report.contains("Successor"),
+            "original should show successor: {orig_report}"
+        );
+        assert!(orig_report.contains("agent-repl"));
+
+        let repl_report = super::render_task_show_report(&replacement, None, Some(&tasks));
+        assert!(
+            repl_report.contains("Predecessor"),
+            "replacement should show predecessor: {repl_report}"
+        );
+        assert!(repl_report.contains("agent-orig"));
+
+        let solo_report = super::render_task_show_report(&original, None, None);
+        assert!(!solo_report.contains("Successor"));
+        assert!(!solo_report.contains("Predecessor"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn list_report_shows_lineage_tags() {
+        let root = temp_dir("lineage-list");
+        fs::create_dir_all(&root).expect("root dir");
+
+        let original = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "agent-orig",
+                "name": "do-thing",
+                "description": "Original task",
+                "status": "interrupted",
+                "parentSessionId": "session-1"
+            }),
+        );
+        let replacement = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "agent-repl",
+                "name": "do-thing",
+                "description": "Replacement task",
+                "status": "running",
+                "parentSessionId": "session-1",
+                "restartedFrom": "agent-orig"
+            }),
+        );
+
+        let tasks = vec![original, replacement];
+        let report = super::render_task_list_report(&tasks, Some("session-1"));
+
+        assert!(
+            report.contains("restarted from"),
+            "list should show restart origin: {report}"
+        );
+        assert!(
+            report.contains("replaced by"),
+            "list should show replacement: {report}"
+        );
 
         let _ = fs::remove_dir_all(root);
     }

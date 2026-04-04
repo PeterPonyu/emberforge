@@ -2704,7 +2704,7 @@ impl LiveCli {
                     return Ok(());
                 };
                 let task = find_task_by_prefix(&tasks, task_id)?;
-                println!("{}", render_task_show_report(task, current_session_id));
+                println!("{}", render_task_show_report(task, current_session_id, Some(&tasks)));
             }
             "logs" => {
                 let Some(task_id) = parts.next() else {
