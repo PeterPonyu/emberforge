@@ -1354,6 +1354,22 @@ fn structured_output_echoes_input_payload() {
 
 #[test]
 fn repl_executes_python_code() {
+    // Skip when python is not installed (e.g. macOS CI runners).
+    let has_python = std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+        || std::process::Command::new("python")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+    if !has_python {
+        eprintln!("skipping repl_executes_python_code: python not found");
+        return;
+    }
+
     let result = execute_tool(
         "REPL",
         &json!({"language": "python", "code": "print(1 + 1)", "timeout_ms": 500}),
