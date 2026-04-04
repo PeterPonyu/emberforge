@@ -13,11 +13,21 @@ use crate::{chrono_now_iso8601, truncate_for_summary};
 const TASK_LOG_TAIL_LINES: usize = 80;
 const TASK_HEARTBEAT_DELAY_SECS: i64 = 15;
 const TASK_HEARTBEAT_STALLED_SECS: i64 = 45;
+const TASK_ACTIVITY_LIMIT: usize = 40;
+const TASK_ACTIVITY_RENDER_LIMIT: usize = 6;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct BackgroundTaskCounts {
     pub(crate) total_running: usize,
     pub(crate) session_running: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TaskActivityEntry {
+    at: String,
+    kind: String,
+    status: String,
+    message: String,
 }
 
 #[derive(Debug, Clone)]
@@ -141,6 +151,26 @@ impl TaskManifestRecord {
             .and_then(|value| u32::try_from(value).ok())
     }
 
+    fn activity_entries(&self) -> Vec<TaskActivityEntry> {
+        self.manifest
+            .get("activity")
+            .and_then(serde_json::Value::as_array)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter_map(|entry| {
+                        Some(TaskActivityEntry {
+                            at: entry.get("at")?.as_str()?.to_string(),
+                            kind: entry.get("kind")?.as_str()?.to_string(),
+                            status: entry.get("status")?.as_str()?.to_string(),
+                            message: entry.get("message")?.as_str()?.to_string(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     fn is_active(&self) -> bool {
         matches!(self.status(), "running" | "finishing" | "stopping")
     }
@@ -173,7 +203,65 @@ impl TaskManifestRecord {
             );
         }
         self.set_string("updatedAt", now.to_string());
+        let status = self.status().to_string();
+        let message = self
+            .status_detail()
+            .unwrap_or("Stop requested; waiting for the current step to finish")
+            .to_string();
+        let _ = append_task_activity_value(
+            &mut self.manifest,
+            now,
+            "stop-requested",
+            &status,
+            &message,
+        );
     }
+}
+
+fn append_task_activity_value(
+    manifest: &mut serde_json::Value,
+    at: &str,
+    kind: &str,
+    status: &str,
+    message: &str,
+) -> bool {
+    let trimmed = message.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let Some(object) = manifest.as_object_mut() else {
+        return false;
+    };
+    let activity_value = object
+        .entry(String::from("activity"))
+        .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+    let Some(activity) = activity_value.as_array_mut() else {
+        return false;
+    };
+
+    let normalized_message = truncate_for_summary(trimmed, 120);
+    if activity.last().is_some_and(|last| {
+        last.get("kind").and_then(serde_json::Value::as_str) == Some(kind)
+            && last.get("status").and_then(serde_json::Value::as_str) == Some(status)
+            && last.get("message").and_then(serde_json::Value::as_str)
+                == Some(normalized_message.as_str())
+    }) {
+        return false;
+    }
+
+    activity.push(serde_json::json!({
+        "at": at,
+        "kind": kind,
+        "status": status,
+        "message": normalized_message,
+    }));
+
+    let overflow = activity.len().saturating_sub(TASK_ACTIVITY_LIMIT);
+    if overflow > 0 {
+        activity.drain(0..overflow);
+    }
+    true
 }
 
 fn trim_env_path(name: &str) -> Option<PathBuf> {
@@ -326,6 +414,13 @@ pub(crate) fn reconcile_task_manifest(
             String::from("Stop requested; waiting for the current step to finish"),
         );
         record.set_string("updatedAt", now.clone());
+        let _ = append_task_activity_value(
+            &mut record.manifest,
+            &now,
+            "status",
+            "stopping",
+            "Stop requested; waiting for the current step to finish",
+        );
         changed = true;
     }
 
@@ -350,6 +445,18 @@ pub(crate) fn reconcile_task_manifest(
                 } else {
                     String::from("Worker process is no longer alive; task was interrupted")
                 },
+            );
+            let terminal_status = record.status().to_string();
+            let terminal_message = record
+                .status_detail()
+                .unwrap_or("Worker process is no longer alive")
+                .to_string();
+            let _ = append_task_activity_value(
+                &mut record.manifest,
+                &now,
+                "terminal",
+                &terminal_status,
+                &terminal_message,
             );
             changed = true;
         }
@@ -451,6 +558,7 @@ struct TaskWatchSnapshot {
     supervision: Option<String>,
     stop_requested_at: Option<String>,
     stop_reason: Option<String>,
+    activity_count: usize,
 }
 
 fn task_watch_snapshot(record: &TaskManifestRecord) -> TaskWatchSnapshot {
@@ -460,7 +568,38 @@ fn task_watch_snapshot(record: &TaskManifestRecord) -> TaskWatchSnapshot {
         supervision: task_supervision_summary(record),
         stop_requested_at: record.stop_requested_at_raw().map(ToOwned::to_owned),
         stop_reason: record.stop_reason().map(ToOwned::to_owned),
+        activity_count: record.activity_entries().len(),
     }
+}
+
+fn render_task_activity_line(entry: &TaskActivityEntry) -> String {
+    format!(
+        "[task] activity {} | {} | {} | {}",
+        entry.at,
+        entry.kind,
+        entry.status,
+        truncate_for_summary(&entry.message, 120)
+    )
+}
+
+fn render_recent_task_activity_lines(record: &TaskManifestRecord, limit: usize) -> Vec<String> {
+    let activity = record.activity_entries();
+    if activity.is_empty() {
+        return Vec::new();
+    }
+
+    let start = activity.len().saturating_sub(limit);
+    let mut lines = vec![String::from("  Activity")];
+    for entry in &activity[start..] {
+        lines.push(format!(
+            "    - {} | {} | {} | {}",
+            entry.at,
+            entry.kind,
+            entry.status,
+            truncate_for_summary(&entry.message, 120)
+        ));
+    }
+    lines
 }
 
 fn render_task_watch_update(
@@ -469,11 +608,39 @@ fn render_task_watch_update(
 ) -> Option<String> {
     let current = task_watch_snapshot(record);
     let mut lines = Vec::new();
+    let activity = record.activity_entries();
 
-    if previous.map(|snapshot| snapshot.status.as_str()) != Some(current.status.as_str()) {
+    if previous.is_none() {
+        lines.push(format!("[task] {} status {}", record.id(), current.status));
+        if let Some(entry) = activity.last() {
+            lines.push(render_task_activity_line(entry));
+        } else if let Some(detail) = current.detail.as_deref().filter(|detail| !detail.trim().is_empty()) {
+            lines.push(format!(
+                "[task] detail {}",
+                truncate_for_summary(detail, 120)
+            ));
+        }
+        if let Some(supervision) = current
+            .supervision
+            .as_deref()
+            .filter(|supervision| *supervision != "healthy")
+        {
+            lines.push(format!("[task] supervision {supervision}"));
+        }
+        return Some(lines.join("\n"));
+    }
+
+    let previous = previous.expect("previous snapshot present");
+    if activity.len() > previous.activity_count {
+        for entry in &activity[previous.activity_count..] {
+            lines.push(render_task_activity_line(entry));
+        }
+    }
+
+    if lines.is_empty() && previous.status != current.status {
         lines.push(format!("[task] {} status {}", record.id(), current.status));
     }
-    if previous.and_then(|snapshot| snapshot.detail.as_deref()) != current.detail.as_deref() {
+    if lines.is_empty() && previous.detail.as_deref() != current.detail.as_deref() {
         if let Some(detail) = current.detail.as_deref().filter(|detail| !detail.trim().is_empty()) {
             lines.push(format!(
                 "[task] detail {}",
@@ -481,15 +648,14 @@ fn render_task_watch_update(
             ));
         }
     }
-    if previous.and_then(|snapshot| snapshot.stop_requested_at.as_deref())
-        != current.stop_requested_at.as_deref()
+    if lines.is_empty()
+        && previous.stop_requested_at.as_deref() != current.stop_requested_at.as_deref()
     {
         if let Some(stop_requested_at) = current.stop_requested_at.as_deref() {
             lines.push(format!("[task] stop requested {stop_requested_at}"));
         }
     }
-    if previous.and_then(|snapshot| snapshot.stop_reason.as_deref())
-        != current.stop_reason.as_deref()
+    if lines.is_empty() && previous.stop_reason.as_deref() != current.stop_reason.as_deref()
     {
         if let Some(stop_reason) = current.stop_reason.as_deref().filter(|reason| !reason.trim().is_empty()) {
             lines.push(format!(
@@ -498,16 +664,11 @@ fn render_task_watch_update(
             ));
         }
     }
-    if previous.and_then(|snapshot| snapshot.supervision.as_deref())
-        != current.supervision.as_deref()
+    if previous.supervision.as_deref() != current.supervision.as_deref()
     {
         if let Some(supervision) = current.supervision.as_deref() {
             lines.push(format!("[task] supervision {supervision}"));
         }
-    }
-
-    if previous.is_none() && lines.is_empty() {
-        lines.push(format!("[task] {} status {}", record.id(), current.status));
     }
 
     if lines.is_empty() {
@@ -754,6 +915,10 @@ pub(crate) fn render_task_show_report(
         lines.push(format!("  Log file         {output_file}"));
     }
     lines.push(format!("  Manifest         {}", task.manifest_path.display()));
+    lines.extend(render_recent_task_activity_lines(
+        task,
+        TASK_ACTIVITY_RENDER_LIMIT,
+    ));
     lines.join("\n")
 }
 
@@ -1058,7 +1223,7 @@ mod tests {
     }
 
     #[test]
-    fn task_watch_update_reports_status_detail_stop_and_health_changes() {
+    fn task_watch_update_reports_activity_and_supervision_changes() {
         let root = temp_dir("watch-update");
         fs::create_dir_all(&root).expect("create temp dir");
         let running = make_record(
@@ -1068,11 +1233,19 @@ mod tests {
                 "status": "running",
                 "description": "Review branch",
                 "statusDetail": "Scanning files",
+                "activity": [
+                    {
+                        "at": "2026-04-04T00:00:00Z",
+                        "kind": "created",
+                        "status": "running",
+                        "message": "Queued for background execution"
+                    }
+                ]
             }),
         );
         let initial = render_task_watch_update(None, &running).expect("initial update");
         assert!(initial.contains("status running"));
-        assert!(initial.contains("detail Scanning files"));
+        assert!(initial.contains("activity 2026-04-04T00:00:00Z | created | running"));
 
         let stale_heartbeat = OffsetDateTime::now_utc()
             .checked_sub(time::Duration::seconds(25))
@@ -1089,16 +1262,28 @@ mod tests {
                 "stopRequestedAt": "2026-04-04T00:00:00Z",
                 "stopReason": "Requested from /tasks stop",
                 "lastHeartbeatAt": stale_heartbeat,
+                "activity": [
+                    {
+                        "at": "2026-04-04T00:00:00Z",
+                        "kind": "created",
+                        "status": "running",
+                        "message": "Queued for background execution"
+                    },
+                    {
+                        "at": "2026-04-04T00:00:02Z",
+                        "kind": "stop-requested",
+                        "status": "stopping",
+                        "message": "Stop requested; waiting for the current step to finish"
+                    }
+                ]
             }),
         );
 
         let snapshot = task_watch_snapshot(&running);
         let update = render_task_watch_update(Some(&snapshot), &stopping).expect("transition update");
-        assert!(update.contains("status stopping"));
-        assert!(update.contains("detail Stop requested; waiting for the current step to finish"));
-        assert!(update.contains("stop requested 2026-04-04T00:00:00Z"));
-        assert!(update.contains("reason Requested from /tasks stop"));
+        assert!(update.contains("activity 2026-04-04T00:00:02Z | stop-requested | stopping"));
         assert!(update.contains("supervision delayed (heartbeat 25s old)"));
+        assert!(render_task_watch_update(Some(&task_watch_snapshot(&stopping)), &stopping).is_none());
 
         let terminal = make_record(
             &root,
@@ -1142,6 +1327,48 @@ mod tests {
 
         assert!(report.contains("Status           running"));
         assert!(report.contains("Supervision      stalled (heartbeat 50s old)"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn task_show_report_includes_recent_activity_entries() {
+        let root = temp_dir("show-activity");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let record = make_record(
+            &root,
+            json!({
+                "agentId": "agent-321",
+                "status": "completed",
+                "description": "Review branch",
+                "activity": [
+                    {
+                        "at": "2026-04-04T00:00:00Z",
+                        "kind": "created",
+                        "status": "running",
+                        "message": "Queued for background execution"
+                    },
+                    {
+                        "at": "2026-04-04T00:00:04Z",
+                        "kind": "status",
+                        "status": "finishing",
+                        "message": "Completed with 3 tool calls"
+                    },
+                    {
+                        "at": "2026-04-04T00:00:05Z",
+                        "kind": "terminal",
+                        "status": "completed",
+                        "message": "Finished successfully"
+                    }
+                ]
+            }),
+        );
+
+        let report = super::render_task_show_report(&record, None);
+
+        assert!(report.contains("  Activity"));
+        assert!(report.contains("2026-04-04T00:00:00Z | created | running | Queued for background execution"));
+        assert!(report.contains("2026-04-04T00:00:05Z | terminal | completed | Finished successfully"));
 
         let _ = fs::remove_dir_all(root);
     }

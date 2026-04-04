@@ -137,6 +137,9 @@ fn web_fetch_supports_plain_text_and_rejects_invalid_url() {
 
 #[test]
 fn web_search_extracts_and_filters_results() {
+    let _guard = env_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let server = TestServer::spawn(Arc::new(|request_line: &str| {
         assert!(request_line.contains("GET /search?q=rust+web+search "));
         HttpResponse::html(
@@ -152,7 +155,7 @@ fn web_search_extracts_and_filters_results() {
     }));
 
     std::env::set_var(
-        "CLAW_WEB_SEARCH_BASE_URL",
+        "EMBER_WEB_SEARCH_BASE_URL",
         format!("http://{}/search", server.addr()),
     );
     let result = execute_tool(
@@ -164,7 +167,7 @@ fn web_search_extracts_and_filters_results() {
         }),
     )
     .expect("WebSearch should succeed");
-    std::env::remove_var("CLAW_WEB_SEARCH_BASE_URL");
+    std::env::remove_var("EMBER_WEB_SEARCH_BASE_URL");
 
     let output: serde_json::Value = serde_json::from_str(&result).expect("valid json");
     assert_eq!(output["query"], "rust web search");
@@ -200,7 +203,7 @@ fn web_search_handles_generic_links_and_invalid_base_url() {
     }));
 
     std::env::set_var(
-        "CLAW_WEB_SEARCH_BASE_URL",
+        "EMBER_WEB_SEARCH_BASE_URL",
         format!("http://{}/fallback", server.addr()),
     );
     let result = execute_tool(
@@ -210,7 +213,7 @@ fn web_search_handles_generic_links_and_invalid_base_url() {
         }),
     )
     .expect("WebSearch fallback parsing should succeed");
-    std::env::remove_var("CLAW_WEB_SEARCH_BASE_URL");
+    std::env::remove_var("EMBER_WEB_SEARCH_BASE_URL");
 
     let output: serde_json::Value = serde_json::from_str(&result).expect("valid json");
     let results = output["results"].as_array().expect("results array");
@@ -223,10 +226,10 @@ fn web_search_handles_generic_links_and_invalid_base_url() {
     assert_eq!(content[0]["url"], "https://example.com/one");
     assert_eq!(content[1]["url"], "https://docs.rs/tokio");
 
-    std::env::set_var("CLAW_WEB_SEARCH_BASE_URL", "://bad-base-url");
+    std::env::set_var("EMBER_WEB_SEARCH_BASE_URL", "://bad-base-url");
     let error = execute_tool("WebSearch", &json!({ "query": "generic links" }))
         .expect_err("invalid base URL should fail");
-    std::env::remove_var("CLAW_WEB_SEARCH_BASE_URL");
+    std::env::remove_var("EMBER_WEB_SEARCH_BASE_URL");
     assert!(error.to_string().contains("relative URL without a base") || error.to_string().contains("empty host"));
 }
 
@@ -528,10 +531,19 @@ fn agent_persists_handoff_metadata() {
     let contents = std::fs::read_to_string(&manifest.output_file).expect("agent file exists");
     let manifest_contents =
         std::fs::read_to_string(&manifest.manifest_file).expect("manifest file exists");
+    let manifest_json: serde_json::Value =
+        serde_json::from_str(&manifest_contents).expect("manifest json");
     assert!(contents.contains("Audit the branch"));
     assert!(contents.contains("Check tests and outstanding work."));
     assert!(manifest_contents.contains("\"subagentType\": \"Explore\""));
     assert!(manifest_contents.contains("\"status\": \"running\""));
+    assert_eq!(manifest_json["activity"].as_array().expect("activity array").len(), 1);
+    assert_eq!(manifest_json["activity"][0]["kind"], "created");
+    assert_eq!(manifest_json["activity"][0]["status"], "running");
+    assert_eq!(
+        manifest_json["activity"][0]["message"],
+        "Queued for background execution"
+    );
     let captured_job = captured
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -599,10 +611,20 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
 
     let completed_manifest = std::fs::read_to_string(&completed.manifest_file)
         .expect("completed manifest should exist");
+    let completed_json: serde_json::Value =
+        serde_json::from_str(&completed_manifest).expect("completed manifest json");
     let completed_output =
         std::fs::read_to_string(&completed.output_file).expect("completed output should exist");
     assert!(completed_manifest.contains("\"status\": \"completed\""));
     assert!(completed_output.contains("Finished successfully"));
+    assert_eq!(
+        completed_json["activity"]
+            .as_array()
+            .expect("activity array")
+            .last()
+            .expect("completed activity")["status"],
+        "completed"
+    );
 
     let failed = execute_agent_with_spawn(
         AgentInput {
@@ -627,11 +649,21 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
 
     let failed_manifest =
         std::fs::read_to_string(&failed.manifest_file).expect("failed manifest should exist");
+    let failed_json: serde_json::Value =
+        serde_json::from_str(&failed_manifest).expect("failed manifest json");
     let failed_output =
         std::fs::read_to_string(&failed.output_file).expect("failed output should exist");
     assert!(failed_manifest.contains("\"status\": \"failed\""));
     assert!(failed_manifest.contains("simulated failure"));
     assert!(failed_output.contains("simulated failure"));
+    assert_eq!(
+        failed_json["activity"]
+            .as_array()
+            .expect("activity array")
+            .last()
+            .expect("failed activity")["status"],
+        "failed"
+    );
 
     let spawn_error = execute_agent_with_spawn(
         AgentInput {

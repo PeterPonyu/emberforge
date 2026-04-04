@@ -206,6 +206,14 @@ pub(crate) struct SkillOutput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct AgentActivityEntry {
+    pub(crate) at: String,
+    pub(crate) kind: String,
+    pub(crate) status: String,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AgentOutput {
     #[serde(default = "default_agent_manifest_version")]
     pub(crate) version: u32,
@@ -247,6 +255,8 @@ pub(crate) struct AgentOutput {
     pub(crate) cwd: Option<String>,
     #[serde(rename = "workerPid", skip_serializing_if = "Option::is_none", default)]
     pub(crate) worker_pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) activity: Vec<AgentActivityEntry>,
     #[serde(rename = "completedAt", skip_serializing_if = "Option::is_none")]
     pub(crate) completed_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

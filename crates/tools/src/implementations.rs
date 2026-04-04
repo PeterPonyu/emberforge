@@ -547,9 +547,53 @@ const DEFAULT_AGENT_MODEL: &str = "claude-opus-4-6";
 const DEFAULT_AGENT_SYSTEM_DATE: &str = "2026-03-31";
 const DEFAULT_AGENT_MAX_ITERATIONS: usize = 32;
 const AGENT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(2);
+const MAX_AGENT_ACTIVITY_ENTRIES: usize = 40;
 
 static AGENT_MANIFEST_LOCK: LazyLock<Mutex<()>> =
     LazyLock::new(|| Mutex::new(()));
+
+fn new_agent_activity_entry(
+    at: &str,
+    kind: &str,
+    status: &str,
+    message: &str,
+) -> AgentActivityEntry {
+    AgentActivityEntry {
+        at: at.to_string(),
+        kind: kind.to_string(),
+        status: status.to_string(),
+        message: truncate_agent_status_detail(message),
+    }
+}
+
+fn append_agent_activity_entry(
+    manifest: &mut AgentOutput,
+    at: &str,
+    kind: &str,
+    status: &str,
+    message: &str,
+) {
+    let trimmed = message.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    let entry = new_agent_activity_entry(at, kind, status, trimmed);
+    if manifest.activity.last().is_some_and(|last| {
+        last.kind == entry.kind && last.status == entry.status && last.message == entry.message
+    }) {
+        return;
+    }
+
+    manifest.activity.push(entry);
+    let overflow = manifest
+        .activity
+        .len()
+        .saturating_sub(MAX_AGENT_ACTIVITY_ENTRIES);
+    if overflow > 0 {
+        manifest.activity.drain(0..overflow);
+    }
+}
 
 pub(crate) fn execute_agent(input: AgentInput) -> Result<AgentOutput, String> {
     execute_agent_with_spawn(input, spawn_agent_job)
@@ -624,6 +668,12 @@ where
         parent_session_id: current_session_id_from_env(),
         cwd,
         worker_pid: Some(std::process::id()),
+        activity: vec![new_agent_activity_entry(
+            &created_at,
+            "created",
+            "running",
+            "Queued for background execution",
+        )],
         completed_at: None,
         error: None,
     };
@@ -739,6 +789,7 @@ fn persist_agent_progress(manifest: &AgentOutput, status: &str, message: &str) -
         next_manifest.updated_at = updated_at.clone();
         next_manifest.last_heartbeat_at = Some(updated_at.clone());
         next_manifest.status_detail = Some(truncate_agent_status_detail(message));
+        append_agent_activity_entry(next_manifest, &updated_at, "status", status, message);
         if next_manifest.started_at.is_none() {
             next_manifest.started_at = Some(updated_at.clone());
         }
@@ -1037,18 +1088,26 @@ pub(crate) fn persist_agent_terminal_state(
     )?;
     let completed_at = iso8601_now();
     update_agent_manifest(&manifest.manifest_file, |next_manifest| {
-        next_manifest.status = status.to_string();
-        next_manifest.completed_at = Some(completed_at.clone());
-        next_manifest.updated_at = completed_at.clone();
-        next_manifest.last_heartbeat_at = Some(completed_at.clone());
-        next_manifest.error = error.clone();
-        next_manifest.status_detail = Some(match error.as_deref() {
+        let activity_message = match error.as_deref() {
             Some(message) => truncate_agent_status_detail(message),
             None => result
                 .map(truncate_agent_status_detail)
                 .filter(|detail| !detail.is_empty())
                 .unwrap_or_else(|| status.to_string()),
-        });
+        };
+        next_manifest.status = status.to_string();
+        next_manifest.completed_at = Some(completed_at.clone());
+        next_manifest.updated_at = completed_at.clone();
+        next_manifest.last_heartbeat_at = Some(completed_at.clone());
+        next_manifest.error = error.clone();
+        next_manifest.status_detail = Some(activity_message.clone());
+        append_agent_activity_entry(
+            next_manifest,
+            &completed_at,
+            "terminal",
+            status,
+            &activity_message,
+        );
     })?;
     Ok(())
 }

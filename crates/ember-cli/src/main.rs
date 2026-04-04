@@ -6862,6 +6862,9 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
         assert_eq!(persisted["status"], "stopping");
         assert!(persisted["stopRequestedAt"].as_str().is_some());
         assert_eq!(persisted["stopReason"], "Requested from /tasks stop");
+        assert_eq!(persisted["activity"].as_array().expect("activity array").len(), 1);
+        assert_eq!(persisted["activity"][0]["kind"], "stop-requested");
+        assert_eq!(persisted["activity"][0]["status"], "stopping");
 
         cleanup_temp_dir(&root);
     }

@@ -11,6 +11,7 @@ The repository is already materially beyond the earlier baseline layout.
 - terminal UI work is already present: banner modes, intro animation, HUD, markdown rendering, thinking preview/section output
 - background task runtime work has already advanced in the current branch: task manifests, `/tasks list`, `/tasks show`, `/tasks logs`, `/tasks attach`, `/tasks stop`, session/task linkage in the HUD, better log tailing, and stop-aware subagent execution
 - heartbeat-backed supervision is now surfaced explicitly in task reports (`/tasks list`, `/tasks show`, `/tasks logs`, and attach/watch transitions)
+- task lifecycle activity history is now persisted in manifests and surfaced in `/tasks show` plus attach/watch updates
 
 ### Latest verification snapshot
 
@@ -19,15 +20,13 @@ The repository is already materially beyond the earlier baseline layout.
 
 ## GitHub publication status
 
-Local repository state can be committed now.
-
-Actual GitHub repository creation/push is currently blocked by invalid GitHub CLI authentication on this machine.
+Repository publication is already in place.
 
 Observed status:
 
-- `gh` is installed
-- active GitHub account: `PeterPonyu`
-- current token is invalid and needs re-authentication before `gh repo create` / push can succeed
+- GitHub repository exists: `PeterPonyu/emberforge`
+- `main` is pushed and tracking `origin/main`
+- future slices can be committed and pushed incrementally
 
 ## Recommended implementation priorities
 
@@ -44,10 +43,10 @@ Goal: move from improved task inspection toward basic worker supervision.
 
 Recommended slice order:
 
-1. add task activity/audit log entries for lifecycle changes
+1. surface restart/recovery hints more explicitly in `/tasks show`
 2. add recovery/restart policy for interrupted local workers where safe
-3. surface restart/recovery hints more explicitly in `/tasks show`
-4. decide whether local worker restart should be automatic or operator-triggered
+3. decide whether local worker restart should be automatic or operator-triggered
+4. decide whether recovery should reuse the same task id or fork a successor task lineage
 
 Primary reference:
 
@@ -166,31 +165,27 @@ Before every push:
 
 If continuing immediately after the current branch state, the best next implementation target is:
 
-### Add a task activity/audit timeline for lifecycle changes
+### Surface restart/recovery hints more explicitly in `/tasks show`
 
 Why this next:
 
-- it builds directly on the new supervision layer
-- it improves observability without forcing automatic restarts yet
-- it prepares the task runtime for richer attach/recovery and future remote orchestration
+- it builds directly on the new supervision and activity-history layers
+- it gives users immediate guidance when a worker is interrupted or stalled
+- it clarifies the recovery path before automatic restart behavior is introduced
 
 Suggested acceptance criteria:
 
-- task lifecycle changes produce concise activity records
-- `/tasks show` or a related surface can display recent activity entries
-- attach/watch output stays readable and does not duplicate unchanged events
+- interrupted or stalled tasks show concise recovery guidance
+- `/tasks show` distinguishes between informational status, supervision, and recommended next action
+- guidance remains concise and does not overwhelm healthy tasks
 - focused tests and full workspace tests both pass
 
 ## GitHub publication checklist
 
-Once GitHub CLI authentication is fixed, do this next:
+For future slices, keep using this publish routine:
 
-1. create the GitHub repository for `emberforge`
-2. set `origin`
-3. push the current `main` branch
-4. continue pushing one verified feature slice at a time
-
-If repository visibility needs a decision, prefer making that explicit before creation:
-
-- public if this is intended as the new canonical open baseline
-- private if the branch still contains work that should be curated before release
+1. implement one narrow verified slice
+2. run focused crate tests first
+3. run `cargo test --workspace`
+4. commit the slice cleanly
+5. push `main`
