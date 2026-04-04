@@ -12,11 +12,12 @@ The repository is already materially beyond the earlier baseline layout.
 - background task runtime work has already advanced in the current branch: task manifests, `/tasks list`, `/tasks show`, `/tasks logs`, `/tasks attach`, `/tasks stop`, session/task linkage in the HUD, better log tailing, and stop-aware subagent execution
 - heartbeat-backed supervision is now surfaced explicitly in task reports (`/tasks list`, `/tasks show`, `/tasks logs`, and attach/watch transitions)
 - task lifecycle activity history is now persisted in manifests and surfaced in `/tasks show` plus attach/watch updates
+- `/tasks show` now includes concise restart/recovery hints for stalled and interrupted tasks without polluting healthy task reports
 
 ### Latest verification snapshot
 
 - `cargo test --workspace`
-- result: 414 passed, 0 failed, 4 ignored
+- result: 417 passed, 0 failed, 4 ignored
 
 ## GitHub publication status
 
@@ -43,10 +44,10 @@ Goal: move from improved task inspection toward basic worker supervision.
 
 Recommended slice order:
 
-1. surface restart/recovery hints more explicitly in `/tasks show`
-2. add recovery/restart policy for interrupted local workers where safe
-3. decide whether local worker restart should be automatic or operator-triggered
-4. decide whether recovery should reuse the same task id or fork a successor task lineage
+1. add recovery/restart policy for interrupted local workers where safe
+2. decide whether local worker restart should be automatic or operator-triggered
+3. decide whether recovery should reuse the same task id or fork a successor task lineage
+4. surface restart lineage/history if replacement tasks are spawned
 
 Primary reference:
 
@@ -165,19 +166,19 @@ Before every push:
 
 If continuing immediately after the current branch state, the best next implementation target is:
 
-### Surface restart/recovery hints more explicitly in `/tasks show`
+### Add recovery/restart policy for interrupted local workers where safe
 
 Why this next:
 
-- it builds directly on the new supervision and activity-history layers
-- it gives users immediate guidance when a worker is interrupted or stalled
-- it clarifies the recovery path before automatic restart behavior is introduced
+- the CLI now tells users what to do next, but it still relies on manual reruns
+- interrupted tasks already preserve supervision and activity history, which gives us the right substrate for safe replacement behavior
+- this is the next real step from observability into controlled recovery
 
 Suggested acceptance criteria:
 
-- interrupted or stalled tasks show concise recovery guidance
-- `/tasks show` distinguishes between informational status, supervision, and recommended next action
-- guidance remains concise and does not overwhelm healthy tasks
+- interrupted local tasks can opt into a safe replacement flow
+- recovery rules are explicit about when automatic restart is allowed vs blocked
+- replacement behavior preserves enough history to understand what happened
 - focused tests and full workspace tests both pass
 
 ## GitHub publication checklist

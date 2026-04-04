@@ -602,6 +602,59 @@ fn render_recent_task_activity_lines(record: &TaskManifestRecord, limit: usize) 
     lines
 }
 
+fn render_task_next_action_lines(task: &TaskManifestRecord) -> Vec<String> {
+    let supervision = task_supervision_summary(task);
+    let is_stalled = supervision
+        .as_deref()
+        .is_some_and(|value| value.starts_with("stalled"));
+    let has_logs = task.output_file().is_some();
+    let mut bullets = Vec::new();
+
+    match task.status() {
+        "interrupted" => {
+            bullets.push(String::from(
+                "Worker exited unexpectedly; this task will not resume automatically.",
+            ));
+            if has_logs {
+                bullets.push(format!("Inspect the saved log: /tasks logs {}", task.id()));
+            }
+            bullets.push(String::from(
+                "Rerun the originating command to create a replacement task.",
+            ));
+        }
+        "running" | "finishing" if is_stalled => {
+            bullets.push(format!("Follow live output: /tasks attach {}", task.id()));
+            if has_logs {
+                bullets.push(format!("Inspect the saved log: /tasks logs {}", task.id()));
+            }
+            bullets.push(format!(
+                "If no new output appears, request a stop with /tasks stop {} and rerun the originating command.",
+                task.id()
+            ));
+        }
+        "stopping" if is_stalled => {
+            bullets.push(format!("Follow live output: /tasks attach {}", task.id()));
+            if has_logs {
+                bullets.push(format!("Inspect the saved log: /tasks logs {}", task.id()));
+            }
+            bullets.push(String::from(
+                "A stop was already requested; rerun the originating command after this task exits if you still need fresh work.",
+            ));
+        }
+        _ => {}
+    }
+
+    if bullets.is_empty() {
+        return Vec::new();
+    }
+
+    let mut lines = vec![String::from("  Next action")];
+    for bullet in bullets {
+        lines.push(format!("    - {bullet}"));
+    }
+    lines
+}
+
 fn render_task_watch_update(
     previous: Option<&TaskWatchSnapshot>,
     record: &TaskManifestRecord,
@@ -915,6 +968,7 @@ pub(crate) fn render_task_show_report(
         lines.push(format!("  Log file         {output_file}"));
     }
     lines.push(format!("  Manifest         {}", task.manifest_path.display()));
+    lines.extend(render_task_next_action_lines(task));
     lines.extend(render_recent_task_activity_lines(
         task,
         TASK_ACTIVITY_RENDER_LIMIT,
@@ -1307,6 +1361,8 @@ mod tests {
     fn task_show_report_includes_supervision_summary_for_active_tasks() {
         let root = temp_dir("show-report");
         fs::create_dir_all(&root).expect("create temp dir");
+        let log_path = root.join("agent-999.md");
+        fs::write(&log_path, "# Agent Task\n").expect("write log file");
         let stale_heartbeat = OffsetDateTime::now_utc()
             .checked_sub(time::Duration::seconds(50))
             .expect("subtract heartbeat age")
@@ -1320,6 +1376,7 @@ mod tests {
                 "description": "Background audit",
                 "lastHeartbeatAt": stale_heartbeat,
                 "workerPid": std::process::id(),
+                "outputFile": log_path.display().to_string(),
             }),
         );
 
@@ -1327,6 +1384,64 @@ mod tests {
 
         assert!(report.contains("Status           running"));
         assert!(report.contains("Supervision      stalled (heartbeat 50s old)"));
+        assert!(report.contains("  Next action"));
+        assert!(report.contains("/tasks attach agent-999"));
+        assert!(report.contains("/tasks logs agent-999"));
+        assert!(report.contains("/tasks stop agent-999"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn task_show_report_omits_recovery_guidance_for_healthy_tasks() {
+        let root = temp_dir("show-healthy");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let current_heartbeat = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .expect("format heartbeat");
+        let record = make_record(
+            &root,
+            json!({
+                "agentId": "agent-healthy",
+                "status": "running",
+                "description": "Healthy task",
+                "lastHeartbeatAt": current_heartbeat,
+                "workerPid": std::process::id(),
+            }),
+        );
+
+        let report = super::render_task_show_report(&record, None);
+
+        assert!(report.contains("Supervision      healthy"));
+        assert!(!report.contains("  Next action"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn task_show_report_includes_recovery_guidance_for_interrupted_tasks() {
+        let root = temp_dir("show-interrupted");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let log_path = root.join("agent-777.md");
+        fs::write(&log_path, "# Agent Task\n").expect("write log file");
+        let record = make_record(
+            &root,
+            json!({
+                "agentId": "agent-777",
+                "status": "interrupted",
+                "description": "Interrupted task",
+                "statusDetail": "Worker process is no longer alive; task was interrupted",
+                "outputFile": log_path.display().to_string(),
+            }),
+        );
+
+        let report = super::render_task_show_report(&record, None);
+
+        assert!(report.contains("Status           interrupted"));
+        assert!(report.contains("  Next action"));
+        assert!(report.contains("will not resume automatically"));
+        assert!(report.contains("/tasks logs agent-777"));
+        assert!(report.contains("replacement task"));
 
         let _ = fs::remove_dir_all(root);
     }
