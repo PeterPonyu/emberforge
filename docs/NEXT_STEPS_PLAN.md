@@ -41,67 +41,212 @@ These priorities follow `docs/REFINEMENT_PLAN.md` and the comparison audit again
 - `oh-my-codex-main`
 - `claw-code-parity-main`
 
-### Priority 1 — Continue Phase 3 background-task runtime
+### Priority 1 — Complete Phase 3 background-task runtime
 
-Goal: move from improved task inspection toward basic worker supervision.
+Goal: wrap up the remaining Phase 3 design decisions and close out worker
+supervision before moving to platform-level features.
 
-Recommended slice order:
+#### Slice 1.1 — Fork-vs-reuse design decision and chain-collapse view
 
-1. decide whether recovery should reuse the same task id or continue forking successor tasks
-2. clarify restart limits/backoff rules if repeated interruption occurs
-3. add supervision summary command that shows restart chain health across all tasks
+**Background:** Both manual `/tasks restart` and `EMBER_AUTO_RESTART` currently
+fork a new successor task.  This preserves audit history but creates visual
+clutter when restart chains grow.
 
-Primary reference:
+**Recommendation:** Keep the fork model (safer, preserves full audit trail).
+Add a collapse mode to `/tasks list` that groups restart chains under the
+latest successor.
 
-- `oh-my-claudecode-main/src/team/heartbeat.ts`
-- `oh-my-claudecode-main/src/team/activity-log.ts`
-- `oh-my-claudecode-main/src/team/worker-health.ts`
+**Implementation plan:**
+
+1. Add `--collapse` flag to `/tasks list` (default off)
+2. In `render_task_list_report`, when collapse is active:
+   - Group tasks by chain root (walk `predecessors` to find root)
+   - Only render the latest successor; show `(+N restarts)` badge
+3. Update `push_task_section` to accept a `collapsed: bool` parameter
+4. Add 2 tests: collapsed view groups chains, uncollapsed is unchanged
+5. Document the design decision in a new `docs/DESIGN_DECISIONS.md`
+
+**Files to touch:**
+- `crates/ember-cli/src/task_mgmt.rs` — collapse logic + tests
+- `crates/ember-cli/src/main.rs` — parse `--collapse` flag from `/tasks list`
+- `docs/DESIGN_DECISIONS.md` — new file
+
+**Estimated test delta:** +2 tests
+
+#### Slice 1.2 — Restart limits and backoff rules
+
+**Background:** `AutoRestartPolicy` has `max_restarts` but no backoff delay.
+Rapid successive restarts could thrash the system.
+
+**Implementation plan:**
+
+1. Add `restart_delay_secs` field to `AutoRestartPolicy` (default: 5s)
+2. Read `EMBER_AUTO_RESTART_DELAY` env var (seconds, default 5, max 60)
+3. In `try_auto_restart`, check the timestamp of the predecessor's interruption;
+   skip restart if less than `restart_delay_secs` have elapsed
+4. Log the skip as an `auto-restart-delayed` activity entry
+5. Add 2 tests: delay is respected, delay expires and restart proceeds
+
+**Files to touch:**
+- `crates/ember-cli/src/task_mgmt.rs` — delay logic + tests
+
+**Estimated test delta:** +2 tests
+
+#### Slice 1.3 — Supervision health summary command
+
+**Background:** No single command shows the overall health of all supervised
+tasks.  Operators need to check tasks one by one.
+
+**Implementation plan:**
+
+1. Add `/tasks health` subcommand
+2. Render a concise table: task id, status, heartbeat age, chain depth,
+   auto-restart eligibility, last activity timestamp
+3. Summary footer: N healthy, N delayed, N stalled, N interrupted, N chains
+4. Add 1 test: health report covers various task states
+
+**Files to touch:**
+- `crates/ember-cli/src/task_mgmt.rs` — `render_task_health_report()`
+- `crates/ember-cli/src/main.rs` — `/tasks health` handler
+
+**Estimated test delta:** +1 test
+
+---
 
 ### Priority 2 — Deepen thinking/transcript UX
 
-Goal: keep Emberforge's existing terminal thinking support, but improve transcript-grade visibility.
+Goal: keep Emberforge's existing terminal thinking support, but improve
+transcript-grade visibility.
 
-Recommended slice order:
+#### Slice 2.1 — Structured thinking replay and export
 
-1. enrich thinking sections with better structured replay/export behavior
-2. add stronger session transcript organization and searchable history
-3. add lightweight session-memory extraction or summary notes between turns
+**Background:** Thinking sections are rendered inline but cannot be replayed
+or exported independently.
 
-Primary reference:
+**Implementation plan:**
 
-- `claude-code-src/components/messages/AssistantThinkingMessage.tsx`
-- `claude-code-src/services/sessionTranscript/sessionTranscript.ts`
-- `claude-code-src/services/SessionMemory/sessionMemory.ts`
+1. Add `ThinkingBlock` struct that captures timestamp, content, model
+2. Collect thinking blocks during streaming into a `Vec<ThinkingBlock>`
+3. Add `/thinking export <path>` command that writes blocks as JSON
+4. Add `/thinking replay` that re-renders thinking blocks in order
+5. Add 1 test: export produces valid JSON with expected structure
+
+**Files to touch:**
+- `crates/ember-cli/src/main.rs` — command handlers
+- `crates/ember-cli/src/render.rs` — `ThinkingBlock` struct + export/replay
+
+**Estimated test delta:** +1 test
+
+#### Slice 2.2 — Session transcript organization and search
+
+**Background:** Session history exists but lacks structured search or
+transcript-level organization.
+
+**Implementation plan:**
+
+1. Add `TranscriptEntry` struct (role, content, timestamp, tool calls)
+2. Append entries to a session-scoped transcript file during conversation
+3. Add `/transcript search <query>` command with simple substring matching
+4. Add `/transcript export <path>` for full transcript as Markdown or JSON
+5. Add 2 tests: search finds matching entries, export produces valid output
+
+**Files to touch:**
+- `crates/ember-cli/src/main.rs` — command handlers
+- New `crates/ember-cli/src/transcript.rs` module
+
+**Estimated test delta:** +2 tests
+
+#### Slice 2.3 — Session memory extraction
+
+**Background:** No mechanism to extract and persist key insights between
+turns within a session.
+
+**Implementation plan:**
+
+1. Add `/memory note <text>` command to persist a note to session memory
+2. Store notes in `.ember-sessions/<id>/notes.json`
+3. Add `/memory list` to show notes for the current session
+4. Render a memory summary hint at session resume if notes exist
+5. Add 1 test: note round-trips through write and read
+
+**Estimated test delta:** +1 test
+
+---
 
 ### Priority 3 — Strengthen model/provider capability handling
 
-Goal: move from strong core provider plumbing to richer capability-aware routing.
+Goal: move from strong core provider plumbing toward richer capability-aware
+routing and user-facing advisories.
 
-Recommended slice order:
+#### Slice 3.1 — Expand model profile coverage
 
-1. expand model profile coverage beyond Ollama-only context discovery
-2. add unified provider capability metadata (tools, thinking, context, recommended output budget)
-3. improve user-facing context-budget advisories before overflow
+**Implementation plan:**
 
-Primary reference:
+1. Add model capability profiles for major providers (Anthropic, OpenAI,
+   Gemini, Mistral) beyond the current Ollama-only discovery
+2. Store profiles as static data keyed by model name prefix
+3. Add `resolve_model_profile(model_name)` that returns capabilities
+4. Add 2 tests: known models resolve correctly, unknown returns default
 
-- `claude-code-src/utils/context.ts`
-- `claude-code-src/cost-tracker.ts`
+**Files to touch:**
+- `crates/api/src/providers/` — profile registry
+- `crates/api/src/lib.rs` — public API
+
+**Estimated test delta:** +2 tests
+
+#### Slice 3.2 — Unified capability metadata
+
+**Implementation plan:**
+
+1. Define `ModelCapabilities` struct: tools, thinking, context_window,
+   recommended_output_budget, streaming
+2. Populate from resolved model profile
+3. Thread `ModelCapabilities` into the conversation runtime
+4. Add capability checks before tool dispatch (e.g. skip tools if unsupported)
+
+#### Slice 3.3 — Context budget advisories
+
+**Implementation plan:**
+
+1. Before sending a request, check if input tokens approach context budget
+2. Emit a warning line in the terminal: "Context is 85% full (N/M tokens)"
+3. Add a compaction suggestion when over threshold
+4. Add 1 test: advisory fires when context exceeds threshold
+
+---
 
 ### Priority 4 — Begin Phase 4 remote/bridge foundation
 
 Goal: go beyond local/runtime-only flows toward a stronger remote session story.
 
-Recommended slice order:
+#### Slice 4.1 — Transport abstraction
 
-1. define transport abstraction for session ingress/egress
-2. align `server` endpoints with future attach/stream clients
-3. add clearer remote auth/session lifecycle boundaries
+**Implementation plan:**
 
-Primary reference:
+1. Define `SessionTransport` trait: `send_event()`, `recv_event()`, `close()`
+2. Implement `LocalTransport` (the current stdin/stdout path)
+3. Add `TransportEvent` enum covering conversation, tool, and control events
+4. Wire `LocalTransport` into the existing conversation loop as a proof of concept
 
-- `claude-code-src/bridge/bridgeMain.ts`
-- `claude-code-src/cli/transports/HybridTransport.ts`
+**Files to touch:**
+- New `crates/runtime/src/transport.rs`
+- `crates/runtime/src/lib.rs`
+
+#### Slice 4.2 — Server endpoint alignment
+
+**Implementation plan:**
+
+1. Add `/api/v1/sessions/:id/events` SSE endpoint to the server crate
+2. Bridge server events to `TransportEvent` format
+3. Allow `/tasks attach` to connect via HTTP transport instead of local file polling
+
+#### Slice 4.3 — Remote auth and session lifecycle
+
+**Implementation plan:**
+
+1. Add session token generation and validation
+2. Add auth middleware for server transport endpoints
+3. Define session lifecycle: create, attach, detach, destroy
 
 ## Working routine for future iterations
 
@@ -168,21 +313,27 @@ Before every push:
 
 If continuing immediately after the current branch state, the best next implementation target is:
 
-### Decide whether recovery should reuse the same task id or continue forking successor tasks
+### Slice 1.1 — Fork-vs-reuse design decision and chain-collapse view
 
 Why this next:
 
-- both operator-triggered and automatic restart paths now fork new successor tasks
-- reusing the original task id would simplify lineage but lose history
-- forking preserves full audit trail but creates clutter for long restart chains
-- this is a design decision that shapes the task management UX going forward
+- the restart infrastructure (manual + automatic, lineage visibility) is complete
+- the remaining design question — fork vs reuse — is the last blocker before Phase 3 can be considered largely done
+- implementing chain-collapse view directly addresses the UX issue of restart chain clutter
+- this is a focused, testable slice that closes out the core task-supervision story
 
-Suggested acceptance criteria:
+Concrete steps:
 
-- document the design decision with rationale
-- if id-reuse is chosen, update restart flow to mutate in-place instead of forking
-- if forking is kept (recommended), add optional chain-collapse view for `/tasks list`
-- focused tests and full workspace tests both pass
+1. Add `docs/DESIGN_DECISIONS.md` documenting the fork-over-reuse decision
+2. Add `--collapse` flag to `/tasks list` command parsing in `main.rs`
+3. In `render_task_list_report`, group chain members under latest successor when collapse is active
+4. Show `(+N restarts)` badge on the collapsed line
+5. Add 2 tests: collapsed grouping, uncollapsed remains unchanged
+6. Update this plan and push
+
+After this slice, Priority 1 remaining work is slices 1.2 (backoff delay) and
+1.3 (health summary), which are incremental improvements rather than design
+decisions.
 
 ## GitHub publication checklist
 
