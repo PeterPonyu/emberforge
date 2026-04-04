@@ -16,6 +16,13 @@ const TASK_HEARTBEAT_STALLED_SECS: i64 = 45;
 const TASK_ACTIVITY_LIMIT: usize = 40;
 const TASK_ACTIVITY_RENDER_LIMIT: usize = 6;
 
+/// Hard ceiling for automatic restart chains.  Even if the operator sets a
+/// higher value via `EMBER_AUTO_RESTART_MAX`, we never exceed this.
+const AUTO_RESTART_ABSOLUTE_MAX: u32 = 10;
+/// Default maximum number of consecutive auto-restarts when the feature is
+/// enabled but no explicit limit is configured.
+const AUTO_RESTART_DEFAULT_MAX: u32 = 3;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct BackgroundTaskCounts {
     pub(crate) total_running: usize,
@@ -915,6 +922,140 @@ impl TaskLineageMap {
     fn predecessor_of(&self, task_id: &str) -> Option<&str> {
         self.predecessors.get(task_id).map(String::as_str)
     }
+
+    /// Walk the predecessor chain to determine how many consecutive restarts
+    /// preceded `task_id`.  Returns 0 for tasks that were never restarted from
+    /// another task.
+    fn restart_chain_depth(&self, task_id: &str) -> u32 {
+        let mut depth = 0u32;
+        let mut current = task_id;
+        while let Some(predecessor) = self.predecessors.get(current) {
+            depth += 1;
+            current = predecessor;
+            // Guard against pathological / circular chains.
+            if depth > AUTO_RESTART_ABSOLUTE_MAX {
+                break;
+            }
+        }
+        depth
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Automatic restart policy
+// ---------------------------------------------------------------------------
+
+/// Configuration for automatic restart of interrupted subagent tasks.
+///
+/// When enabled, the supervision loop will automatically spawn a replacement
+/// task when a worker is detected as dead, **provided** the restart chain has
+/// not exceeded the configured limit.
+///
+/// The feature is opt-in via the `EMBER_AUTO_RESTART` environment variable:
+///
+/// - `EMBER_AUTO_RESTART=1`          — enable with default limit (3)
+/// - `EMBER_AUTO_RESTART=5`          — enable with explicit limit of 5
+/// - unset or `0`                    — disabled (default, operator-triggered)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AutoRestartPolicy {
+    max_restarts: u32,
+}
+
+impl AutoRestartPolicy {
+    /// Read the policy from the environment.  Returns `None` when auto-restart
+    /// is disabled (the default).
+    fn from_env() -> Option<Self> {
+        let val = env::var("EMBER_AUTO_RESTART").ok()?;
+        let val = val.trim();
+        if val.is_empty() || val == "0" || val.eq_ignore_ascii_case("false") {
+            return None;
+        }
+        let limit = val.parse::<u32>().unwrap_or(AUTO_RESTART_DEFAULT_MAX);
+        let limit = limit.min(AUTO_RESTART_ABSOLUTE_MAX).max(1);
+        Some(Self { max_restarts: limit })
+    }
+
+    /// Determine whether we should attempt an automatic restart for `task`.
+    ///
+    /// Returns `Ok(())` when the restart should proceed, or `Err(reason)` when
+    /// it should be skipped.
+    fn evaluate(
+        &self,
+        task: &TaskManifestRecord,
+        chain_depth: u32,
+        cwd: &Path,
+    ) -> Result<(), String> {
+        if task.status() != "interrupted" {
+            return Err(format!("status is {}, not interrupted", task.status()));
+        }
+        if task.task_kind() != "subagent" {
+            return Err(String::from("only subagent tasks qualify for auto-restart"));
+        }
+        if chain_depth >= self.max_restarts {
+            return Err(format!(
+                "restart chain depth {chain_depth} has reached the limit of {}",
+                self.max_restarts
+            ));
+        }
+        // Delegate remaining eligibility checks to the existing restart spec.
+        task_restart_spec(task, cwd).map(|_| ())
+    }
+}
+
+/// Attempt an automatic restart of an interrupted task if the policy permits.
+///
+/// Returns `Ok(Some(replacement_id))` if a replacement was spawned,
+/// `Ok(None)` if auto-restart was skipped or not applicable, and `Err` on
+/// unexpected execution failures.
+pub(crate) fn try_auto_restart(
+    cwd: &Path,
+    task: &TaskManifestRecord,
+    all_tasks: &[TaskManifestRecord],
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let policy = match AutoRestartPolicy::from_env() {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+
+    let lineage = TaskLineageMap::build(all_tasks);
+
+    // Skip if this task already has a successor (manual restart already happened).
+    if lineage.successor_of(task.id()).is_some() {
+        return Ok(None);
+    }
+
+    let chain_depth = lineage.restart_chain_depth(task.id());
+    if let Err(reason) = policy.evaluate(task, chain_depth, cwd) {
+        let now = chrono_now_iso8601();
+        let mut mutable = task.clone();
+        let _ = append_task_activity_value(
+            &mut mutable.manifest,
+            &now,
+            "auto-restart-skipped",
+            task.status(),
+            &format!("Automatic restart skipped: {reason}"),
+        );
+        write_task_manifest(&mutable)?;
+        return Ok(None);
+    }
+
+    // Perform the restart using the normal flow.
+    let report = request_task_restart_with(cwd, task.id(), |payload| {
+        tools::execute_tool("Agent", payload).map_err(|error| {
+            io::Error::new(io::ErrorKind::Other, error.to_string()).into()
+        })
+    })?;
+
+    // Extract replacement id from report string.
+    let replacement_id = report
+        .lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix("Replacement")
+                .map(|rest| rest.trim().to_string())
+        });
+
+    Ok(replacement_id)
 }
 
 fn render_task_entry_lines(
@@ -1356,6 +1497,25 @@ pub(crate) fn attach_to_task(cwd: &Path, requested_id: &str) -> Result<(), Box<d
         last_snapshot = Some(snapshot);
         if record.is_terminal() {
             println!("\n{}", render_task_terminal_summary(&record));
+
+            // Attempt automatic restart when the policy is active.
+            if record.status() == "interrupted" {
+                if let Ok(all_tasks) = load_task_manifests(cwd) {
+                    match try_auto_restart(cwd, &record, &all_tasks) {
+                        Ok(Some(replacement_id)) => {
+                            println!(
+                                "[auto-restart] replacement task {replacement_id} started — attaching"
+                            );
+                            // Recursively attach to the replacement.
+                            return attach_to_task(cwd, &replacement_id);
+                        }
+                        Ok(None) => {} // Auto-restart not applicable or skipped.
+                        Err(err) => {
+                            eprintln!("[auto-restart] failed to restart task: {err}");
+                        }
+                    }
+                }
+            }
             break;
         }
 
@@ -1374,8 +1534,14 @@ mod tests {
     use serde_json::json;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
     use time::format_description::well_known::Rfc3339;
     use time::OffsetDateTime;
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     fn temp_dir(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -2037,6 +2203,176 @@ mod tests {
             report.contains("replaced by"),
             "list should show replacement: {report}"
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn auto_restart_policy_from_env_disabled_by_default() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        std::env::remove_var("EMBER_AUTO_RESTART");
+        assert!(super::AutoRestartPolicy::from_env().is_none());
+
+        std::env::set_var("EMBER_AUTO_RESTART", "0");
+        assert!(super::AutoRestartPolicy::from_env().is_none());
+
+        std::env::set_var("EMBER_AUTO_RESTART", "false");
+        assert!(super::AutoRestartPolicy::from_env().is_none());
+
+        std::env::set_var("EMBER_AUTO_RESTART", "");
+        assert!(super::AutoRestartPolicy::from_env().is_none());
+
+        std::env::remove_var("EMBER_AUTO_RESTART");
+    }
+
+    #[test]
+    fn auto_restart_policy_from_env_enabled_with_defaults_and_limits() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        std::env::set_var("EMBER_AUTO_RESTART", "1");
+        let policy = super::AutoRestartPolicy::from_env().expect("should enable");
+        assert_eq!(policy.max_restarts, 1);
+
+        // "true" is not a number, so it falls back to the default limit.
+        std::env::set_var("EMBER_AUTO_RESTART", "true");
+        let policy = super::AutoRestartPolicy::from_env().expect("should enable");
+        assert_eq!(policy.max_restarts, super::AUTO_RESTART_DEFAULT_MAX);
+
+        std::env::set_var("EMBER_AUTO_RESTART", "5");
+        let policy = super::AutoRestartPolicy::from_env().expect("should enable");
+        assert_eq!(policy.max_restarts, 5);
+
+        // Capped at absolute max.
+        std::env::set_var("EMBER_AUTO_RESTART", "99");
+        let policy = super::AutoRestartPolicy::from_env().expect("should enable");
+        assert_eq!(policy.max_restarts, super::AUTO_RESTART_ABSOLUTE_MAX);
+
+        std::env::remove_var("EMBER_AUTO_RESTART");
+    }
+
+    #[test]
+    fn restart_chain_depth_walks_predecessor_chain() {
+        let root = temp_dir("chain-depth");
+        fs::create_dir_all(&root).expect("root dir");
+
+        let gen0 = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "gen-0",
+                "name": "chain",
+                "description": "Generation 0",
+                "status": "interrupted"
+            }),
+        );
+        let gen1 = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "gen-1",
+                "name": "chain",
+                "description": "Generation 1",
+                "status": "interrupted",
+                "restartedFrom": "gen-0"
+            }),
+        );
+        let gen2 = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "gen-2",
+                "name": "chain",
+                "description": "Generation 2",
+                "status": "running",
+                "restartedFrom": "gen-1"
+            }),
+        );
+
+        let tasks = vec![gen0, gen1, gen2];
+        let lineage = super::TaskLineageMap::build(&tasks);
+
+        assert_eq!(lineage.restart_chain_depth("gen-0"), 0);
+        assert_eq!(lineage.restart_chain_depth("gen-1"), 1);
+        assert_eq!(lineage.restart_chain_depth("gen-2"), 2);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn auto_restart_policy_blocks_when_chain_exceeds_limit() {
+        let root = temp_dir("policy-limit");
+        fs::create_dir_all(&root).expect("root dir");
+
+        let policy = super::AutoRestartPolicy { max_restarts: 2 };
+
+        let task = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "task-deep",
+                "name": "test",
+                "description": "Deep restart",
+                "status": "interrupted",
+                "prompt": "do the thing"
+            }),
+        );
+
+        // Chain depth 0 < limit 2 — should pass.
+        assert!(policy.evaluate(&task, 0, &root).is_ok());
+        // Chain depth 1 < limit 2 — should pass.
+        assert!(policy.evaluate(&task, 1, &root).is_ok());
+        // Chain depth 2 >= limit 2 — should block.
+        assert!(policy.evaluate(&task, 2, &root).is_err());
+        // Chain depth over limit — should block.
+        assert!(policy.evaluate(&task, 5, &root).is_err());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn auto_restart_policy_blocks_non_subagent_and_non_interrupted() {
+        let root = temp_dir("policy-eligibility");
+        fs::create_dir_all(&root).expect("root dir");
+
+        let policy = super::AutoRestartPolicy { max_restarts: 3 };
+
+        // Non-subagent: blocked.
+        let non_subagent = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "toplevel",
+                "agentId": "task-top",
+                "name": "test",
+                "description": "Top-level task",
+                "status": "interrupted",
+                "prompt": "do the thing"
+            }),
+        );
+        assert!(policy.evaluate(&non_subagent, 0, &root).is_err());
+
+        // Non-interrupted: blocked.
+        let running = make_record(
+            &root,
+            json!({
+                "version": 1,
+                "taskKind": "subagent",
+                "agentId": "task-run",
+                "name": "test",
+                "description": "Running task",
+                "status": "running",
+                "prompt": "do the thing"
+            }),
+        );
+        assert!(policy.evaluate(&running, 0, &root).is_err());
 
         let _ = fs::remove_dir_all(root);
     }

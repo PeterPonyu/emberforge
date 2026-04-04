@@ -15,11 +15,12 @@ The repository is already materially beyond the earlier baseline layout.
 - `/tasks show` now includes concise restart/recovery hints for stalled and interrupted tasks without polluting healthy task reports
 - interrupted local subagent tasks can now spawn a safe replacement via `/tasks restart <id>` when recoverable prompt/state metadata is available
 - restart lineage is now surfaced in both `/tasks list` (concise ↳/→ tags) and `/tasks show` (Predecessor/Successor fields) using a pre-computed lineage map
+- automatic restart is now supported via `EMBER_AUTO_RESTART` env var with configurable chain-depth limits, exponential backoff via `AutoRestartPolicy`, and integration into the attach/supervision loop
 
 ### Latest verification snapshot
 
 - `cargo test --workspace`
-- result: 423 passed, 0 failed, 4 ignored
+- result: 428 passed, 0 failed, 4 ignored
 
 ## GitHub publication status
 
@@ -46,9 +47,9 @@ Goal: move from improved task inspection toward basic worker supervision.
 
 Recommended slice order:
 
-1. decide whether local worker restart should remain operator-triggered or gain an automatic mode
-2. decide whether recovery should reuse the same task id or continue forking successor tasks
-3. clarify restart limits/backoff rules if repeated interruption occurs
+1. decide whether recovery should reuse the same task id or continue forking successor tasks
+2. clarify restart limits/backoff rules if repeated interruption occurs
+3. add supervision summary command that shows restart chain health across all tasks
 
 Primary reference:
 
@@ -167,20 +168,20 @@ Before every push:
 
 If continuing immediately after the current branch state, the best next implementation target is:
 
-### Decide whether local worker restart should remain operator-triggered or gain an automatic mode
+### Decide whether recovery should reuse the same task id or continue forking successor tasks
 
 Why this next:
 
-- restart flow and lineage visibility are both in place
-- the current design requires `/tasks restart <id>` — an explicit operator action
-- deciding between operator-triggered and automatic restart shapes the supervision architecture
-- automatic mode (with backoff/limits) would reduce operator burden for transient failures
+- both operator-triggered and automatic restart paths now fork new successor tasks
+- reusing the original task id would simplify lineage but lose history
+- forking preserves full audit trail but creates clutter for long restart chains
+- this is a design decision that shapes the task management UX going forward
 
 Suggested acceptance criteria:
 
-- document the design decision and rationale clearly
-- if automatic mode is chosen, implement configurable retry policy (max retries, backoff)
-- restart limits should prevent infinite restart loops
+- document the design decision with rationale
+- if id-reuse is chosen, update restart flow to mutate in-place instead of forking
+- if forking is kept (recommended), add optional chain-collapse view for `/tasks list`
 - focused tests and full workspace tests both pass
 
 ## GitHub publication checklist
