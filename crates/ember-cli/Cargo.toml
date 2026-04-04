@@ -1,0 +1,35 @@
+[package]
+name = "ember-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ember"
+path = "src/main.rs"
+
+# Legacy alias — same binary, different name for backwards compatibility.
+# Cargo warns about shared path; this is intentional.
+[[bin]]
+name = "claw"
+path = "src/claw_alias.rs"
+
+[dependencies]
+api = { path = "../api" }
+commands = { path = "../commands" }
+compat-harness = { path = "../compat-harness" }
+crossterm = "0.28"
+pulldown-cmark = "0.13"
+rustyline = "15"
+runtime = { path = "../runtime" }
+plugins = { path = "../plugins" }
+serde_json.workspace = true
+syntect = "5"
+telemetry = { path = "../telemetry" }
+time = { version = "0.3", features = ["formatting"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+tools = { path = "../tools" }
+
+[lints]
+workspace = true

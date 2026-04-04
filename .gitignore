@@ -1,6 +1,11 @@
 /target
-/rust/target
 .omx/
 .clawd-agents/
-.claw-agents/
 .env
+.claw-agents/
+.ember-agents/
+.claw/sessions/
+.claw/telemetry/
+.ember/sessions/
+.ember/telemetry/
+answer.txt

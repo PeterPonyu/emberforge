@@ -1,228 +1,143 @@
-# Rewriting Project Claw Code
+# 🐉 Emberforge
 
-<p align="center">
-  <strong>⭐ The fastest repo in history to surpass 50K stars, reaching the milestone in just 2 hours after publication ⭐</strong>
-</p>
+**A local-first coding forge for serious developers.**
 
-<p align="center">
-  <a href="https://star-history.com/#instructkr/claw-code&Date">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=instructkr/claw-code&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=instructkr/claw-code&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=instructkr/claw-code&type=Date" width="600" />
-    </picture>
-  </a>
-</p>
+Emberforge is an interactive coding assistant that runs in your terminal, powered by local LLMs via Ollama. It provides a rich REPL with tool execution, session management, plugins, and multi-provider support.
 
-<p align="center">
-  <img src="assets/clawd-hero.jpeg" alt="Claw" width="300" />
-</p>
-
-<p align="center">
-  <strong>Better Harness Tools, not merely storing the archive of leaked Claw Code</strong>
-</p>
-
-<p align="center">
-  <a href="https://github.com/sponsors/instructkr"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink?logo=github&style=for-the-badge" alt="Sponsor on GitHub" /></a>
-</p>
-
-> [!IMPORTANT]
-> **Rust port is now in progress** on the [`dev/rust`](https://github.com/instructkr/claw-code/tree/dev/rust) branch and is expected to be merged into main today. The Rust implementation aims to deliver a faster, memory-safe harness runtime. Stay tuned — this will be the definitive version of the project.
-
-> If you find this work useful, consider [sponsoring @instructkr on GitHub](https://github.com/sponsors/instructkr) to support continued open-source harness engineering research.
-
----
-
-## Rust Port
-
-The Rust workspace under `rust/` is the current systems-language port of the project.
-
-It currently includes:
-
-- `crates/api-client` — API client with provider abstraction, OAuth, and streaming support
-- `crates/runtime` — session state, compaction, MCP orchestration, prompt construction
-- `crates/tools` — tool manifest definitions and execution framework
-- `crates/commands` — slash commands, skills discovery, and config inspection
-- `crates/plugins` — plugin model, hook pipeline, and bundled plugins
-- `crates/compat-harness` — compatibility layer for upstream editor integration
-- `crates/claw-cli` — interactive REPL, markdown rendering, and project bootstrap/init flows
-
-Run the Rust build:
+## Quick Start
 
 ```bash
-cd rust
+# Build from source
 cargo build --release
+
+# Start the REPL (auto-detects Ollama)
+./target/release/ember
+
+# Or with a specific model
+./target/release/ember --model qwen3:8b
+
+# Run a cached health check against your local setup
+./target/release/ember doctor
+
+# One-shot prompt
+./target/release/ember prompt "explain this codebase"
 ```
 
-## Backstory
+## Features
 
-At 4 AM on March 31, 2026, I woke up to my phone blowing up with notifications. The Claw Code source had been exposed, and the entire dev community was in a frenzy. My girlfriend in Korea was genuinely worried I might face legal action from the original authors just for having the code on my machine — so I did what any engineer would do under pressure: I sat down, ported the core features to Python from scratch, and pushed it before the sun came up.
+- **Local-first**: Runs with Ollama — no API keys needed for local models
+- **51 local models**: Supports all Ollama model families (qwen, llama, gemma, mistral, deepseek, phi, and more)
+- **Cloud fallback**: Anthropic Claude, xAI Grok when API keys are configured
+- **Smart routing**: `/model auto` selects models by task complexity
+- **Built-in diagnostics**: `ember doctor` runs real setup checks and caches slower family audits
+- **Rich slash commands**: `/help`, `/status`, `/doctor`, `/model`, `/compact`, `/review`, `/commit`, `/pr`, and more
+- **Built-in tools**: bash, file ops, search, web, notebooks, agents, skills, and more
+- **Session persistence**: Save, resume, export conversations
+- **Plugin system**: Extend with custom tools and hooks
+- **MCP integration**: Connect to Model Context Protocol servers
+- **Telemetry**: Session tracing and usage analytics
+- **Prompt caching**: FNV-1a request fingerprinting with TTL
 
-The whole thing was orchestrated end-to-end using [oh-my-codex (OmX)](https://github.com/Yeachan-Heo/oh-my-codex) by [@bellman_ych](https://x.com/bellman_ych) — a workflow layer built on top of OpenAI's Codex ([@OpenAIDevs](https://x.com/OpenAIDevs)). I used `$team` mode for parallel code review and `$ralph` mode for persistent execution loops with architect-level verification. The entire porting session — from reading the original harness structure to producing a working Python tree with tests — was driven through OmX orchestration.
-
-The result is a clean-room Python rewrite that captures the architectural patterns of Claw Code's agent harness without copying any proprietary source. I'm now actively collaborating with [@bellman_ych](https://x.com/bellman_ych) — the creator of OmX himself — to push this further. The basic Python foundation is already in place and functional, but we're just getting started. **Stay tuned — a much more capable version is on the way.**
-
-The Rust port was developed with both [oh-my-codex (OmX)](https://github.com/Yeachan-Heo/oh-my-codex) and [oh-my-opencode (OmO)](https://github.com/code-yeongyu/oh-my-openagent): OmX drove scaffolding, orchestration, and architecture direction, while OmO was used for later implementation acceleration and verification support.
-
-https://github.com/instructkr/claw-code
-
-![Tweet screenshot](assets/tweet-screenshot.png)
-
-## The Creators Featured in Wall Street Journal For Avid Claw Code Fans
-
-I've been deeply interested in **harness engineering** — studying how agent systems wire tools, orchestrate tasks, and manage runtime context. This isn't a sudden thing. The Wall Street Journal featured my work earlier this month, documenting how I've been one of the most active power users exploring these systems:
-
-> AI startup worker Sigrid Jin, who attended the Seoul dinner, single-handedly used 25 billion of Claw Code tokens last year. At the time, usage limits were looser, allowing early enthusiasts to reach tens of billions of tokens at a very low cost.
->
-> Despite his countless hours with Claw Code, Jin isn't faithful to any one AI lab. The tools available have different strengths and weaknesses, he said. Codex is better at reasoning, while Claw Code generates cleaner, more shareable code.
->
-> Jin flew to San Francisco in February for Claw Code's first birthday party, where attendees waited in line to compare notes with Cherny. The crowd included a practicing cardiologist from Belgium who had built an app to help patients navigate care, and a California lawyer who made a tool for automating building permit approvals using Claw Code.
->
-> "It was basically like a sharing party," Jin said. "There were lawyers, there were doctors, there were dentists. They did not have software engineering backgrounds."
->
-> — *The Wall Street Journal*, March 21, 2026, [*"The Trillion Dollar Race to Automate Our Entire Lives"*](https://lnkd.in/gs9td3qd)
-
-![WSJ Feature](assets/wsj-feature.png)
-
----
-
-## Porting Status
-
-The main source tree is now Python-first.
-
-- `src/` contains the active Python porting workspace
-- `tests/` verifies the current Python workspace
-- the exposed snapshot is no longer part of the tracked repository state
-
-The current Python workspace is not yet a complete one-to-one replacement for the original system, but the primary implementation surface is now Python.
-
-## Why this rewrite exists
-
-I originally studied the exposed codebase to understand its harness, tool wiring, and agent workflow. After spending more time with the legal and ethical questions—and after reading the essay linked below—I did not want the exposed snapshot itself to remain the main tracked source tree.
-
-This repository now focuses on Python porting work instead.
-
-## Repository Layout
+## Architecture
 
 ```text
-.
-├── src/                                # Python porting workspace
-│   ├── __init__.py
-│   ├── commands.py
-│   ├── main.py
-│   ├── models.py
-│   ├── port_manifest.py
-│   ├── query_engine.py
-│   ├── task.py
-│   └── tools.py
-├── rust/                               # Rust port (claw CLI)
-│   ├── crates/api/                     # API client + streaming
-│   ├── crates/runtime/                 # Session, tools, MCP, config
-│   ├── crates/claw-cli/               # Interactive CLI binary
-│   ├── crates/plugins/                 # Plugin system
-│   ├── crates/commands/                # Slash commands
-│   ├── crates/server/                  # HTTP/SSE server (axum)
-│   ├── crates/lsp/                    # LSP client integration
-│   └── crates/tools/                   # Tool specs
-├── tests/                              # Python verification
-├── assets/omx/                         # OmX workflow screenshots
-├── 2026-03-09-is-legal-the-same-as-legitimate-ai-reimplementation-and-the-erosion-of-copyleft.md
-└── README.md
+crates/
+├── api/            API client — Anthropic, OpenAI-compat, Ollama provider routing
+├── ember-cli/      Interactive REPL, streaming renderer, slash commands
+├── commands/       Shared slash command definitions and help text
+├── compat-harness/ Compatibility layer
+├── lsp/            Language Server Protocol integration
+├── plugins/        Plugin system with pre/post tool hooks
+├── runtime/        Session state, config, MCP, compaction, model profiles
+├── server/         HTTP/SSE server infrastructure
+├── telemetry/      Session tracing, analytics events, JSONL sink
+└── tools/          Built-in tool specs with execution dispatch
 ```
 
-## Python Workspace Overview
+## Model Support
 
-The new Python `src/` tree currently provides:
+| Provider | Models | Auth |
+| --- | --- | --- |
+| **Ollama** (local) | qwen3, llama3, gemma3, mistral, deepseek-r1, phi4, plus many more local families | None needed |
+| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 | `ANTHROPIC_API_KEY` |
+| **xAI** | Grok 3, Grok 3 Mini | `XAI_API_KEY` |
 
-- **`port_manifest.py`** — summarizes the current Python workspace structure
-- **`models.py`** — dataclasses for subsystems, modules, and backlog state
-- **`commands.py`** — Python-side command port metadata
-- **`tools.py`** — Python-side tool port metadata
-- **`query_engine.py`** — renders a Python porting summary from the active workspace
-- **`main.py`** — a CLI entrypoint for manifest and summary output
+## Configuration
 
-## Quickstart
+Emberforge reads configuration from (in order of priority):
 
-Render the Python porting summary:
+1. `.ember.json` (project config)
+2. `.ember/settings.json` (project settings)
+3. `~/.ember/settings.json` (user settings)
+4. Legacy `.claw.json` / `.claw/` paths (backward compatible)
+
+Environment variables:
+
+- `EMBER_CONFIG_HOME` — override config directory
+- `OLLAMA_BASE_URL` — custom Ollama endpoint (default: `http://localhost:11434/v1`)
+- `ANTHROPIC_API_KEY` — Anthropic API credentials
+- `XAI_API_KEY` — xAI API credentials
+
+## Project Instructions
+
+Create an `EMBER.md` file in your project root to provide persistent guidance:
 
 ```bash
-python3 -m src.main summary
+ember /init    # Scaffolds EMBER.md, .ember.json, and .gitignore entries
 ```
 
-Print the current Python workspace manifest:
+## Diagnostics
+
+Use the built-in diagnostics command for real, user-selectable health checks:
 
 ```bash
-python3 -m src.main manifest
+# Quick check for the current model and local Ollama setup
+./target/release/ember doctor
+
+# Slower one-per-family audit, cached after the first run
+./target/release/ember doctor full
+
+# Show or reset cached diagnostic state
+./target/release/ember doctor status
+./target/release/ember doctor reset
 ```
 
-List the current Python modules:
+Inside the REPL, the same flow is available through `/doctor`.
+
+For terminal rendering regressions, there is also an optional live smoke pass that
+uses small local Ollama models for tool output, code blocks, and thinking-preview
+behavior, then caches the result after the first successful run:
 
 ```bash
-python3 -m src.main subsystems --limit 16
+# Verify tool output, code blocks, and thinking preview behavior
+python3 tests/test_terminal_startup.py --live-render
+
+# Rerun the live-model pass and ignore the cached result
+python3 tests/test_terminal_startup.py --live-render --refresh-live-render
 ```
 
-Run verification:
+## Development
 
 ```bash
-python3 -m unittest discover -s tests -v
+# Build
+cargo build --release
+
+# Run Rust tests
+cargo test --workspace
+
+# Run the real PTY startup smoke test
+python3 tests/test_terminal_startup.py
+
+# Optional: run the cached live-model terminal rendering smoke test
+python3 tests/test_terminal_startup.py --live-render
+
+# Run with Ollama
+./target/release/ember
+
+# Legacy alias (deprecated)
+./target/release/claw
 ```
 
-Run the parity audit against the local ignored archive (when present):
+## License
 
-```bash
-python3 -m src.main parity-audit
-```
-
-Inspect mirrored command/tool inventories:
-
-```bash
-python3 -m src.main commands --limit 10
-python3 -m src.main tools --limit 10
-```
-
-## Current Parity Checkpoint
-
-The port now mirrors the archived root-entry file surface, top-level subsystem names, and command/tool inventories much more closely than before. However, it is **not yet** a full runtime-equivalent replacement for the original TypeScript system; the Python tree still contains fewer executable runtime slices than the archived source.
-
-## Built with `oh-my-codex` and `oh-my-opencode`
-
-This repository's porting, cleanroom hardening, and verification workflow was AI-assisted with Yeachan Heo's tooling stack, with **oh-my-codex (OmX)** as the primary scaffolding and orchestration layer.
-
-- [**oh-my-codex (OmX)**](https://github.com/Yeachan-Heo/oh-my-codex) — scaffolding, orchestration, architecture direction, and core porting workflow
-- [**oh-my-opencode (OmO)**](https://github.com/code-yeongyu/oh-my-openagent) — implementation acceleration, cleanup, and verification support
-
-Key workflow patterns used during the port:
-
-- **`$team` mode:** coordinated parallel review and architectural feedback
-- **`$ralph` mode:** persistent execution, verification, and completion discipline
-- **Cleanroom passes:** naming/branding cleanup, QA, and release validation across the Rust workspace
-- **Manual and live validation:** build, test, manual QA, and real API-path verification before publish
-
-### OmX workflow screenshots
-
-![OmX workflow screenshot 1](assets/omx/omx-readme-review-1.png)
-
-*Ralph/team orchestration view while the README and essay context were being reviewed in terminal panes.*
-
-![OmX workflow screenshot 2](assets/omx/omx-readme-review-2.png)
-
-*Split-pane review and verification flow during the final README wording pass.*
-
-## Community
-
-<p align="center">
-  <a href="https://instruct.kr/"><img src="assets/instructkr.png" alt="instructkr" width="400" /></a>
-</p>
-
-Join the [**instructkr Discord**](https://instruct.kr/) — the best Korean language model community. Come chat about LLMs, harness engineering, agent workflows, and everything in between.
-
-[![Discord](https://img.shields.io/badge/Join%20Discord-instruct.kr-5865F2?logo=discord&style=for-the-badge)](https://instruct.kr/)
-
-## Star History
-
-See the chart at the top of this README.
-
-## Ownership / Affiliation Disclaimer
-
-- This repository does **not** claim ownership of the original Claw Code source material.
-- This repository is **not affiliated with, endorsed by, or maintained by the original authors**.
+MIT
