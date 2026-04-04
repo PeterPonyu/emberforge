@@ -382,7 +382,19 @@ fn process_is_alive(pid: u32) -> bool {
     {
         Path::new("/proc").join(pid.to_string()).exists()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        // kill(pid, 0) sends no signal; it only checks process existence.
+        // Returns 0 if alive, -1 with ESRCH if the process does not exist.
+        let ret = std::process::Command::new("kill")
+            .arg("-0")
+            .arg(pid.to_string())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        matches!(ret, Ok(status) if status.success())
+    }
+    #[cfg(not(unix))]
     {
         let _ = pid;
         true
