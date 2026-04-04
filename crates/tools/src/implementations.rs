@@ -653,7 +653,9 @@ where
         agent_id,
         name: agent_name,
         description: input.description,
+        prompt: Some(input.prompt.clone()),
         subagent_type: Some(normalized_subagent_type),
+        restarted_from: input.restarted_from.clone(),
         model: Some(model),
         status: String::from("running"),
         output_file: output_file.display().to_string(),
@@ -677,6 +679,16 @@ where
         completed_at: None,
         error: None,
     };
+    let mut manifest = manifest;
+    if let Some(restarted_from) = input.restarted_from.as_deref() {
+        append_agent_activity_entry(
+            &mut manifest,
+            &created_at,
+            "restarted",
+            "running",
+            &format!("Restarted from interrupted task {restarted_from}"),
+        );
+    }
     write_agent_manifest(&manifest)?;
 
     let manifest_for_spawn = manifest.clone();

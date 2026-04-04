@@ -78,6 +78,7 @@ pub(crate) struct AgentInput {
     pub(crate) subagent_type: Option<String>,
     pub(crate) name: Option<String>,
     pub(crate) model: Option<String>,
+    pub(crate) restarted_from: Option<String>,
     /// Run in an isolated git worktree to prevent conflicts with main workspace.
     pub(crate) isolation: Option<String>,
     /// Run in background (default true). If false, blocks until complete.
@@ -223,8 +224,12 @@ pub(crate) struct AgentOutput {
     pub(crate) agent_id: String,
     pub(crate) name: String,
     pub(crate) description: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) prompt: Option<String>,
     #[serde(rename = "subagentType")]
     pub(crate) subagent_type: Option<String>,
+    #[serde(rename = "restartedFrom", skip_serializing_if = "Option::is_none", default)]
+    pub(crate) restarted_from: Option<String>,
     pub(crate) model: Option<String>,
     pub(crate) status: String,
     #[serde(rename = "outputFile")]

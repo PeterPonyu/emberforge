@@ -324,7 +324,7 @@ pub(crate) const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
         name: "tasks",
         aliases: &["task"],
         summary: "List and manage background tasks",
-        argument_hint: Some("[list|show <id>|logs <id>|attach <id>|stop <id>]"),
+        argument_hint: Some("[list|show <id>|logs <id>|attach <id>|stop <id>|restart <id>]"),
         resume_supported: false,
         category: SlashCommandCategory::Automation,
     },

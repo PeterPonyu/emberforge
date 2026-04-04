@@ -50,7 +50,8 @@ use runtime::{
 use serde_json::json;
 use task_mgmt::{
     attach_to_task, count_running_background_tasks, find_task_by_prefix, load_task_manifests,
-    render_task_list_report, render_task_logs_report, render_task_show_report, request_task_stop,
+    render_task_list_report, render_task_logs_report, render_task_show_report,
+    request_task_restart, request_task_stop,
     shorten_task_id, task_status_label,
 };
 use tools::GlobalToolRegistry;
@@ -2727,9 +2728,22 @@ impl LiveCli {
                 };
                 println!("{}", request_task_stop(&cwd, task_id)?);
             }
+            "restart" => {
+                let Some(task_id) = parts.next() else {
+                    println!("Usage: /tasks restart <task-id>");
+                    return Ok(());
+                };
+                let report = if let Some(session_id) = current_session_id {
+                    let _task_session_env = ScopedTaskSessionEnv::new(session_id);
+                    request_task_restart(&cwd, task_id)?
+                } else {
+                    request_task_restart(&cwd, task_id)?
+                };
+                println!("{report}");
+            }
             other => {
                 println!(
-                    "Tasks\n  Unsupported      {other}\n  Try              /tasks list | /tasks show <id> | /tasks logs <id> | /tasks attach <id> | /tasks stop <id>"
+                    "Tasks\n  Unsupported      {other}\n  Try              /tasks list | /tasks show <id> | /tasks logs <id> | /tasks attach <id> | /tasks stop <id> | /tasks restart <id>"
                 );
             }
         }
@@ -3218,7 +3232,7 @@ fn render_repl_help() -> String {
             .to_string(),
         "  Core commands        /help | /status | /doctor | /model | /permissions".to_string(),
         "  Quick checks         /doctor quick | /doctor full (cached)".to_string(),
-        "  Background tasks     /tasks list | /tasks attach <id> | /tasks logs <id>".to_string(),
+        "  Background tasks     /tasks list | /tasks attach <id> | /tasks logs <id> | /tasks restart <id>".to_string(),
         "  Exit                 /exit or /quit".to_string(),
         "  Vim mode             /vim toggles modal editing".to_string(),
         "  History              Up/Down recalls previous prompts".to_string(),
@@ -5963,7 +5977,7 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
     )?;
     writeln!(
         out,
-        "  ember tasks [list|show|logs|attach|stop] Manage background tasks"
+        "  ember tasks [list|show|logs|attach|stop|restart] Manage background tasks"
     )?;
     writeln!(
         out,
@@ -6042,6 +6056,7 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
     writeln!(out, "  ember agents")?;
     writeln!(out, "  ember tasks list")?;
     writeln!(out, "  ember tasks logs agent-123")?;
+    writeln!(out, "  ember tasks restart agent-123")?;
     writeln!(out, "  ember /skills")?;
     writeln!(out, "  ember doctor full")?;
     writeln!(out, "  ember login")?;
@@ -6552,6 +6567,13 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
             }
         );
         assert_eq!(
+            parse_args(&["/tasks".to_string(), "restart".to_string(), "agent-123".to_string()])
+                .expect("/tasks restart should parse"),
+            CliAction::Tasks {
+                args: Some("restart agent-123".to_string())
+            }
+        );
+        assert_eq!(
             parse_args(&["/skills".to_string()]).expect("/skills should parse"),
             CliAction::Skills { args: None }
         );
@@ -6671,7 +6693,7 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
         assert!(help.contains("aliases: /plugins, /marketplace"));
         assert!(help.contains("/agents"));
         assert!(help.contains("/skills"));
-        assert!(help.contains("/tasks [list|show <id>|logs <id>|attach <id>|stop <id>]"));
+        assert!(help.contains("/tasks [list|show <id>|logs <id>|attach <id>|stop <id>|restart <id>]"));
         assert!(help.contains("/exit"));
         assert!(help.contains("Tab cycles slash command matches"));
     }

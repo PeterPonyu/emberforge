@@ -500,6 +500,7 @@ fn agent_persists_handoff_metadata() {
             subagent_type: Some("Explore".to_string()),
             name: Some("ship-audit".to_string()),
             model: None,
+            restarted_from: None,
             isolation: None,
             run_in_background: None,
         },
@@ -517,6 +518,7 @@ fn agent_persists_handoff_metadata() {
     assert_eq!(manifest.version, 1);
     assert_eq!(manifest.task_kind, "subagent");
     assert_eq!(manifest.name, "ship-audit");
+    assert_eq!(manifest.prompt.as_deref(), Some("Check tests and outstanding work."));
     assert_eq!(manifest.subagent_type.as_deref(), Some("Explore"));
     assert_eq!(manifest.status, "running");
     assert_eq!(manifest.parent_session_id.as_deref(), Some("session-alpha"));
@@ -595,6 +597,7 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
             subagent_type: Some("Explore".to_string()),
             name: Some("complete-task".to_string()),
             model: Some("claude-sonnet-4-6".to_string()),
+            restarted_from: Some("agent-parent".to_string()),
             isolation: None,
             run_in_background: None,
         },
@@ -616,6 +619,8 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
     let completed_output =
         std::fs::read_to_string(&completed.output_file).expect("completed output should exist");
     assert!(completed_manifest.contains("\"status\": \"completed\""));
+    assert!(completed_manifest.contains("\"prompt\": \"Do the work\""));
+    assert!(completed_manifest.contains("\"restartedFrom\": \"agent-parent\""));
     assert!(completed_output.contains("Finished successfully"));
     assert_eq!(
         completed_json["activity"]
@@ -625,6 +630,11 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
             .expect("completed activity")["status"],
         "completed"
     );
+    assert!(completed_json["activity"]
+        .as_array()
+        .expect("activity array")
+        .iter()
+        .any(|entry| entry["kind"] == "restarted" && entry["message"] == "Restarted from interrupted task agent-parent"));
 
     let failed = execute_agent_with_spawn(
         AgentInput {
@@ -633,6 +643,7 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
             subagent_type: Some("Verification".to_string()),
             name: Some("fail-task".to_string()),
             model: None,
+            restarted_from: None,
             isolation: None,
             run_in_background: None,
         },
@@ -672,6 +683,7 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
             subagent_type: None,
             name: Some("spawn-error".to_string()),
             model: None,
+            restarted_from: None,
             isolation: None,
             run_in_background: None,
         },
@@ -810,6 +822,7 @@ fn subagent_executor_halts_when_stop_is_requested() {
             subagent_type: Some("Explore".to_string()),
             name: Some("stop-task".to_string()),
             model: None,
+            restarted_from: None,
             isolation: None,
             run_in_background: None,
         },

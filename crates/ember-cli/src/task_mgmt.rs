@@ -602,6 +602,93 @@ fn render_recent_task_activity_lines(record: &TaskManifestRecord, limit: usize) 
     lines
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TaskRestartSpec {
+    description: String,
+    prompt: String,
+    subagent_type: Option<String>,
+    name: Option<String>,
+    model: Option<String>,
+}
+
+fn task_manifest_string<'a>(task: &'a TaskManifestRecord, key: &str) -> Option<&'a str> {
+    task.manifest
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn task_paths_match(current_cwd: &Path, task_cwd: &str) -> bool {
+    let current = fs::canonicalize(current_cwd).unwrap_or_else(|_| current_cwd.to_path_buf());
+    let task_path = PathBuf::from(task_cwd);
+    let task = fs::canonicalize(&task_path).unwrap_or(task_path);
+    current == task
+}
+
+fn extract_task_prompt_from_output(contents: &str) -> Option<String> {
+    let marker = "## Prompt";
+    let start = contents.find(marker)?;
+    let mut prompt = contents[start + marker.len()..]
+        .trim_start_matches(['\n', '\r'])
+        .to_string();
+
+    for terminator in ["\n## Progress:", "\n## Result"] {
+        if let Some(index) = prompt.find(terminator) {
+            prompt.truncate(index);
+        }
+    }
+
+    let prompt = prompt.trim_end().to_string();
+    (!prompt.is_empty()).then_some(prompt)
+}
+
+fn recover_task_prompt(task: &TaskManifestRecord) -> Result<String, String> {
+    if let Some(prompt) = task_manifest_string(task, "prompt") {
+        return Ok(prompt.to_string());
+    }
+
+    let output_path = task
+        .output_file()
+        .ok_or_else(|| String::from("the original task prompt was not persisted"))?;
+    let contents = fs::read_to_string(output_path)
+        .map_err(|_| String::from("the original task log is no longer available"))?;
+    extract_task_prompt_from_output(&contents)
+        .ok_or_else(|| String::from("the original delegated prompt could not be recovered"))
+}
+
+fn task_restart_spec(task: &TaskManifestRecord, current_cwd: &Path) -> Result<TaskRestartSpec, String> {
+    if task.task_kind() != "subagent" {
+        return Err(String::from("only local subagent tasks can be restarted safely"));
+    }
+    if task.status() != "interrupted" {
+        return Err(format!(
+            "task status `{}` is not restartable; only interrupted tasks can be restarted safely",
+            task.status()
+        ));
+    }
+    if let Some(task_cwd) = task_manifest_string(task, "cwd") {
+        if !task_paths_match(current_cwd, task_cwd) {
+            return Err(format!(
+                "this task belongs to a different workspace ({task_cwd})"
+            ));
+        }
+    }
+
+    let description = task.description().trim();
+    if description.is_empty() {
+        return Err(String::from("the original task description is missing"));
+    }
+
+    Ok(TaskRestartSpec {
+        description: description.to_string(),
+        prompt: recover_task_prompt(task)?,
+        subagent_type: task_manifest_string(task, "subagentType").map(ToOwned::to_owned),
+        name: task_manifest_string(task, "name").map(ToOwned::to_owned),
+        model: task.model().map(ToOwned::to_owned),
+    })
+}
+
 fn render_task_next_action_lines(task: &TaskManifestRecord) -> Vec<String> {
     let supervision = task_supervision_summary(task);
     let is_stalled = supervision
@@ -612,15 +699,31 @@ fn render_task_next_action_lines(task: &TaskManifestRecord) -> Vec<String> {
 
     match task.status() {
         "interrupted" => {
-            bullets.push(String::from(
-                "Worker exited unexpectedly; this task will not resume automatically.",
-            ));
+            let restart_policy = env::current_dir()
+                .map_err(|_| String::from("the current workspace could not be determined"))
+                .and_then(|cwd| task_restart_spec(task, &cwd).map(|_| ())); 
+            match restart_policy {
+                Ok(()) => {
+                    bullets.push(format!(
+                        "Create a replacement task: /tasks restart {}",
+                        task.id()
+                    ));
+                    bullets.push(String::from(
+                        "The original interrupted task is kept for history and log inspection.",
+                    ));
+                }
+                Err(reason) => {
+                    bullets.push(format!(
+                        "Safe restart is unavailable because {reason}."
+                    ));
+                    bullets.push(String::from(
+                        "Rerun the originating command manually to create a replacement task.",
+                    ));
+                }
+            }
             if has_logs {
                 bullets.push(format!("Inspect the saved log: /tasks logs {}", task.id()));
             }
-            bullets.push(String::from(
-                "Rerun the originating command to create a replacement task.",
-            ));
         }
         "running" | "finishing" if is_stalled => {
             bullets.push(format!("Follow live output: /tasks attach {}", task.id()));
@@ -1064,6 +1167,76 @@ pub(crate) fn request_task_stop(
     ))
 }
 
+fn request_task_restart_with<F>(
+    cwd: &Path,
+    requested_id: &str,
+    executor: F,
+) -> Result<String, Box<dyn std::error::Error>>
+where
+    F: FnOnce(&serde_json::Value) -> Result<String, Box<dyn std::error::Error>>,
+{
+    let tasks = load_task_manifests(cwd)?;
+    let task = find_task_by_prefix(&tasks, requested_id)?.clone();
+    let restart = match task_restart_spec(&task, cwd) {
+        Ok(restart) => restart,
+        Err(reason) => {
+            return Ok(format!(
+                "Task restart\n  Id               {}\n  Status           {}\n  Result           blocked\n  Reason           {}",
+                task.id(),
+                task.status(),
+                reason,
+            ));
+        }
+    };
+
+    let payload = serde_json::json!({
+        "description": restart.description,
+        "prompt": restart.prompt,
+        "subagent_type": restart.subagent_type,
+        "name": restart.name,
+        "model": restart.model,
+        "restarted_from": task.id(),
+    });
+    let output = executor(&payload)?;
+    let restarted: serde_json::Value = serde_json::from_str(&output)?;
+    let replacement_id = restarted
+        .get("agentId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "agent restart response missing agentId"))?
+        .to_string();
+
+    let now = chrono_now_iso8601();
+    let mut original = task;
+    let original_status = original.status().to_string();
+    let _ = append_task_activity_value(
+        &mut original.manifest,
+        &now,
+        "restart-requested",
+        &original_status,
+        &format!("Replacement task {replacement_id} created from interrupted task"),
+    );
+    write_task_manifest(&original)?;
+
+    Ok(format!(
+        "Task restart\n  Source           {}\n  Result           replacement task started\n  Replacement      {}\n  Show             /tasks show {}\n  Attach           /tasks attach {}",
+        original.id(),
+        replacement_id,
+        replacement_id,
+        replacement_id,
+    ))
+}
+
+pub(crate) fn request_task_restart(
+    cwd: &Path,
+    requested_id: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    request_task_restart_with(cwd, requested_id, |payload| {
+        tools::execute_tool("Agent", payload).map_err(|error| {
+            io::Error::new(io::ErrorKind::Other, error.to_string()).into()
+        })
+    })
+}
+
 pub(crate) fn attach_to_task(cwd: &Path, requested_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let tasks = load_task_manifests(cwd)?;
     let task = find_task_by_prefix(&tasks, requested_id)?;
@@ -1439,9 +1612,172 @@ mod tests {
 
         assert!(report.contains("Status           interrupted"));
         assert!(report.contains("  Next action"));
-        assert!(report.contains("will not resume automatically"));
+        assert!(report.contains("Safe restart is unavailable because"));
         assert!(report.contains("/tasks logs agent-777"));
         assert!(report.contains("replacement task"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn task_show_report_includes_restart_hint_for_restartable_interrupted_tasks() {
+        let root = temp_dir("show-restartable");
+        fs::create_dir_all(&root).expect("create temp dir");
+        let log_path = root.join("agent-778.md");
+        fs::write(
+            &log_path,
+            "# Agent Task\n\n- id: agent-778\n\n## Prompt\n\nRe-check the interrupted work\n\n## Result\n\n- status: interrupted\n",
+        )
+        .expect("write log file");
+        let record = make_record(
+            &root,
+            json!({
+                "agentId": "agent-778",
+                "status": "interrupted",
+                "description": "Interrupted task",
+                "statusDetail": "Worker process is no longer alive; task was interrupted",
+                "subagentType": "Explore",
+                "name": "interrupted-task",
+                "outputFile": log_path.display().to_string(),
+            }),
+        );
+
+        let report = super::render_task_show_report(&record, None);
+
+        assert!(report.contains("Status           interrupted"));
+        assert!(report.contains("/tasks restart agent-778"));
+        assert!(report.contains("kept for history"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn task_restart_request_creates_replacement_task_and_records_activity() {
+        let root = temp_dir("restart-task");
+        let task_dir = root.join(".ember-agents");
+        fs::create_dir_all(&task_dir).expect("create task dir");
+        let manifest_path = task_dir.join("agent-123.json");
+        let output_path = task_dir.join("agent-123.md");
+        fs::write(
+            &output_path,
+            "# Agent Task\n\n- id: agent-123\n\n## Prompt\n\nRetry the interrupted task\n",
+        )
+        .expect("write output file");
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&json!({
+                "agentId": "agent-123",
+                "status": "interrupted",
+                "taskKind": "subagent",
+                "name": "ship-audit",
+                "description": "Audit the branch",
+                "subagentType": "Explore",
+                "model": "claude-opus-4-6",
+                "outputFile": output_path.display().to_string(),
+                "manifestFile": manifest_path.display().to_string(),
+                "activity": [
+                    {
+                        "at": "2026-04-04T00:00:00Z",
+                        "kind": "terminal",
+                        "status": "interrupted",
+                        "message": "Worker process is no longer alive; task was interrupted"
+                    }
+                ]
+            }))
+            .expect("manifest json"),
+        )
+        .expect("write manifest file");
+
+        let replacement_manifest = task_dir.join("agent-456.json");
+        let replacement_output = task_dir.join("agent-456.md");
+        let report = super::request_task_restart_with(&root, "agent-123", |payload| {
+            assert_eq!(payload["description"], "Audit the branch");
+            assert_eq!(payload["prompt"], "Retry the interrupted task");
+            assert_eq!(payload["subagent_type"], "Explore");
+            assert_eq!(payload["name"], "ship-audit");
+            assert_eq!(payload["model"], "claude-opus-4-6");
+            assert_eq!(payload["restarted_from"], "agent-123");
+
+            fs::write(&replacement_output, "# Agent Task\n").expect("write replacement log");
+            fs::write(
+                &replacement_manifest,
+                serde_json::to_string_pretty(&json!({
+                    "agentId": "agent-456",
+                    "status": "running",
+                    "outputFile": replacement_output.display().to_string(),
+                    "manifestFile": replacement_manifest.display().to_string(),
+                    "activity": [
+                        {
+                            "at": "2026-04-04T00:00:02Z",
+                            "kind": "created",
+                            "status": "running",
+                            "message": "Queued for background execution"
+                        },
+                        {
+                            "at": "2026-04-04T00:00:02Z",
+                            "kind": "restarted",
+                            "status": "running",
+                            "message": "Restarted from interrupted task agent-123"
+                        }
+                    ]
+                }))
+                .expect("replacement json"),
+            )
+            .expect("write replacement manifest");
+
+            Ok(json!({
+                "agentId": "agent-456",
+                "manifestFile": replacement_manifest.display().to_string(),
+                "outputFile": replacement_output.display().to_string(),
+                "status": "running"
+            })
+            .to_string())
+        })
+        .expect("restart should succeed");
+
+        assert!(report.contains("replacement task started"));
+        assert!(report.contains("Replacement      agent-456"));
+        assert!(report.contains("/tasks show agent-456"));
+
+        let persisted: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&manifest_path).expect("read persisted manifest"),
+        )
+        .expect("persisted json");
+        assert!(persisted["activity"]
+            .as_array()
+            .expect("activity array")
+            .iter()
+            .any(|entry| entry["kind"] == "restart-requested" && entry["message"].as_str().expect("message").contains("agent-456")));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn task_restart_request_reports_blocked_when_prompt_cannot_be_recovered() {
+        let root = temp_dir("restart-blocked");
+        let task_dir = root.join(".ember-agents");
+        fs::create_dir_all(&task_dir).expect("create task dir");
+        let manifest_path = task_dir.join("agent-999.json");
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&json!({
+                "agentId": "agent-999",
+                "status": "interrupted",
+                "taskKind": "subagent",
+                "description": "Blocked task",
+                "manifestFile": manifest_path.display().to_string()
+            }))
+            .expect("manifest json"),
+        )
+        .expect("write manifest file");
+
+        let report = super::request_task_restart_with(&root, "agent-999", |_payload| {
+            panic!("executor should not be called for blocked restarts");
+        })
+        .expect("blocked report should succeed");
+
+        assert!(report.contains("Result           blocked"));
+        assert!(report.contains("delegated prompt could not be recovered") || report.contains("prompt was not persisted"));
 
         let _ = fs::remove_dir_all(root);
     }

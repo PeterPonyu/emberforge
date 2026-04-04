@@ -266,6 +266,12 @@ fn parses_supported_slash_commands() {
         })
     );
     assert_eq!(
+        SlashCommand::parse("/tasks restart agent-123"),
+        Some(SlashCommand::Tasks {
+            action: Some("restart agent-123".to_string()),
+        })
+    );
+    assert_eq!(
         SlashCommand::parse("/permissions read-only"),
         Some(SlashCommand::Permissions {
             mode: Some("read-only".to_string()),
@@ -384,7 +390,7 @@ fn renders_help_from_shared_specs() {
     assert!(help.contains("aliases: /plugins, /marketplace"));
     assert!(help.contains("/agents"));
     assert!(help.contains("/skills"));
-    assert!(help.contains("/tasks [list|show <id>|logs <id>|attach <id>|stop <id>]"));
+    assert!(help.contains("/tasks [list|show <id>|logs <id>|attach <id>|stop <id>|restart <id>]"));
     assert_eq!(slash_command_specs().len(), 37);
     assert_eq!(resume_supported_slash_commands().len(), 13);
 }

@@ -13,11 +13,12 @@ The repository is already materially beyond the earlier baseline layout.
 - heartbeat-backed supervision is now surfaced explicitly in task reports (`/tasks list`, `/tasks show`, `/tasks logs`, and attach/watch transitions)
 - task lifecycle activity history is now persisted in manifests and surfaced in `/tasks show` plus attach/watch updates
 - `/tasks show` now includes concise restart/recovery hints for stalled and interrupted tasks without polluting healthy task reports
+- interrupted local subagent tasks can now spawn a safe replacement via `/tasks restart <id>` when recoverable prompt/state metadata is available
 
 ### Latest verification snapshot
 
 - `cargo test --workspace`
-- result: 417 passed, 0 failed, 4 ignored
+- result: 420 passed, 0 failed, 4 ignored
 
 ## GitHub publication status
 
@@ -44,10 +45,10 @@ Goal: move from improved task inspection toward basic worker supervision.
 
 Recommended slice order:
 
-1. add recovery/restart policy for interrupted local workers where safe
-2. decide whether local worker restart should be automatic or operator-triggered
-3. decide whether recovery should reuse the same task id or fork a successor task lineage
-4. surface restart lineage/history if replacement tasks are spawned
+1. surface restart lineage/history if replacement tasks are spawned
+2. decide whether local worker restart should remain operator-triggered or gain an automatic mode
+3. decide whether recovery should reuse the same task id or continue forking successor tasks
+4. clarify restart limits/backoff rules if repeated interruption occurs
 
 Primary reference:
 
@@ -166,19 +167,19 @@ Before every push:
 
 If continuing immediately after the current branch state, the best next implementation target is:
 
-### Add recovery/restart policy for interrupted local workers where safe
+### Surface restart lineage/history if replacement tasks are spawned
 
 Why this next:
 
-- the CLI now tells users what to do next, but it still relies on manual reruns
-- interrupted tasks already preserve supervision and activity history, which gives us the right substrate for safe replacement behavior
-- this is the next real step from observability into controlled recovery
+- replacement tasks now exist, but the relationship is only implicit in activity messages
+- users should be able to see restart ancestry and successor linkage without reading raw manifests
+- lineage visibility is the natural next step after adding safe operator-triggered restart
 
 Suggested acceptance criteria:
 
-- interrupted local tasks can opt into a safe replacement flow
-- recovery rules are explicit about when automatic restart is allowed vs blocked
-- replacement behavior preserves enough history to understand what happened
+- `/tasks show` can identify whether a task was restarted from another task or produced a successor
+- successor/predecessor linkage stays concise and readable in task reports
+- lineage rendering uses the existing manifest/activity model instead of inventing a second history store
 - focused tests and full workspace tests both pass
 
 ## GitHub publication checklist
