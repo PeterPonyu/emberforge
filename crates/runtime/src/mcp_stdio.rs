@@ -1211,30 +1211,47 @@ mod tests {
         McpClientBootstrap::from_scoped_config("stdio server", &config)
     }
 
-    fn script_transport(script_path: &Path) -> crate::mcp_client::McpStdioTransport {
+    fn script_transport(script_path: &Path, python: &str) -> crate::mcp_client::McpStdioTransport {
         crate::mcp_client::McpStdioTransport {
-            command: python_command(),
+            command: python.to_string(),
             args: vec![script_path.to_string_lossy().into_owned()],
             env: BTreeMap::new(),
         }
     }
 
-    fn python_command() -> String {
+    fn python_command() -> Option<String> {
         for key in ["MCP_TEST_PYTHON", "PYTHON3", "PYTHON"] {
             if let Ok(value) = std::env::var(key) {
                 if !value.trim().is_empty() {
-                    return value;
+                    return Some(value);
                 }
             }
         }
 
         for candidate in ["python3", "python"] {
-            if Command::new(candidate).arg("--version").output().is_ok() {
-                return candidate.to_string();
+            if Command::new(candidate)
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                return Some(candidate.to_string());
             }
         }
 
-        panic!("expected a Python interpreter for MCP stdio tests")
+        None
+    }
+
+    macro_rules! require_python {
+        () => {
+            match python_command() {
+                Some(cmd) => cmd,
+                None => {
+                    eprintln!("skipping test: python not found");
+                    return;
+                }
+            }
+        };
     }
 
     fn cleanup_script(script_path: &Path) {
@@ -1250,11 +1267,12 @@ mod tests {
         script_path: &Path,
         label: &str,
         log_path: &Path,
+        python: &str,
     ) -> ScopedMcpServerConfig {
         ScopedMcpServerConfig {
             scope: ConfigSource::Local,
             config: McpServerConfig::Stdio(McpStdioServerConfig {
-                command: python_command(),
+                command: python.to_string(),
                 args: vec![script_path.to_string_lossy().into_owned()],
                 env: BTreeMap::from([
                     ("MCP_SERVER_LABEL".to_string(), label.to_string()),
@@ -1311,13 +1329,14 @@ mod tests {
 
     #[test]
     fn round_trips_initialize_request_and_response_over_stdio_frames() {
+        let python = require_python!();
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("runtime");
         runtime.block_on(async {
             let script_path = write_jsonrpc_script();
-            let transport = script_transport(&script_path);
+            let transport = script_transport(&script_path, &python);
             let mut process = McpStdioProcess::spawn(&transport).expect("spawn transport directly");
 
             let response = process
@@ -1358,13 +1377,14 @@ mod tests {
 
     #[test]
     fn write_jsonrpc_request_emits_content_length_frame() {
+        let python = require_python!();
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("runtime");
         runtime.block_on(async {
             let script_path = write_jsonrpc_script();
-            let transport = script_transport(&script_path);
+            let transport = script_transport(&script_path, &python);
             let mut process = McpStdioProcess::spawn(&transport).expect("spawn transport directly");
             let request = JsonRpcRequest::new(
                 JsonRpcId::Number(7),
@@ -1415,13 +1435,14 @@ mod tests {
 
     #[test]
     fn lists_tools_calls_tool_and_reads_resources_over_jsonrpc() {
+        let python = require_python!();
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("runtime");
         runtime.block_on(async {
             let script_path = write_mcp_server_script();
-            let transport = script_transport(&script_path);
+            let transport = script_transport(&script_path, &python);
             let mut process = McpStdioProcess::spawn(&transport).expect("spawn fake mcp server");
 
             let tools = process
@@ -1515,13 +1536,14 @@ mod tests {
 
     #[test]
     fn surfaces_jsonrpc_errors_from_tool_calls() {
+        let python = require_python!();
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("runtime");
         runtime.block_on(async {
             let script_path = write_mcp_server_script();
-            let transport = script_transport(&script_path);
+            let transport = script_transport(&script_path, &python);
             let mut process = McpStdioProcess::spawn(&transport).expect("spawn fake mcp server");
 
             let response = process
@@ -1552,6 +1574,7 @@ mod tests {
 
     #[test]
     fn manager_discovers_tools_from_stdio_config() {
+        let python = require_python!();
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1562,7 +1585,7 @@ mod tests {
             let log_path = root.join("alpha.log");
             let servers = BTreeMap::from([(
                 "alpha".to_string(),
-                manager_server_config(&script_path, "alpha", &log_path),
+                manager_server_config(&script_path, "alpha", &log_path, &python),
             )]);
             let mut manager = McpServerManager::from_servers(&servers);
 
@@ -1582,6 +1605,7 @@ mod tests {
 
     #[test]
     fn manager_routes_tool_calls_to_correct_server() {
+        let python = require_python!();
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1594,11 +1618,11 @@ mod tests {
             let servers = BTreeMap::from([
                 (
                     "alpha".to_string(),
-                    manager_server_config(&script_path, "alpha", &alpha_log),
+                    manager_server_config(&script_path, "alpha", &alpha_log, &python),
                 ),
                 (
                     "beta".to_string(),
-                    manager_server_config(&script_path, "beta", &beta_log),
+                    manager_server_config(&script_path, "beta", &beta_log, &python),
                 ),
             ]);
             let mut manager = McpServerManager::from_servers(&servers);
@@ -1690,6 +1714,7 @@ mod tests {
 
     #[test]
     fn manager_shutdown_terminates_spawned_children_and_is_idempotent() {
+        let python = require_python!();
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1700,7 +1725,7 @@ mod tests {
             let log_path = root.join("alpha.log");
             let servers = BTreeMap::from([(
                 "alpha".to_string(),
-                manager_server_config(&script_path, "alpha", &log_path),
+                manager_server_config(&script_path, "alpha", &log_path, &python),
             )]);
             let mut manager = McpServerManager::from_servers(&servers);
 
@@ -1714,6 +1739,7 @@ mod tests {
 
     #[test]
     fn manager_reuses_spawned_server_between_discovery_and_call() {
+        let python = require_python!();
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1724,7 +1750,7 @@ mod tests {
             let log_path = root.join("alpha.log");
             let servers = BTreeMap::from([(
                 "alpha".to_string(),
-                manager_server_config(&script_path, "alpha", &log_path),
+                manager_server_config(&script_path, "alpha", &log_path, &python),
             )]);
             let mut manager = McpServerManager::from_servers(&servers);
 
@@ -1760,6 +1786,7 @@ mod tests {
 
     #[test]
     fn manager_reports_unknown_qualified_tool_name() {
+        let python = require_python!();
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1770,7 +1797,7 @@ mod tests {
             let log_path = root.join("alpha.log");
             let servers = BTreeMap::from([(
                 "alpha".to_string(),
-                manager_server_config(&script_path, "alpha", &log_path),
+                manager_server_config(&script_path, "alpha", &log_path, &python),
             )]);
             let mut manager = McpServerManager::from_servers(&servers);
 

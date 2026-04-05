@@ -2,10 +2,10 @@
 .omx/
 .clawd-agents/
 .env
+.claw/
 .claw-agents/
+.ember/
 .ember-agents/
-.claw/sessions/
-.claw/telemetry/
-.ember/sessions/
-.ember/telemetry/
+.sandbox-home/
+.sandbox-tmp/
 answer.txt

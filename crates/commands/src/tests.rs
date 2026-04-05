@@ -114,9 +114,9 @@ fn write_fake_gh(bin_dir: &Path, log_path: &Path, url: &str) {
 }
 
 fn write_external_plugin(root: &Path, name: &str, version: &str) {
-    fs::create_dir_all(root.join(".claw-plugin")).expect("manifest dir");
+    fs::create_dir_all(root.join(".ember-plugin")).expect("manifest dir");
     fs::write(
-        root.join(".claw-plugin").join("plugin.json"),
+        root.join(".ember-plugin").join("plugin.json"),
         format!(
             "{{\n  \"name\": \"{name}\",\n  \"version\": \"{version}\",\n  \"description\": \"commands plugin\"\n}}"
         ),
@@ -125,9 +125,9 @@ fn write_external_plugin(root: &Path, name: &str, version: &str) {
 }
 
 fn write_bundled_plugin(root: &Path, name: &str, version: &str, default_enabled: bool) {
-    fs::create_dir_all(root.join(".claw-plugin")).expect("manifest dir");
+    fs::create_dir_all(root.join(".ember-plugin")).expect("manifest dir");
     fs::write(
-        root.join(".claw-plugin").join("plugin.json"),
+        root.join(".ember-plugin").join("plugin.json"),
         format!(
             "{{\n  \"name\": \"{name}\",\n  \"version\": \"{version}\",\n  \"description\": \"bundled commands plugin\",\n  \"defaultEnabled\": {}\n}}",
             if default_enabled { "true" } else { "false" }

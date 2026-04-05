@@ -124,7 +124,7 @@ fn write_tool_plugin_with_name(root: &Path, name: &str, version: &str, tool_name
     let script_path = root.join("tools").join("echo-json.sh");
     write_file(
         &script_path,
-        "#!/bin/sh\nINPUT=$(cat)\nprintf '{\"plugin\":\"%s\",\"tool\":\"%s\",\"input\":%s}\\n' \"$CLAW_PLUGIN_ID\" \"$CLAW_TOOL_NAME\" \"$INPUT\"\n",
+        "#!/bin/sh\nINPUT=$(cat)\nprintf '{\"plugin\":\"%s\",\"tool\":\"%s\",\"input\":%s}\\n' \"$EMBER_PLUGIN_ID\" \"$EMBER_TOOL_NAME\" \"$INPUT\"\n",
     );
     #[cfg(unix)]
     {

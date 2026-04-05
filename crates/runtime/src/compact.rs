@@ -5,6 +5,19 @@ const COMPACT_CONTINUATION_PREAMBLE: &str =
 const COMPACT_RECENT_MESSAGES_NOTE: &str = "Recent messages are preserved verbatim.";
 const COMPACT_DIRECT_RESUME_INSTRUCTION: &str = "Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, and do not preface with continuation text.";
 
+/// Token buffer thresholds for auto-compaction decisions.
+const AUTOCOMPACT_BUFFER_TOKENS: usize = 13_000;
+/// Token buffer for displaying a warning.
+const WARNING_THRESHOLD_BUFFER_TOKENS: usize = 20_000;
+/// Maximum consecutive auto-compaction failures before the circuit breaker trips.
+const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES: u32 = 3;
+/// Maximum tool result content length (in chars) before micro-compaction truncates it.
+const MICRO_COMPACT_TOOL_RESULT_LIMIT: usize = 8_000;
+/// Number of recent files to restore after full compaction.
+const POST_COMPACT_MAX_FILES: usize = 5;
+/// Per-file token budget for post-compact restoration.
+const POST_COMPACT_PER_FILE_TOKENS: usize = 5_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompactionConfig {
     pub preserve_recent_messages: usize,
@@ -17,6 +30,100 @@ impl Default for CompactionConfig {
             preserve_recent_messages: 4,
             max_estimated_tokens: 10_000,
         }
+    }
+}
+
+/// Configuration for auto-compaction within the conversation loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AutoCompactConfig {
+    /// Total context window size in tokens for the active model.
+    pub context_window: usize,
+    /// Token buffer to reserve before triggering auto-compaction.
+    pub buffer_tokens: usize,
+    /// Whether to attempt micro-compaction before full compaction.
+    pub micro_compact_enabled: bool,
+    /// Preservation config for full compaction.
+    pub compaction: CompactionConfig,
+}
+
+impl Default for AutoCompactConfig {
+    fn default() -> Self {
+        Self {
+            context_window: 128_000,
+            buffer_tokens: AUTOCOMPACT_BUFFER_TOKENS,
+            micro_compact_enabled: true,
+            compaction: CompactionConfig::default(),
+        }
+    }
+}
+
+/// Warning severity for context window usage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TokenWarningLevel {
+    /// Context usage is normal.
+    Normal,
+    /// Context is filling up — advisory for the user.
+    Warning,
+    /// Context is nearly full — compaction strongly recommended.
+    Error,
+    /// Context is critical — auto-compaction will fire.
+    Critical,
+}
+
+/// Context window usage state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TokenWarningState {
+    pub level: TokenWarningLevel,
+    pub estimated_tokens: usize,
+    pub context_window: usize,
+    pub remaining: usize,
+}
+
+/// Tracks auto-compaction state across turns.
+#[derive(Debug, Clone)]
+pub struct AutoCompactState {
+    /// Consecutive auto-compaction failures (circuit breaker).
+    pub consecutive_failures: u32,
+    /// Number of auto-compactions performed this session.
+    pub total_compactions: u32,
+    /// Whether the circuit breaker has tripped.
+    pub circuit_broken: bool,
+}
+
+impl Default for AutoCompactState {
+    fn default() -> Self {
+        Self {
+            consecutive_failures: 0,
+            total_compactions: 0,
+            circuit_broken: false,
+        }
+    }
+}
+
+impl AutoCompactState {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record a successful compaction, resetting the failure counter.
+    pub fn record_success(&mut self) {
+        self.consecutive_failures = 0;
+        self.total_compactions += 1;
+    }
+
+    /// Record a failed compaction attempt.
+    pub fn record_failure(&mut self) {
+        self.consecutive_failures += 1;
+        if self.consecutive_failures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES {
+            self.circuit_broken = true;
+        }
+    }
+
+    /// Whether auto-compaction should be suppressed.
+    #[must_use]
+    pub fn is_suppressed(&self) -> bool {
+        self.circuit_broken
     }
 }
 
@@ -137,6 +244,181 @@ pub fn compact_session(session: &Session, config: CompactionConfig) -> Compactio
         },
         removed_message_count: removed.len(),
     }
+}
+
+// ── Auto-compaction decision logic ──────────────────────────────────────
+
+/// Calculate the current token warning state for a session.
+#[must_use]
+pub fn calculate_token_warning(session: &Session, context_window: usize) -> TokenWarningState {
+    let estimated = estimate_session_tokens(session);
+    let remaining = context_window.saturating_sub(estimated);
+
+    let level = if remaining <= AUTOCOMPACT_BUFFER_TOKENS {
+        TokenWarningLevel::Critical
+    } else if remaining <= WARNING_THRESHOLD_BUFFER_TOKENS {
+        TokenWarningLevel::Error
+    } else if remaining <= WARNING_THRESHOLD_BUFFER_TOKENS * 2 {
+        TokenWarningLevel::Warning
+    } else {
+        TokenWarningLevel::Normal
+    };
+
+    TokenWarningState {
+        level,
+        estimated_tokens: estimated,
+        context_window,
+        remaining,
+    }
+}
+
+/// Determine whether auto-compaction should trigger after a turn.
+#[must_use]
+pub fn should_auto_compact(
+    session: &Session,
+    config: &AutoCompactConfig,
+    state: &AutoCompactState,
+) -> bool {
+    if state.is_suppressed() {
+        return false;
+    }
+
+    let estimated = estimate_session_tokens(session);
+    let threshold = config.context_window.saturating_sub(config.buffer_tokens);
+    estimated >= threshold
+}
+
+// ── Micro-compaction ───────────────────────────────────────────────────
+
+/// Attempt micro-compaction: truncate large tool results in older messages.
+///
+/// This is a cheaper alternative to full compaction — it reduces token count
+/// by trimming verbose tool outputs that are no longer needed in full.
+/// Returns the number of messages modified, or 0 if nothing was trimmed.
+#[must_use]
+pub fn micro_compact_session(session: &Session, preserve_recent: usize) -> (Session, usize) {
+    let boundary = session.messages.len().saturating_sub(preserve_recent);
+    let mut messages = session.messages.clone();
+    let mut modified = 0;
+
+    for message in messages.iter_mut().take(boundary) {
+        for block in &mut message.blocks {
+            match block {
+                ContentBlock::ToolResult { output, .. }
+                    if output.len() > MICRO_COMPACT_TOOL_RESULT_LIMIT =>
+                {
+                    let truncated: String = output
+                        .chars()
+                        .take(MICRO_COMPACT_TOOL_RESULT_LIMIT)
+                        .collect();
+                    *output = format!(
+                        "{truncated}\n\n[… truncated from {} to {} chars]",
+                        output.len(),
+                        MICRO_COMPACT_TOOL_RESULT_LIMIT
+                    );
+                    modified += 1;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    (
+        Session {
+            version: session.version,
+            messages,
+            plan_mode: session.plan_mode,
+        },
+        modified,
+    )
+}
+
+/// Run the full multi-tier compaction strategy:
+/// 1. Micro-compact (trim large tool results)
+/// 2. Full compaction (summarize older messages)
+///
+/// Returns `None` if no compaction was needed.
+#[must_use]
+pub fn auto_compact_session(
+    session: &Session,
+    config: &AutoCompactConfig,
+) -> Option<CompactionResult> {
+    // Tier 1: Try micro-compaction first.
+    if config.micro_compact_enabled {
+        let (micro_session, modifications) =
+            micro_compact_session(session, config.compaction.preserve_recent_messages);
+        if modifications > 0 {
+            let new_tokens = estimate_session_tokens(&micro_session);
+            let threshold = config.context_window.saturating_sub(config.buffer_tokens);
+            if new_tokens < threshold {
+                return Some(CompactionResult {
+                    summary: format!("Micro-compacted {modifications} tool results"),
+                    formatted_summary: format!("Micro-compacted {modifications} tool results"),
+                    compacted_session: micro_session,
+                    removed_message_count: 0,
+                });
+            }
+        }
+    }
+
+    // Tier 2: Full compaction.
+    let result = compact_session(session, config.compaction);
+    if result.removed_message_count > 0 {
+        Some(result)
+    } else {
+        None
+    }
+}
+
+// ── Post-compact file restoration ──────────────────────────────────────
+
+/// After full compaction, restore recently-referenced files as context hints.
+/// Appends file path references to the compacted summary.
+#[must_use]
+pub fn post_compact_restore_file_hints(result: &CompactionResult) -> CompactionResult {
+    let files = collect_key_files_from_session(&result.compacted_session);
+    if files.is_empty() {
+        return result.clone();
+    }
+
+    let restore_files: Vec<_> = files
+        .into_iter()
+        .take(POST_COMPACT_MAX_FILES)
+        .collect();
+    let _ = POST_COMPACT_PER_FILE_TOKENS; // reserved for future per-file content restoration
+
+    let hint = format!(
+        "\n\nKey files from the compacted context (may need re-reading): {}",
+        restore_files.join(", ")
+    );
+
+    let mut new_result = result.clone();
+    if let Some(ContentBlock::Text { text }) = new_result
+        .compacted_session
+        .messages
+        .first_mut()
+        .and_then(|m| m.blocks.first_mut())
+    {
+        text.push_str(&hint);
+    }
+    new_result
+}
+
+fn collect_key_files_from_session(session: &Session) -> Vec<String> {
+    let mut files = session
+        .messages
+        .iter()
+        .flat_map(|message| message.blocks.iter())
+        .map(|block| match block {
+            ContentBlock::Text { text } => text.as_str(),
+            ContentBlock::ToolUse { input, .. } => input.as_str(),
+            ContentBlock::ToolResult { output, .. } => output.as_str(),
+        })
+        .flat_map(extract_file_candidates)
+        .collect::<Vec<_>>();
+    files.sort();
+    files.dedup();
+    files.into_iter().take(POST_COMPACT_MAX_FILES).collect()
 }
 
 fn compacted_summary_prefix_len(session: &Session) -> usize {
@@ -830,5 +1112,154 @@ mod tests {
         assert!(text.contains("Next: wire the checkpoint back into the continuation system message."));
         assert!(text.contains("Pre-compaction state — plan mode was active"));
         assert!(text.contains(super::COMPACT_DIRECT_RESUME_INSTRUCTION));
+    }
+
+    // ── Auto-compaction tests ──────────────────────────────────────────
+
+    use super::{
+        auto_compact_session, calculate_token_warning, micro_compact_session,
+        should_auto_compact, AutoCompactConfig, AutoCompactState, TokenWarningLevel,
+    };
+
+    #[test]
+    fn token_warning_levels_are_correct() {
+        let session = Session {
+            version: 1,
+            plan_mode: false,
+            messages: vec![ConversationMessage::user_text("x".repeat(4000))],
+        };
+        // ~1001 tokens (4000/4+1). With 128K window, should be Normal.
+        let state = calculate_token_warning(&session, 128_000);
+        assert_eq!(state.level, TokenWarningLevel::Normal);
+
+        // With a tiny window, should be Critical.
+        let state = calculate_token_warning(&session, 2_000);
+        assert_eq!(state.level, TokenWarningLevel::Critical);
+    }
+
+    #[test]
+    fn auto_compact_triggers_when_threshold_reached() {
+        let session = Session {
+            version: 1,
+            plan_mode: false,
+            messages: vec![ConversationMessage::user_text("x".repeat(40_000))],
+        };
+        let config = AutoCompactConfig {
+            context_window: 12_000,
+            buffer_tokens: 2_000,
+            micro_compact_enabled: true,
+            compaction: CompactionConfig {
+                preserve_recent_messages: 1,
+                max_estimated_tokens: 1,
+            },
+        };
+        let state = AutoCompactState::new();
+        assert!(should_auto_compact(&session, &config, &state));
+    }
+
+    #[test]
+    fn auto_compact_suppressed_after_circuit_breaker() {
+        let session = Session {
+            version: 1,
+            plan_mode: false,
+            messages: vec![ConversationMessage::user_text("x".repeat(40_000))],
+        };
+        let config = AutoCompactConfig {
+            context_window: 12_000,
+            buffer_tokens: 2_000,
+            ..AutoCompactConfig::default()
+        };
+        let mut state = AutoCompactState::new();
+        state.record_failure();
+        state.record_failure();
+        state.record_failure();
+        assert!(state.is_suppressed());
+        assert!(!should_auto_compact(&session, &config, &state));
+    }
+
+    #[test]
+    fn micro_compact_truncates_large_tool_results() {
+        let session = Session {
+            version: 1,
+            plan_mode: false,
+            messages: vec![
+                ConversationMessage::tool_result("1", "bash", "x".repeat(20_000), false),
+                ConversationMessage::user_text("recent"),
+            ],
+        };
+        let (compacted, modified) = micro_compact_session(&session, 1);
+        assert_eq!(modified, 1);
+        let ContentBlock::ToolResult { output, .. } = &compacted.messages[0].blocks[0] else {
+            panic!("expected tool result");
+        };
+        assert!(output.len() < 20_000);
+        assert!(output.contains("truncated"));
+    }
+
+    #[test]
+    fn micro_compact_preserves_recent_messages() {
+        let session = Session {
+            version: 1,
+            plan_mode: false,
+            messages: vec![
+                ConversationMessage::tool_result("1", "bash", "x".repeat(20_000), false),
+                ConversationMessage::tool_result("2", "bash", "y".repeat(20_000), false),
+            ],
+        };
+        // preserve_recent=1 means only the last message is preserved
+        let (compacted, modified) = micro_compact_session(&session, 1);
+        assert_eq!(modified, 1);
+        let ContentBlock::ToolResult { output, .. } = &compacted.messages[1].blocks[0] else {
+            panic!("expected tool result");
+        };
+        // The last message should be untouched
+        assert_eq!(output.len(), 20_000);
+    }
+
+    #[test]
+    fn auto_compact_session_uses_micro_first() {
+        let session = Session {
+            version: 1,
+            plan_mode: false,
+            messages: vec![
+                ConversationMessage::tool_result("1", "bash", "x".repeat(50_000), false),
+                ConversationMessage::user_text("recent"),
+            ],
+        };
+        let config = AutoCompactConfig {
+            context_window: 200_000,
+            buffer_tokens: 13_000,
+            micro_compact_enabled: true,
+            compaction: CompactionConfig {
+                preserve_recent_messages: 1,
+                max_estimated_tokens: 1,
+            },
+        };
+        let result = auto_compact_session(&session, &config);
+        if let Some(result) = result {
+            // Should have micro-compacted (truncated tool result) rather than
+            // full compacted, because the session fits after truncation.
+            assert!(result.summary.contains("Micro-compacted"));
+            assert_eq!(result.removed_message_count, 0);
+        }
+    }
+
+    #[test]
+    fn auto_compact_state_tracks_successes_and_failures() {
+        let mut state = AutoCompactState::new();
+        assert!(!state.is_suppressed());
+
+        state.record_failure();
+        state.record_failure();
+        assert!(!state.is_suppressed());
+
+        state.record_success();
+        assert_eq!(state.consecutive_failures, 0);
+        assert_eq!(state.total_compactions, 1);
+
+        state.record_failure();
+        state.record_failure();
+        state.record_failure();
+        assert!(state.is_suppressed());
     }
 }

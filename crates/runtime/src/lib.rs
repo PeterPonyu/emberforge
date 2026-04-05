@@ -1,3 +1,4 @@
+pub mod bash_security;
 mod bash;
 mod bootstrap;
 mod compact;
@@ -8,6 +9,7 @@ mod hooks;
 pub mod model_profiles;
 pub mod model_router;
 mod json;
+pub mod memory;
 mod mcp;
 mod mcp_client;
 mod mcp_stdio;
@@ -24,11 +26,19 @@ pub use lsp::{
     SymbolLocation, WorkspaceDiagnostics,
 };
 pub use bash::{execute_bash, BashCommandInput, BashCommandOutput};
+pub use bash_security::{validate_bash_command, SecurityVerdict};
+pub use memory::{
+    build_memory_manifest, build_memory_prompt, ensure_memory_dir, load_entrypoint,
+    parse_frontmatter, project_memory_dir, scan_memory_dir, user_memory_dir, MemoryConfig,
+    MemoryFile, MemoryFrontmatter, MemoryIndex, MemoryType,
+};
 pub use bootstrap::{BootstrapPhase, BootstrapPlan};
 pub use compact::{
-    compact_session, create_pre_compact_checkpoint, estimate_session_tokens,
-    format_compact_summary, get_compact_continuation_message, render_checkpoint_context,
-    should_compact, CompactionConfig, CompactionResult, PreCompactCheckpoint,
+    auto_compact_session, calculate_token_warning, compact_session, create_pre_compact_checkpoint,
+    estimate_session_tokens, format_compact_summary, get_compact_continuation_message,
+    micro_compact_session, post_compact_restore_file_hints, render_checkpoint_context,
+    should_auto_compact, should_compact, AutoCompactConfig, AutoCompactState, CompactionConfig,
+    CompactionResult, PreCompactCheckpoint, TokenWarningLevel, TokenWarningState,
 };
 pub use config::{
     ConfigEntry, ConfigError, ConfigLoader, ConfigSource, McpManagedProxyServerConfig,

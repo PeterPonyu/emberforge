@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 use crate::compact::{
-    compact_session, estimate_session_tokens, CompactionConfig, CompactionResult,
+    auto_compact_session, compact_session, estimate_session_tokens, should_auto_compact,
+    AutoCompactConfig, AutoCompactState, CompactionConfig, CompactionResult,
 };
 use crate::config::RuntimeFeatureConfig;
 use crate::hooks::{HookRunResult, HookRunner};
@@ -112,6 +113,8 @@ pub struct ConversationRuntime<C, T> {
     max_iterations: usize,
     usage_tracker: UsageTracker,
     hook_runner: HookRunner,
+    auto_compact_config: Option<AutoCompactConfig>,
+    auto_compact_state: AutoCompactState,
 }
 
 impl<C, T> ConversationRuntime<C, T>
@@ -156,6 +159,8 @@ where
             max_iterations: usize::MAX,
             usage_tracker,
             hook_runner: HookRunner::from_feature_config(&feature_config),
+            auto_compact_config: None,
+            auto_compact_state: AutoCompactState::new(),
         }
     }
 
@@ -163,6 +168,19 @@ where
     pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
         self.max_iterations = max_iterations;
         self
+    }
+
+    /// Enable auto-compaction after each turn when the context window fills up.
+    #[must_use]
+    pub fn with_auto_compact(mut self, config: AutoCompactConfig) -> Self {
+        self.auto_compact_config = Some(config);
+        self
+    }
+
+    /// Access the auto-compact state (e.g. to check circuit breaker status).
+    #[must_use]
+    pub fn auto_compact_state(&self) -> &AutoCompactState {
+        &self.auto_compact_state
     }
 
     pub fn run_turn(
@@ -276,6 +294,18 @@ where
                 };
                 self.session.messages.push(result_message.clone());
                 tool_results.push(result_message);
+            }
+        }
+
+        // Auto-compact if configured and threshold reached.
+        if let Some(ac_config) = &self.auto_compact_config {
+            if should_auto_compact(&self.session, ac_config, &self.auto_compact_state) {
+                if let Some(result) = auto_compact_session(&self.session, ac_config) {
+                    self.session = result.compacted_session;
+                    self.auto_compact_state.record_success();
+                } else {
+                    self.auto_compact_state.record_failure();
+                }
             }
         }
 

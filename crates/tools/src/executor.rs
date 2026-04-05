@@ -1,5 +1,9 @@
+use std::env;
+use std::path::PathBuf;
+
 use runtime::{execute_bash, glob_search, grep_search, read_file, write_file, edit_file};
 use runtime::{BashCommandInput, GrepSearchInput};
+use runtime::{validate_bash_command, SecurityVerdict, PermissionMode};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -47,6 +51,25 @@ pub(crate) fn from_value<T: for<'de> Deserialize<'de>>(input: &Value) -> Result<
 }
 
 pub(crate) fn run_bash(input: BashCommandInput) -> Result<String, ToolExecError> {
+    // Security validation before execution.
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let permission_mode = if input.dangerously_disable_sandbox.unwrap_or(false) {
+        PermissionMode::DangerFullAccess
+    } else {
+        PermissionMode::WorkspaceWrite
+    };
+    match validate_bash_command(&input.command, &cwd, &permission_mode) {
+        SecurityVerdict::Allow => {}
+        SecurityVerdict::Deny { reason, check_id } => {
+            return Err(ToolExecError::Runtime(format!(
+                "Command blocked by security check #{check_id}: {reason}"
+            )));
+        }
+        SecurityVerdict::Warn { reason, check_id } => {
+            eprintln!("⚠ Security warning (check #{check_id}): {reason}");
+        }
+    }
+
     let output = execute_bash(input).map_err(|e| ToolExecError::Runtime(e.to_string()))?;
     Ok(serde_json::to_string_pretty(&output)?)
 }
