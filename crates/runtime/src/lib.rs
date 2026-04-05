@@ -7,6 +7,7 @@ pub mod cron;
 mod config;
 mod conversation;
 mod file_ops;
+pub mod git;
 mod hooks;
 pub mod model_profiles;
 pub mod model_router;
@@ -21,6 +22,7 @@ mod prompt;
 mod remote;
 pub mod sandbox;
 mod session;
+pub mod cost_tracker;
 mod usage;
 
 pub use lsp::{
@@ -28,6 +30,13 @@ pub use lsp::{
     SymbolLocation, WorkspaceDiagnostics,
 };
 pub use bash::{execute_bash, BashCommandInput, BashCommandOutput};
+pub use git::{
+    create_worktree, find_git_root, find_merge_base, get_branch, get_changed_files,
+    get_default_branch, get_git_state, get_github_repo, get_head, get_remote_url,
+    get_worktree_count, has_unpushed_commits, is_at_git_root, is_bare_repo, is_clean,
+    is_in_git_repo, is_shallow_clone, list_worktrees, parse_github_remote, remove_worktree,
+    safe_stash, stash_pop, FileChangeType, FileStatus, GitState, WorktreeInfo,
+};
 pub use agent_loader::{
     discover_agents, find_agent, list_agent_summaries, load_agents_from_dir, resolve_agent_tools,
     build_agent_prompt, project_agents_dir, user_agents_dir,
@@ -98,9 +107,13 @@ pub use oauth::{
     OAuthCallbackParams, OAuthRefreshRequest, OAuthTokenExchangeRequest, OAuthTokenSet,
     PkceChallengeMethod, PkceCodePair,
 };
+pub use cost_tracker::{
+    format_tokens, load_session_costs, save_session_costs, CodeMetrics, CostTracker, ModelUsage,
+    TimingMetrics,
+};
 pub use permissions::{
-    PermissionMode, PermissionOutcome, PermissionPolicy, PermissionPromptDecision,
-    PermissionPrompter, PermissionRequest,
+    DenialTracker, PermissionMode, PermissionOutcome, PermissionPolicy, PermissionPromptDecision,
+    PermissionPrompter, PermissionRequest, PermissionRule, RuleBehavior, RuleSource,
 };
 pub use prompt::{
     load_system_prompt, prepend_bullets, ContextFile, ProjectContext, PromptBuildError,
