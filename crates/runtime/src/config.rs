@@ -376,6 +376,8 @@ impl RuntimeUiConfig {
 pub struct RuntimeHookConfig {
     pre_tool_use: Vec<String>,
     post_tool_use: Vec<String>,
+    /// Additional per-event command lists (for lifecycle events beyond pre/post tool).
+    event_commands: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -786,6 +788,7 @@ impl RuntimeHookConfig {
         Self {
             pre_tool_use,
             post_tool_use,
+            event_commands: std::collections::BTreeMap::new(),
         }
     }
 
@@ -809,6 +812,31 @@ impl RuntimeHookConfig {
     pub fn extend(&mut self, other: &Self) {
         extend_unique(&mut self.pre_tool_use, other.pre_tool_use());
         extend_unique(&mut self.post_tool_use, other.post_tool_use());
+        for (event, commands) in &other.event_commands {
+            let entry = self.event_commands.entry(event.clone()).or_default();
+            extend_unique(entry, commands);
+        }
+    }
+
+    /// Get commands registered for a specific hook event.
+    /// Falls back to pre_tool_use/post_tool_use for those events.
+    #[must_use]
+    pub fn commands_for_event(&self, event: crate::hooks::HookEvent) -> Vec<String> {
+        match event {
+            crate::hooks::HookEvent::PreToolUse => self.pre_tool_use.clone(),
+            crate::hooks::HookEvent::PostToolUse => self.post_tool_use.clone(),
+            other => self
+                .event_commands
+                .get(other.as_str())
+                .cloned()
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Register commands for a specific lifecycle event.
+    pub fn set_event_commands(&mut self, event: crate::hooks::HookEvent, commands: Vec<String>) {
+        self.event_commands
+            .insert(event.as_str().to_string(), commands);
     }
 }
 
@@ -918,11 +946,21 @@ fn parse_optional_hooks_config(root: &JsonValue) -> Result<RuntimeHookConfig, Co
         return Ok(RuntimeHookConfig::default());
     };
     let hooks = expect_object(hooks_value, "merged settings.hooks")?;
+    // Parse additional lifecycle event commands beyond PreToolUse/PostToolUse.
+    let mut event_commands = std::collections::BTreeMap::new();
+    for key in hooks.keys() {
+        if key != "PreToolUse" && key != "PostToolUse" {
+            if let Some(cmds) = optional_string_array(hooks, key, "merged settings.hooks")? {
+                event_commands.insert(key.clone(), cmds);
+            }
+        }
+    }
     Ok(RuntimeHookConfig {
         pre_tool_use: optional_string_array(hooks, "PreToolUse", "merged settings.hooks")?
             .unwrap_or_default(),
         post_tool_use: optional_string_array(hooks, "PostToolUse", "merged settings.hooks")?
             .unwrap_or_default(),
+        event_commands,
     })
 }
 

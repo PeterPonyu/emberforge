@@ -1,7 +1,9 @@
+pub mod agent_loader;
 pub mod bash_security;
 mod bash;
 mod bootstrap;
 mod compact;
+pub mod cron;
 mod config;
 mod conversation;
 mod file_ops;
@@ -26,7 +28,17 @@ pub use lsp::{
     SymbolLocation, WorkspaceDiagnostics,
 };
 pub use bash::{execute_bash, BashCommandInput, BashCommandOutput};
+pub use agent_loader::{
+    discover_agents, find_agent, list_agent_summaries, load_agents_from_dir, resolve_agent_tools,
+    build_agent_prompt, project_agents_dir, user_agents_dir,
+    AgentDefinition, AgentMcpServerSpec, AgentSource, AgentSummary, IsolationMode, MemoryScope,
+};
 pub use bash_security::{validate_bash_command, SecurityVerdict};
+pub use cron::{
+    create_task, delete_task, describe_schedule, format_task_summary, load_durable_tasks,
+    parse_cron, save_durable_tasks, schedule_matches, tick, CronParseError, CronSchedule,
+    ScheduledTask, SchedulerTickResult,
+};
 pub use memory::{
     build_memory_manifest, build_memory_prompt, ensure_memory_dir, load_entrypoint,
     parse_frontmatter, project_memory_dir, scan_memory_dir, user_memory_dir, MemoryConfig,
@@ -59,7 +71,9 @@ pub use file_ops::{
     GrepSearchInput, GrepSearchOutput, ReadFileOutput, StructuredPatchHunk, TextFilePayload,
     WriteFileOutput,
 };
-pub use hooks::{HookEvent, HookRunResult, HookRunner};
+pub use hooks::{
+    HookBackend, HookDefinition, HookEvent, HookMatchRule, HookRunResult, HookRunner,
+};
 pub use mcp::{
     mcp_server_signature, mcp_tool_name, mcp_tool_prefix, normalize_name_for_mcp,
     scoped_mcp_config_hash, unwrap_ccr_proxy_url,
