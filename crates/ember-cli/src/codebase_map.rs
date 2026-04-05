@@ -4,8 +4,11 @@
 //! of the workspace before the first prompt. Inspired by oh-my-claudecode.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
-use std::{env, fs};
+use std::path::Path;
+use std::fs;
+
+#[cfg(test)]
+use std::env;
 
 const MAX_FILES: usize = 200;
 const MAX_DEPTH: u32 = 4;

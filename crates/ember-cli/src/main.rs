@@ -4,6 +4,7 @@ mod doctor;
 mod init;
 mod input;
 mod keywords;
+#[allow(dead_code)]
 mod notifications;
 mod render;
 mod task_mgmt;

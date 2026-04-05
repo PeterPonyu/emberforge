@@ -255,6 +255,7 @@ impl HookRunner {
     }
 
     /// Execute an HTTP hook by POSTing the payload to the given URL.
+    #[allow(dead_code)]
     fn run_http_hook(
         url: &str,
         headers: &std::collections::BTreeMap<String, String>,

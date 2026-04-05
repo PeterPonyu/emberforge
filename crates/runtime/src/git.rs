@@ -617,7 +617,10 @@ mod tests {
     fn find_git_root_in_repo() {
         let repo = make_temp_repo();
         let root = find_git_root(&repo);
-        assert_eq!(root, Some(repo.clone()));
+        // Canonicalize both sides to handle macOS /var → /private/var symlinks.
+        let expected = fs::canonicalize(&repo).unwrap_or_else(|_| repo.clone());
+        let actual = root.map(|p| fs::canonicalize(&p).unwrap_or(p));
+        assert_eq!(actual, Some(expected));
         cleanup(&repo);
     }
 

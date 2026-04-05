@@ -4,8 +4,11 @@
 //! Supports multiple context sources: codebase map, directory READMEs,
 //! project rules, and custom injectors.
 
-use std::path::{Path, PathBuf};
-use std::{env, fs};
+use std::path::Path;
+use std::fs;
+
+#[cfg(test)]
+use std::env;
 
 use crate::codebase_map;
 
@@ -14,6 +17,7 @@ const DEFAULT_CONTEXT_BUDGET_CHARS: usize = 20_000;
 
 /// A collected context snippet to inject into the prompt.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub(crate) struct ContextSnippet {
     pub source: &'static str,
     pub content: String,

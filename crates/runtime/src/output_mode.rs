@@ -8,7 +8,7 @@ use std::io::{self, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::session::{ContentBlock, ConversationMessage, MessageRole};
+use crate::session::{ContentBlock, ConversationMessage};
 use crate::usage::TokenUsage;
 
 // ── Output mode enum ───────────────────────────────────────────────────
