@@ -9,6 +9,7 @@ mod conversation;
 mod file_ops;
 pub mod git;
 mod hooks;
+pub mod ide;
 pub mod model_profiles;
 pub mod model_router;
 mod json;
@@ -17,12 +18,14 @@ mod mcp;
 mod mcp_client;
 mod mcp_stdio;
 mod oauth;
+pub mod output_mode;
 mod permissions;
 mod prompt;
 mod remote;
 pub mod sandbox;
 mod session;
 pub mod cost_tracker;
+pub mod transport;
 mod usage;
 
 pub use lsp::{
@@ -114,6 +117,9 @@ pub use cost_tracker::{
 pub use permissions::{
     DenialTracker, PermissionMode, PermissionOutcome, PermissionPolicy, PermissionPromptDecision,
     PermissionPrompter, PermissionRequest, PermissionRule, RuleBehavior, RuleSource,
+};
+pub use output_mode::{
+    build_json_response, message_to_output_events, OutputEvent, OutputMode, OutputWriter,
 };
 pub use prompt::{
     load_system_prompt, prepend_bullets, ContextFile, ProjectContext, PromptBuildError,
