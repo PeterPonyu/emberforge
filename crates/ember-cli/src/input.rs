@@ -50,6 +50,14 @@ struct EditSession {
     cursor: usize,
     mode: EditorMode,
     pending_operator: Option<char>,
+    /// Pending count prefix (e.g., `3` in `3dw`).
+    pending_count: Option<u32>,
+    /// Pending find motion: ('f'|'F'|'t'|'T', awaiting_char).
+    pending_find: Option<char>,
+    /// Last find for ;/, repeat.
+    last_find: Option<(char, char)>,
+    /// Pending text object scope ('i' or 'a', awaiting type char).
+    pending_scope: Option<char>,
     visual_anchor: Option<usize>,
     command_buffer: String,
     command_cursor: usize,
@@ -70,6 +78,10 @@ impl EditSession {
                 EditorMode::Plain
             },
             pending_operator: None,
+            pending_count: None,
+            pending_find: None,
+            last_find: None,
+            pending_scope: None,
             visual_anchor: None,
             command_buffer: String::new(),
             command_cursor: 0,
@@ -460,40 +472,433 @@ impl LineEditor {
     }
 
     fn handle_normal_char(&mut self, session: &mut EditSession, ch: char) {
-        if let Some(operator) = session.pending_operator.take() {
-            match (operator, ch) {
-                ('d', 'd') => {
-                    self.delete_current_line(session);
+        // ── Pending find motion: waiting for target char ──
+        if let Some(find_type) = session.pending_find.take() {
+            session.last_find = Some((find_type, ch));
+            self.execute_find(session, find_type, ch);
+            return;
+        }
+
+        // ── Pending text object scope: waiting for type char ──
+        if let Some(scope) = session.pending_scope.take() {
+            if let Some(operator) = session.pending_operator.take() {
+                self.execute_operator_text_object(session, operator, scope, ch);
+            }
+            return;
+        }
+
+        // ── Pending operator: waiting for motion/text-object/line-op ──
+        if let Some(operator) = session.pending_operator {
+            match ch {
+                // Line operations: dd, cc, yy
+                c if c == operator => {
+                    session.pending_operator = None;
+                    match operator {
+                        'd' => self.delete_current_line(session),
+                        'y' => self.yank_current_line(session),
+                        'c' => {
+                            self.delete_current_line(session);
+                            session.enter_insert_mode();
+                        }
+                        _ => {}
+                    }
                     return;
                 }
-                ('y', 'y') => {
-                    self.yank_current_line(session);
+                // Text object scope: di", ya(, ci[, etc.
+                'i' | 'a' => {
+                    session.pending_scope = Some(ch);
                     return;
                 }
-                _ => {}
+                // Find motions with operator: df}, ct;, etc.
+                'f' | 'F' | 't' | 'T' => {
+                    session.pending_find = Some(ch);
+                    return;
+                }
+                // Motion after operator: dw, cw, ye, d$, etc.
+                _ => {
+                    session.pending_operator = None;
+                    let start = session.cursor;
+                    self.execute_motion(session, ch);
+                    let end = session.cursor;
+                    if start != end {
+                        let (from, to) = if start < end { (start, end) } else { (end, start) };
+                        match operator {
+                            'd' => {
+                                self.yank_buffer.text = session.text[from..to].to_string();
+                                self.yank_buffer.linewise = false;
+                                session.text.drain(from..to);
+                                session.cursor = from.min(session.text.len());
+                            }
+                            'c' => {
+                                self.yank_buffer.text = session.text[from..to].to_string();
+                                self.yank_buffer.linewise = false;
+                                session.text.drain(from..to);
+                                session.cursor = from.min(session.text.len());
+                                session.enter_insert_mode();
+                            }
+                            'y' => {
+                                self.yank_buffer.text = session.text[from..to].to_string();
+                                self.yank_buffer.linewise = false;
+                                session.cursor = from; // yank moves to start
+                            }
+                            _ => {}
+                        }
+                    }
+                    return;
+                }
             }
         }
 
+        // ── Count prefix (digits 1-9, or 0 only if already accumulating) ──
+        if ch.is_ascii_digit() && (session.pending_count.is_some() || ch != '0') {
+            let digit = ch.to_digit(10).unwrap_or(0);
+            let current = session.pending_count.unwrap_or(0);
+            session.pending_count = Some((current * 10 + digit).min(10_000));
+            return;
+        }
+
+        // ── Normal mode commands ──
+        let count = session.pending_count.take().unwrap_or(1) as usize;
+
+        match ch {
+            // Mode switches
+            'i' => session.enter_insert_mode(),
+            'a' => {
+                session.cursor = next_boundary(&session.text, session.cursor);
+                session.enter_insert_mode();
+            }
+            'A' => {
+                session.cursor = line_end(&session.text, session.cursor);
+                session.enter_insert_mode();
+            }
+            'I' => {
+                session.cursor = first_non_blank(&session.text, session.cursor);
+                session.enter_insert_mode();
+            }
+            'o' => {
+                let end = line_end(&session.text, session.cursor);
+                if end < session.text.len() {
+                    session.cursor = end + 1;
+                    session.text.insert(end, '\n');
+                } else {
+                    session.text.push('\n');
+                    session.cursor = session.text.len();
+                }
+                session.enter_insert_mode();
+            }
+            'O' => {
+                let start = line_start(&session.text, session.cursor);
+                session.text.insert(start, '\n');
+                session.cursor = start;
+                session.enter_insert_mode();
+            }
+            'v' => session.enter_visual_mode(),
+            ':' => session.enter_command_mode(),
+
+            // Operators (wait for motion)
+            'd' | 'c' | 'y' => session.pending_operator = Some(ch),
+
+            // Find motions (wait for char)
+            'f' | 'F' | 't' | 'T' => session.pending_find = Some(ch),
+
+            // Repeat find
+            ';' => {
+                if let Some((find_type, target)) = session.last_find {
+                    self.execute_find(session, find_type, target);
+                }
+            }
+            ',' => {
+                // Reverse find
+                if let Some((find_type, target)) = session.last_find {
+                    let reverse = match find_type {
+                        'f' => 'F',
+                        'F' => 'f',
+                        't' => 'T',
+                        'T' => 't',
+                        _ => return,
+                    };
+                    self.execute_find(session, reverse, target);
+                }
+            }
+
+            // x: delete char under cursor
+            'x' => {
+                for _ in 0..count {
+                    if session.cursor < session.text.len() {
+                        let end = next_boundary(&session.text, session.cursor);
+                        self.yank_buffer.text = session.text[session.cursor..end].to_string();
+                        self.yank_buffer.linewise = false;
+                        session.text.drain(session.cursor..end);
+                    }
+                }
+                if session.cursor >= session.text.len() && session.cursor > 0 {
+                    session.cursor = previous_boundary(&session.text, session.cursor);
+                }
+            }
+            // X: delete char before cursor
+            'X' => {
+                for _ in 0..count {
+                    if session.cursor > 0 {
+                        let start = previous_boundary(&session.text, session.cursor);
+                        self.yank_buffer.text = session.text[start..session.cursor].to_string();
+                        self.yank_buffer.linewise = false;
+                        session.text.drain(start..session.cursor);
+                        session.cursor = start;
+                    }
+                }
+            }
+            // ~: toggle case
+            '~' => {
+                for _ in 0..count {
+                    if session.cursor < session.text.len() {
+                        let end = next_boundary(&session.text, session.cursor);
+                        let ch = session.text[session.cursor..end].chars().next().unwrap();
+                        let toggled: String = if ch.is_uppercase() {
+                            ch.to_lowercase().collect()
+                        } else {
+                            ch.to_uppercase().collect()
+                        };
+                        session.text.replace_range(session.cursor..end, &toggled);
+                        session.cursor = next_boundary(&session.text, session.cursor);
+                    }
+                }
+            }
+            // r: replace single char
+            'r' => {
+                // Next char typed will replace — handled via pending_find trick
+                session.pending_find = Some('r');
+            }
+            // J: join lines
+            'J' => {
+                let end = line_end(&session.text, session.cursor);
+                if end < session.text.len() && session.text.as_bytes()[end] == b'\n' {
+                    session.text.replace_range(end..end + 1, " ");
+                }
+            }
+
+            // Paste
+            'p' => {
+                for _ in 0..count {
+                    self.paste_after(session);
+                }
+            }
+            'P' => {
+                for _ in 0..count {
+                    self.paste_before(session);
+                }
+            }
+
+            // Undo (placeholder — real undo needs undo stack)
+            'u' => {}
+
+            // g-prefix: gg goes to start
+            'g' => {
+                // Simplified: next char 'g' → go to start
+                session.pending_find = Some('g');
+            }
+            // G: go to end (or line N if count given)
+            'G' => {
+                session.cursor = session.text.len().saturating_sub(1).max(0);
+            }
+
+            // All motions (with count)
+            _ => {
+                for _ in 0..count {
+                    self.execute_motion(session, ch);
+                }
+            }
+        }
+    }
+
+    fn execute_motion(&self, session: &mut EditSession, ch: char) {
         match ch {
             'h' => self.move_left(session),
             'j' => self.move_down(session),
             'k' => self.move_up(session),
             'l' => self.move_right(session),
-            'd' | 'y' => session.pending_operator = Some(ch),
-            'p' => self.paste_after(session),
-            'i' => session.enter_insert_mode(),
-            'v' => session.enter_visual_mode(),
-            ':' => session.enter_command_mode(),
+            'w' => session.cursor = word_forward(&session.text, session.cursor),
+            'b' => session.cursor = word_backward(&session.text, session.cursor),
+            'e' => session.cursor = word_end(&session.text, session.cursor),
+            'W' => session.cursor = big_word_forward(&session.text, session.cursor),
+            'B' => session.cursor = big_word_backward(&session.text, session.cursor),
+            'E' => session.cursor = big_word_end(&session.text, session.cursor),
+            '0' => self.move_line_start(session),
+            '^' => session.cursor = first_non_blank(&session.text, session.cursor),
+            '$' => self.move_line_end(session),
             _ => {}
+        }
+    }
+
+    fn execute_find(&self, session: &mut EditSession, find_type: char, target: char) {
+        match find_type {
+            'f' => {
+                if let Some(pos) = find_char_forward(&session.text, session.cursor, target) {
+                    session.cursor = pos;
+                }
+            }
+            'F' => {
+                if let Some(pos) = find_char_backward(&session.text, session.cursor, target) {
+                    session.cursor = pos;
+                }
+            }
+            't' => {
+                if let Some(pos) = till_char_forward(&session.text, session.cursor, target) {
+                    session.cursor = pos;
+                }
+            }
+            'T' => {
+                if let Some(pos) = till_char_backward(&session.text, session.cursor, target) {
+                    session.cursor = pos;
+                }
+            }
+            // r: replace character
+            'r' => {
+                if session.cursor < session.text.len() {
+                    let end = next_boundary(&session.text, session.cursor);
+                    let mut buf = [0; 4];
+                    session.text.replace_range(session.cursor..end, target.encode_utf8(&mut buf));
+                }
+            }
+            // g: gg → go to start
+            'g' => {
+                session.cursor = 0;
+            }
+            _ => {}
+        }
+    }
+
+    fn execute_operator_text_object(
+        &mut self,
+        session: &mut EditSession,
+        operator: char,
+        scope: char,
+        obj_type: char,
+    ) {
+        let Some((start, end)) = resolve_text_object(&session.text, session.cursor, scope, obj_type) else {
+            return;
+        };
+
+        match operator {
+            'd' => {
+                self.yank_buffer.text = session.text[start..end].to_string();
+                self.yank_buffer.linewise = false;
+                session.text.drain(start..end);
+                session.cursor = start.min(session.text.len());
+            }
+            'c' => {
+                self.yank_buffer.text = session.text[start..end].to_string();
+                self.yank_buffer.linewise = false;
+                session.text.drain(start..end);
+                session.cursor = start.min(session.text.len());
+                session.enter_insert_mode();
+            }
+            'y' => {
+                self.yank_buffer.text = session.text[start..end].to_string();
+                self.yank_buffer.linewise = false;
+                session.cursor = start;
+            }
+            _ => {}
+        }
+    }
+
+    fn paste_before(&mut self, session: &mut EditSession) {
+        if self.yank_buffer.text.is_empty() {
+            return;
+        }
+
+        if self.yank_buffer.linewise {
+            let start = line_start(&session.text, session.cursor);
+            let mut insertion = self.yank_buffer.text.clone();
+            if !insertion.ends_with('\n') {
+                insertion.push('\n');
+            }
+            session.text.insert_str(start, &insertion);
+            session.cursor = start;
+        } else {
+            session.text.insert_str(session.cursor, &self.yank_buffer.text);
         }
     }
 
     fn handle_visual_char(&mut self, session: &mut EditSession, ch: char) {
         match ch {
+            // Movement
             'h' => self.move_left(session),
             'j' => self.move_down(session),
             'k' => self.move_up(session),
             'l' => self.move_right(session),
+            'w' => session.cursor = word_forward(&session.text, session.cursor),
+            'b' => session.cursor = word_backward(&session.text, session.cursor),
+            'e' => session.cursor = word_end(&session.text, session.cursor),
+            'W' => session.cursor = big_word_forward(&session.text, session.cursor),
+            'B' => session.cursor = big_word_backward(&session.text, session.cursor),
+            '0' => self.move_line_start(session),
+            '$' => self.move_line_end(session),
+
+            // Operations on selection
+            'd' | 'x' => {
+                if let Some(anchor) = session.visual_anchor {
+                    let (start, end) = if anchor <= session.cursor {
+                        (anchor, next_boundary(&session.text, session.cursor))
+                    } else {
+                        (session.cursor, next_boundary(&session.text, anchor))
+                    };
+                    self.yank_buffer.text = session.text[start..end].to_string();
+                    self.yank_buffer.linewise = false;
+                    session.text.drain(start..end);
+                    session.cursor = start.min(session.text.len());
+                }
+                session.enter_normal_mode();
+            }
+            'c' => {
+                if let Some(anchor) = session.visual_anchor {
+                    let (start, end) = if anchor <= session.cursor {
+                        (anchor, next_boundary(&session.text, session.cursor))
+                    } else {
+                        (session.cursor, next_boundary(&session.text, anchor))
+                    };
+                    self.yank_buffer.text = session.text[start..end].to_string();
+                    self.yank_buffer.linewise = false;
+                    session.text.drain(start..end);
+                    session.cursor = start.min(session.text.len());
+                }
+                session.enter_insert_mode();
+            }
+            'y' => {
+                if let Some(anchor) = session.visual_anchor {
+                    let (start, end) = if anchor <= session.cursor {
+                        (anchor, next_boundary(&session.text, session.cursor))
+                    } else {
+                        (session.cursor, next_boundary(&session.text, anchor))
+                    };
+                    self.yank_buffer.text = session.text[start..end].to_string();
+                    self.yank_buffer.linewise = false;
+                    session.cursor = start;
+                }
+                session.enter_normal_mode();
+            }
+            '~' => {
+                if let Some(anchor) = session.visual_anchor {
+                    let (start, end) = if anchor <= session.cursor {
+                        (anchor, next_boundary(&session.text, session.cursor))
+                    } else {
+                        (session.cursor, next_boundary(&session.text, anchor))
+                    };
+                    let toggled: String = session.text[start..end]
+                        .chars()
+                        .map(|c| {
+                            if c.is_uppercase() {
+                                c.to_lowercase().next().unwrap_or(c)
+                            } else {
+                                c.to_uppercase().next().unwrap_or(c)
+                            }
+                        })
+                        .collect();
+                    session.text.replace_range(start..end, &toggled);
+                }
+                session.enter_normal_mode();
+            }
+
+            // Exit visual
             'v' => session.enter_normal_mode(),
             _ => {}
         }
@@ -973,6 +1378,417 @@ fn to_u16(value: usize) -> io::Result<u16> {
     })
 }
 
+/// Move to the first non-blank character on the current line (^ motion).
+fn first_non_blank(text: &str, cursor: usize) -> usize {
+    let start = line_start(text, cursor);
+    let end = line_end(text, cursor);
+    for (i, ch) in text[start..end].char_indices() {
+        if !ch.is_whitespace() {
+            return start + i;
+        }
+    }
+    start
+}
+
+// ── Vim word motions ─────────────────────────────────────────────────
+
+/// Character classification for vim word boundaries.
+#[derive(PartialEq)]
+enum CharClass {
+    Whitespace,
+    Word,       // alphanumeric + underscore
+    Punctuation,
+}
+
+fn char_class(ch: char) -> CharClass {
+    if ch.is_whitespace() {
+        CharClass::Whitespace
+    } else if ch.is_alphanumeric() || ch == '_' {
+        CharClass::Word
+    } else {
+        CharClass::Punctuation
+    }
+}
+
+/// Move forward to the start of the next vim word (w).
+fn word_forward(text: &str, cursor: usize) -> usize {
+    let bytes = text.as_bytes();
+    let len = text.len();
+    if cursor >= len {
+        return len;
+    }
+    let mut pos = cursor;
+
+    // Get class of char at cursor
+    let start_ch = text[pos..].chars().next().unwrap();
+    let start_class = char_class(start_ch);
+
+    // Skip current class
+    while pos < len {
+        let ch = text[pos..].chars().next().unwrap();
+        if char_class(ch) != start_class {
+            break;
+        }
+        pos += ch.len_utf8();
+    }
+
+    // Skip whitespace
+    while pos < len {
+        let ch = text[pos..].chars().next().unwrap();
+        if !ch.is_whitespace() {
+            break;
+        }
+        pos += ch.len_utf8();
+    }
+
+    pos
+}
+
+/// Move backward to the start of the previous vim word (b).
+fn word_backward(text: &str, cursor: usize) -> usize {
+    if cursor == 0 {
+        return 0;
+    }
+    let mut pos = cursor;
+
+    // Skip whitespace backward
+    while pos > 0 {
+        let prev = prev_char(text, pos);
+        if !prev.is_whitespace() {
+            break;
+        }
+        pos -= prev.len_utf8();
+    }
+
+    if pos == 0 {
+        return 0;
+    }
+
+    // Get class of char before pos
+    let target_class = char_class(prev_char(text, pos));
+
+    // Skip same class backward
+    while pos > 0 {
+        let prev = prev_char(text, pos);
+        if char_class(prev) != target_class {
+            break;
+        }
+        pos -= prev.len_utf8();
+    }
+
+    pos
+}
+
+/// Move to the end of the current/next vim word (e).
+fn word_end(text: &str, cursor: usize) -> usize {
+    let len = text.len();
+    if cursor >= len {
+        return len;
+    }
+    let mut pos = next_boundary(text, cursor); // Move past current char
+
+    // Skip whitespace
+    while pos < len {
+        let ch = text[pos..].chars().next().unwrap();
+        if !ch.is_whitespace() {
+            break;
+        }
+        pos += ch.len_utf8();
+    }
+
+    if pos >= len {
+        return len.saturating_sub(1).max(cursor);
+    }
+
+    let target_class = char_class(text[pos..].chars().next().unwrap());
+
+    // Move to end of word
+    while pos < len {
+        let next = next_boundary(text, pos);
+        if next >= len {
+            return pos;
+        }
+        let ch = text[next..].chars().next().unwrap_or(' ');
+        if char_class(ch) != target_class {
+            return pos;
+        }
+        pos = next;
+    }
+
+    pos
+}
+
+/// Move forward to the start of the next WORD (W) — whitespace-delimited.
+fn big_word_forward(text: &str, cursor: usize) -> usize {
+    let len = text.len();
+    let mut pos = cursor;
+
+    // Skip non-whitespace
+    while pos < len {
+        let ch = text[pos..].chars().next().unwrap();
+        if ch.is_whitespace() {
+            break;
+        }
+        pos += ch.len_utf8();
+    }
+
+    // Skip whitespace
+    while pos < len {
+        let ch = text[pos..].chars().next().unwrap();
+        if !ch.is_whitespace() {
+            break;
+        }
+        pos += ch.len_utf8();
+    }
+
+    pos
+}
+
+/// Move backward to the start of the previous WORD (B).
+fn big_word_backward(text: &str, cursor: usize) -> usize {
+    if cursor == 0 {
+        return 0;
+    }
+    let mut pos = cursor;
+
+    // Skip whitespace backward
+    while pos > 0 && prev_char(text, pos).is_whitespace() {
+        pos -= prev_char(text, pos).len_utf8();
+    }
+
+    // Skip non-whitespace backward
+    while pos > 0 && !prev_char(text, pos).is_whitespace() {
+        pos -= prev_char(text, pos).len_utf8();
+    }
+
+    pos
+}
+
+/// Move to the end of the current/next WORD (E).
+fn big_word_end(text: &str, cursor: usize) -> usize {
+    let len = text.len();
+    let mut pos = next_boundary(text, cursor);
+
+    // Skip whitespace
+    while pos < len {
+        let ch = text[pos..].chars().next().unwrap();
+        if !ch.is_whitespace() {
+            break;
+        }
+        pos += ch.len_utf8();
+    }
+
+    // Skip non-whitespace to find end
+    while pos < len {
+        let next = next_boundary(text, pos);
+        if next >= len {
+            return pos;
+        }
+        let ch = text[next..].chars().next().unwrap_or(' ');
+        if ch.is_whitespace() {
+            return pos;
+        }
+        pos = next;
+    }
+
+    pos.min(len.saturating_sub(1))
+}
+
+/// Get the character immediately before `pos`.
+fn prev_char(text: &str, pos: usize) -> char {
+    text[..pos].chars().next_back().unwrap_or(' ')
+}
+
+// ── Find motions (f/F/t/T) ──────────────────────────────────────────
+
+/// Find character forward (f). Returns byte offset of the character.
+fn find_char_forward(text: &str, cursor: usize, target: char) -> Option<usize> {
+    let after = next_boundary(text, cursor);
+    for (i, ch) in text[after..].char_indices() {
+        if ch == target {
+            return Some(after + i);
+        }
+    }
+    None
+}
+
+/// Find character backward (F). Returns byte offset of the character.
+fn find_char_backward(text: &str, cursor: usize, target: char) -> Option<usize> {
+    for (i, ch) in text[..cursor].char_indices().rev() {
+        if ch == target {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// Till character forward (t). Returns byte offset just before the character.
+fn till_char_forward(text: &str, cursor: usize, target: char) -> Option<usize> {
+    find_char_forward(text, cursor, target).map(|pos| previous_boundary(text, pos))
+}
+
+/// Till character backward (T). Returns byte offset just after the character.
+fn till_char_backward(text: &str, cursor: usize, target: char) -> Option<usize> {
+    find_char_backward(text, cursor, target).map(|pos| next_boundary(text, pos))
+}
+
+// ── Text objects ─────────────────────────────────────────────────────
+
+/// Find the range for "inner word" (iw) text object.
+fn text_object_inner_word(text: &str, cursor: usize) -> Option<(usize, usize)> {
+    if cursor >= text.len() {
+        return None;
+    }
+    let ch = text[cursor..].chars().next()?;
+    let target_class = char_class(ch);
+
+    // Expand backward
+    let mut start = cursor;
+    while start > 0 {
+        let prev = prev_char(text, start);
+        if char_class(prev) != target_class {
+            break;
+        }
+        start -= prev.len_utf8();
+    }
+
+    // Expand forward
+    let mut end = cursor;
+    while end < text.len() {
+        let c = text[end..].chars().next()?;
+        if char_class(c) != target_class {
+            break;
+        }
+        end += c.len_utf8();
+    }
+
+    Some((start, end))
+}
+
+/// Find the range for "around word" (aw) — includes trailing whitespace.
+fn text_object_around_word(text: &str, cursor: usize) -> Option<(usize, usize)> {
+    let (start, mut end) = text_object_inner_word(text, cursor)?;
+
+    // Include trailing whitespace
+    while end < text.len() {
+        let ch = text[end..].chars().next()?;
+        if !ch.is_whitespace() {
+            break;
+        }
+        end += ch.len_utf8();
+    }
+
+    // If no trailing whitespace was consumed, try leading whitespace
+    if end == text_object_inner_word(text, cursor)?.1 {
+        let mut new_start = start;
+        while new_start > 0 && prev_char(text, new_start).is_whitespace() {
+            new_start -= prev_char(text, new_start).len_utf8();
+        }
+        return Some((new_start, end));
+    }
+
+    Some((start, end))
+}
+
+/// Find matching bracket pair around cursor.
+fn text_object_bracket(text: &str, cursor: usize, open: char, close: char, inner: bool) -> Option<(usize, usize)> {
+    // Search backward for opening bracket
+    let mut depth = 0i32;
+    let mut open_pos = None;
+    for (i, ch) in text[..=cursor.min(text.len().saturating_sub(1))].char_indices().rev() {
+        if ch == close {
+            depth += 1;
+        } else if ch == open {
+            if depth == 0 {
+                open_pos = Some(i);
+                break;
+            }
+            depth -= 1;
+        }
+    }
+
+    let open_pos = open_pos?;
+
+    // Search forward for closing bracket
+    depth = 0;
+    let mut close_pos = None;
+    for (i, ch) in text[open_pos..].char_indices() {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            depth -= 1;
+            if depth == 0 {
+                close_pos = Some(open_pos + i);
+                break;
+            }
+        }
+    }
+
+    let close_pos = close_pos?;
+
+    if inner {
+        Some((open_pos + open.len_utf8(), close_pos))
+    } else {
+        Some((open_pos, close_pos + close.len_utf8()))
+    }
+}
+
+/// Find matching quote pair around cursor.
+fn text_object_quote(text: &str, cursor: usize, quote: char, inner: bool) -> Option<(usize, usize)> {
+    // Find the nearest quote pair containing cursor
+    let mut positions = Vec::new();
+    let mut escaped = false;
+    for (i, ch) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == quote {
+            positions.push(i);
+        }
+    }
+
+    // Find pair that contains cursor
+    for pair in positions.chunks_exact(2) {
+        let (start, end) = (pair[0], pair[1]);
+        if cursor >= start && cursor <= end {
+            return if inner {
+                Some((start + quote.len_utf8(), end))
+            } else {
+                Some((start, end + quote.len_utf8()))
+            };
+        }
+    }
+
+    None
+}
+
+/// Resolve a text object from the scope (i/a) and type character.
+fn resolve_text_object(text: &str, cursor: usize, scope: char, obj_type: char) -> Option<(usize, usize)> {
+    let inner = scope == 'i';
+    match obj_type {
+        'w' => {
+            if inner {
+                text_object_inner_word(text, cursor)
+            } else {
+                text_object_around_word(text, cursor)
+            }
+        }
+        '(' | ')' | 'b' => text_object_bracket(text, cursor, '(', ')', inner),
+        '[' | ']' => text_object_bracket(text, cursor, '[', ']', inner),
+        '{' | '}' | 'B' => text_object_bracket(text, cursor, '{', '}', inner),
+        '<' | '>' => text_object_bracket(text, cursor, '<', '>', inner),
+        '"' => text_object_quote(text, cursor, '"', inner),
+        '\'' => text_object_quote(text, cursor, '\'', inner),
+        '`' => text_object_quote(text, cursor, '`', inner),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1191,5 +2007,224 @@ mod tests {
 
         // then
         assert!(matches!(action, KeyAction::Cancel));
+    }
+
+    // ── Word motion tests ─────────────────────────────────────────────
+
+    #[test]
+    fn word_forward_skips_word_boundary() {
+        assert_eq!(super::word_forward("hello world", 0), 6);
+        assert_eq!(super::word_forward("hello world", 6), 11);
+        assert_eq!(super::word_forward("foo.bar baz", 0), 3); // stops at punctuation boundary
+    }
+
+    #[test]
+    fn word_backward_skips_word_boundary() {
+        assert_eq!(super::word_backward("hello world", 11), 6);
+        assert_eq!(super::word_backward("hello world", 6), 0);
+        assert_eq!(super::word_backward("hello world", 0), 0);
+    }
+
+    #[test]
+    fn word_end_stops_at_end_of_word() {
+        assert_eq!(super::word_end("hello world", 0), 4);
+        assert_eq!(super::word_end("hello world", 4), 10);
+    }
+
+    #[test]
+    fn big_word_forward_whitespace_delimited() {
+        assert_eq!(super::big_word_forward("foo.bar baz", 0), 8); // skips past "foo.bar"
+        assert_eq!(super::big_word_forward("hello world", 0), 6);
+    }
+
+    #[test]
+    fn big_word_backward_whitespace_delimited() {
+        assert_eq!(super::big_word_backward("foo.bar baz", 11), 8);
+        assert_eq!(super::big_word_backward("foo.bar baz", 8), 0);
+    }
+
+    // ── Find motion tests ─────────────────────────────────────────────
+
+    #[test]
+    fn find_char_forward_locates_char() {
+        assert_eq!(super::find_char_forward("hello world", 0, 'o'), Some(4));
+        assert_eq!(super::find_char_forward("hello world", 5, 'o'), Some(7));
+        assert_eq!(super::find_char_forward("hello world", 0, 'z'), None);
+    }
+
+    #[test]
+    fn find_char_backward_locates_char() {
+        assert_eq!(super::find_char_backward("hello world", 11, 'o'), Some(7));
+        assert_eq!(super::find_char_backward("hello world", 7, 'o'), Some(4));
+        assert_eq!(super::find_char_backward("hello world", 0, 'o'), None);
+    }
+
+    #[test]
+    fn till_char_forward_stops_before() {
+        let pos = super::till_char_forward("hello world", 0, 'o');
+        assert!(pos.is_some());
+        assert!(pos.unwrap() < 4); // before the 'o' at pos 4
+    }
+
+    // ── Text object tests ─────────────────────────────────────────────
+
+    #[test]
+    fn text_object_inner_word_selects_word() {
+        let (start, end) = super::text_object_inner_word("hello world", 2).unwrap();
+        assert_eq!(&"hello world"[start..end], "hello");
+    }
+
+    #[test]
+    fn text_object_around_word_includes_whitespace() {
+        let (start, end) = super::text_object_around_word("hello world", 2).unwrap();
+        assert_eq!(&"hello world"[start..end], "hello ");
+    }
+
+    #[test]
+    fn text_object_bracket_inner() {
+        let (start, end) = super::text_object_bracket("fn(a, b)", 4, '(', ')', true).unwrap();
+        assert_eq!(&"fn(a, b)"[start..end], "a, b");
+    }
+
+    #[test]
+    fn text_object_bracket_around() {
+        let (start, end) = super::text_object_bracket("fn(a, b)", 4, '(', ')', false).unwrap();
+        assert_eq!(&"fn(a, b)"[start..end], "(a, b)");
+    }
+
+    #[test]
+    fn text_object_quote_inner() {
+        let text = r#"say "hello world" now"#;
+        let (start, end) = super::text_object_quote(text, 6, '"', true).unwrap();
+        assert_eq!(&text[start..end], "hello world");
+    }
+
+    #[test]
+    fn text_object_quote_around() {
+        let text = r#"say "hello world" now"#;
+        let (start, end) = super::text_object_quote(text, 6, '"', false).unwrap();
+        assert_eq!(&text[start..end], "\"hello world\"");
+    }
+
+    // ── Operator + motion tests ───────────────────────────────────────
+
+    #[test]
+    fn dw_deletes_word() {
+        let mut editor = LineEditor::new("> ", vec![]);
+        editor.vim_enabled = true;
+        let mut session = EditSession::new(true);
+        session.text = "hello world".to_string();
+        session.cursor = 0;
+        session.enter_normal_mode();
+
+        // Type: dw
+        editor.handle_char(&mut session, 'd');
+        editor.handle_char(&mut session, 'w');
+
+        assert_eq!(session.text, "world");
+        assert_eq!(editor.yank_buffer.text, "hello ");
+    }
+
+    #[test]
+    fn ciw_changes_inner_word() {
+        let mut editor = LineEditor::new("> ", vec![]);
+        editor.vim_enabled = true;
+        let mut session = EditSession::new(true);
+        session.text = "hello world".to_string();
+        session.cursor = 2; // in "hello"
+        session.enter_normal_mode();
+
+        // Type: ciw
+        editor.handle_char(&mut session, 'c');
+        editor.handle_char(&mut session, 'i');
+        editor.handle_char(&mut session, 'w');
+
+        assert_eq!(session.text, " world");
+        assert_eq!(session.mode, EditorMode::Insert);
+        assert_eq!(editor.yank_buffer.text, "hello");
+    }
+
+    #[test]
+    fn dd_deletes_line_and_yanks() {
+        let mut editor = LineEditor::new("> ", vec![]);
+        editor.vim_enabled = true;
+        let mut session = EditSession::new(true);
+        session.text = "line1\nline2\nline3".to_string();
+        session.cursor = 6; // start of line2
+        session.enter_normal_mode();
+
+        editor.handle_char(&mut session, 'd');
+        editor.handle_char(&mut session, 'd');
+
+        assert!(!session.text.contains("line2"));
+        assert!(editor.yank_buffer.linewise);
+    }
+
+    #[test]
+    fn count_prefix_repeats_motion() {
+        let mut editor = LineEditor::new("> ", vec![]);
+        editor.vim_enabled = true;
+        let mut session = EditSession::new(true);
+        session.text = "a b c d e".to_string();
+        session.cursor = 0;
+        session.enter_normal_mode();
+
+        // Type: 3w (move forward 3 words)
+        editor.handle_char(&mut session, '3');
+        editor.handle_char(&mut session, 'w');
+
+        assert_eq!(session.cursor, 6); // at 'd'
+    }
+
+    #[test]
+    fn x_deletes_char_under_cursor() {
+        let mut editor = LineEditor::new("> ", vec![]);
+        editor.vim_enabled = true;
+        let mut session = EditSession::new(true);
+        session.text = "hello".to_string();
+        session.cursor = 0;
+        session.enter_normal_mode();
+
+        editor.handle_char(&mut session, 'x');
+
+        assert_eq!(session.text, "ello");
+    }
+
+    #[test]
+    fn tilde_toggles_case() {
+        let mut editor = LineEditor::new("> ", vec![]);
+        editor.vim_enabled = true;
+        let mut session = EditSession::new(true);
+        session.text = "Hello".to_string();
+        session.cursor = 0;
+        session.enter_normal_mode();
+
+        editor.handle_char(&mut session, '~');
+
+        assert_eq!(&session.text[..1], "h"); // 'H' → 'h'
+    }
+
+    #[test]
+    fn first_non_blank_skips_whitespace() {
+        assert_eq!(super::first_non_blank("  hello", 0), 2);
+        assert_eq!(super::first_non_blank("hello", 0), 0);
+        assert_eq!(super::first_non_blank("\thello", 0), 1);
+    }
+
+    #[test]
+    fn resolve_text_object_dispatches_correctly() {
+        // iw
+        let r = super::resolve_text_object("hello world", 2, 'i', 'w');
+        assert_eq!(r, Some((0, 5)));
+
+        // i(
+        let r = super::resolve_text_object("fn(x, y)", 4, 'i', '(');
+        assert_eq!(r, Some((3, 7)));
+
+        // a"
+        let r = super::resolve_text_object(r#"say "hi" bye"#, 5, 'a', '"');
+        assert!(r.is_some());
+        let (s, e) = r.unwrap();
+        assert!(e > s);
     }
 }
