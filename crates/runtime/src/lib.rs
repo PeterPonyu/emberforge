@@ -69,7 +69,8 @@ pub use compact::{
     estimate_session_tokens, format_compact_summary, get_compact_continuation_message,
     micro_compact_session, post_compact_restore_file_hints, render_checkpoint_context,
     should_auto_compact, should_compact, AutoCompactConfig, AutoCompactState, CompactionConfig,
-    CompactionResult, PreCompactCheckpoint, TokenWarningLevel, TokenWarningState,
+    CompactionResult, MicroCompactResult, PreCompactCheckpoint, RecompactionInfo,
+    TokenWarningLevel, TokenWarningState,
 };
 pub use config::{
     ConfigEntry, ConfigError, ConfigLoader, ConfigSource, McpManagedProxyServerConfig,

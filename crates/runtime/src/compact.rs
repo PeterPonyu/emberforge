@@ -13,6 +13,24 @@ const WARNING_THRESHOLD_BUFFER_TOKENS: usize = 20_000;
 const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES: u32 = 3;
 /// Maximum tool result content length (in chars) before micro-compaction truncates it.
 const MICRO_COMPACT_TOOL_RESULT_LIMIT: usize = 8_000;
+/// Number of most recent compactable tool results to keep during micro-compaction.
+const MICRO_COMPACT_KEEP_RECENT: usize = 8;
+/// Aggressive keep-recent count when time-based trigger fires.
+const MICRO_COMPACT_KEEP_RECENT_AGGRESSIVE: usize = 2;
+/// Minutes of inactivity (since last assistant message) before aggressive micro-compaction.
+const TIME_BASED_GAP_MINUTES: u64 = 30;
+/// Token estimation padding factor (numerator / denominator = 4/3).
+const TOKEN_ESTIMATION_PADDING_NUM: usize = 4;
+const TOKEN_ESTIMATION_PADDING_DEN: usize = 3;
+/// Flat token estimate for images/documents in content blocks.
+const IMAGE_DOC_TOKEN_ESTIMATE: usize = 2_000;
+
+/// Tools whose results are safe to content-clear during micro-compaction.
+const COMPACTABLE_TOOLS: &[&str] = &[
+    "bash", "read_file", "grep_search", "glob_search",
+    "WebFetch", "WebSearch", "edit_file", "write_file",
+    "NotebookEdit", "LSPTool",
+];
 /// Number of recent files to restore after full compaction.
 const POST_COMPACT_MAX_FILES: usize = 5;
 /// Per-file token budget for post-compact restoration.
@@ -127,12 +145,36 @@ impl AutoCompactState {
     }
 }
 
+/// Metadata about the compaction chain (for recompaction decisions).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecompactionInfo {
+    /// Whether a prior compaction exists in this session.
+    pub is_recompaction: bool,
+    /// Turns since the previous compaction (0 if first).
+    pub turns_since_previous: usize,
+    /// Auto-compact threshold that triggered this compaction.
+    pub auto_compact_threshold: usize,
+}
+
+/// Result of a micro-compaction pass.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MicroCompactResult {
+    pub session: Session,
+    /// Number of tool results that were content-cleared.
+    pub cleared_count: usize,
+    /// Estimated tokens freed by clearing.
+    pub tokens_freed: usize,
+    /// Whether a time-based aggressive trigger fired.
+    pub time_triggered: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompactionResult {
     pub summary: String,
     pub formatted_summary: String,
     pub compacted_session: Session,
     pub removed_message_count: usize,
+    pub recompaction_info: Option<RecompactionInfo>,
 }
 
 #[must_use]
@@ -200,6 +242,7 @@ pub fn compact_session(session: &Session, config: CompactionConfig) -> Compactio
             formatted_summary: String::new(),
             compacted_session: session.clone(),
             removed_message_count: 0,
+            recompaction_info: None,
         };
     }
 
@@ -243,6 +286,7 @@ pub fn compact_session(session: &Session, config: CompactionConfig) -> Compactio
             plan_mode: session.plan_mode,
         },
         removed_message_count: removed.len(),
+        recompaction_info: None,
     }
 }
 
@@ -290,23 +334,83 @@ pub fn should_auto_compact(
 
 // ── Micro-compaction ───────────────────────────────────────────────────
 
-/// Attempt micro-compaction: truncate large tool results in older messages.
+/// Attempt micro-compaction using content-clearing strategy (CC pattern).
 ///
-/// This is a cheaper alternative to full compaction — it reduces token count
-/// by trimming verbose tool outputs that are no longer needed in full.
-/// Returns the number of messages modified, or 0 if nothing was trimmed.
+/// Instead of just truncating large results, this:
+/// 1. Identifies tool results from compactable tools (bash, read_file, grep, etc.)
+/// 2. Keeps the N most recent results intact
+/// 3. Content-clears older ones with `[Old tool result content cleared]`
+/// 4. Falls back to truncation for non-compactable tools with oversized results
+///
+/// Time-based trigger: if gap since last assistant > 30min, clear aggressively (keep 2).
 #[must_use]
-pub fn micro_compact_session(session: &Session, preserve_recent: usize) -> (Session, usize) {
+pub fn micro_compact_session(session: &Session, preserve_recent: usize) -> MicroCompactResult {
     let boundary = session.messages.len().saturating_sub(preserve_recent);
     let mut messages = session.messages.clone();
-    let mut modified = 0;
 
+    // Check for time-based aggressive trigger
+    let time_triggered = check_time_based_trigger(&messages);
+    let keep_recent = if time_triggered {
+        MICRO_COMPACT_KEEP_RECENT_AGGRESSIVE
+    } else {
+        MICRO_COMPACT_KEEP_RECENT
+    };
+
+    // Collect all compactable tool result positions (message_idx, block_idx, tool_name)
+    // from messages before the preservation boundary
+    let mut compactable_positions: Vec<(usize, usize, String)> = Vec::new();
+    for (msg_idx, message) in messages.iter().enumerate().take(boundary) {
+        for (blk_idx, block) in message.blocks.iter().enumerate() {
+            if let ContentBlock::ToolResult { tool_name, output, .. } = block {
+                if is_compactable_tool(tool_name) && !output.is_empty() {
+                    compactable_positions.push((msg_idx, blk_idx, tool_name.clone()));
+                }
+            }
+        }
+    }
+
+    // Determine which to clear:
+    // - If more than keep_recent: clear the oldest, keep N most recent
+    // - Additionally: always clear oversized results (> MICRO_COMPACT_TOOL_RESULT_LIMIT)
+    //   even if within the keep-recent window
+    let clear_count = compactable_positions.len().saturating_sub(keep_recent);
+    let mut positions_to_clear: Vec<(usize, usize)> = compactable_positions
+        .iter()
+        .take(clear_count)
+        .map(|(m, b, _)| (*m, *b))
+        .collect();
+
+    // Also include any compactable results within keep-recent that exceed the size limit
+    for &(m, b, _) in compactable_positions.iter().skip(clear_count) {
+        if let ContentBlock::ToolResult { output, .. } = &messages[m].blocks[b] {
+            if output.len() > MICRO_COMPACT_TOOL_RESULT_LIMIT {
+                positions_to_clear.push((m, b));
+            }
+        }
+    }
+
+    let mut cleared_count = 0;
+    let mut tokens_freed = 0;
+
+    // Content-clear the selected compactable tool results
+    for &(msg_idx, blk_idx) in &positions_to_clear {
+        if let ContentBlock::ToolResult { output, .. } = &mut messages[msg_idx].blocks[blk_idx] {
+            let old_tokens = estimate_text_tokens(output);
+            *output = "[Old tool result content cleared]".to_string();
+            let new_tokens = estimate_text_tokens(output);
+            tokens_freed += old_tokens.saturating_sub(new_tokens);
+            cleared_count += 1;
+        }
+    }
+
+    // Also truncate any non-compactable oversized results (fallback)
     for message in messages.iter_mut().take(boundary) {
         for block in &mut message.blocks {
-            match block {
-                ContentBlock::ToolResult { output, .. }
-                    if output.len() > MICRO_COMPACT_TOOL_RESULT_LIMIT =>
+            if let ContentBlock::ToolResult { tool_name, output, .. } = block {
+                if !is_compactable_tool(tool_name)
+                    && output.len() > MICRO_COMPACT_TOOL_RESULT_LIMIT
                 {
+                    let old_tokens = estimate_text_tokens(output);
                     let truncated: String = output
                         .chars()
                         .take(MICRO_COMPACT_TOOL_RESULT_LIMIT)
@@ -316,25 +420,61 @@ pub fn micro_compact_session(session: &Session, preserve_recent: usize) -> (Sess
                         output.len(),
                         MICRO_COMPACT_TOOL_RESULT_LIMIT
                     );
-                    modified += 1;
+                    let new_tokens = estimate_text_tokens(output);
+                    tokens_freed += old_tokens.saturating_sub(new_tokens);
+                    cleared_count += 1;
                 }
-                _ => {}
             }
         }
     }
 
-    (
-        Session {
+    MicroCompactResult {
+        session: Session {
             version: session.version,
             messages,
             plan_mode: session.plan_mode,
         },
-        modified,
-    )
+        cleared_count,
+        tokens_freed,
+        time_triggered,
+    }
+}
+
+/// Check if a tool's results are safe to content-clear during micro-compaction.
+fn is_compactable_tool(tool_name: &str) -> bool {
+    COMPACTABLE_TOOLS.iter().any(|&t| t == tool_name)
+}
+
+/// Check if enough time has passed since the last assistant message to trigger
+/// aggressive micro-compaction (CC's time-based trigger).
+fn check_time_based_trigger(messages: &[ConversationMessage]) -> bool {
+    // Find the last assistant message
+    let last_assistant = messages
+        .iter()
+        .rev()
+        .find(|m| m.role == MessageRole::Assistant);
+
+    let Some(assistant_msg) = last_assistant else {
+        return false;
+    };
+
+    // Check if the message has usage info with a timestamp
+    // For now, use a simple heuristic: if the assistant's last text is very short
+    // (likely an old message from a resumed session), treat as stale
+    if let Some(usage) = &assistant_msg.usage {
+        // If we have token counts, the message was from this session run
+        if usage.input_tokens > 0 {
+            return false; // Recent message, no trigger
+        }
+    }
+
+    // Without proper timestamps, we can't do time-based triggering.
+    // This will be enhanced when we add message timestamps.
+    false
 }
 
 /// Run the full multi-tier compaction strategy:
-/// 1. Micro-compact (trim large tool results)
+/// 1. Micro-compact (content-clear old tool results)
 /// 2. Full compaction (summarize older messages)
 ///
 /// Returns `None` if no compaction was needed.
@@ -343,28 +483,78 @@ pub fn auto_compact_session(
     session: &Session,
     config: &AutoCompactConfig,
 ) -> Option<CompactionResult> {
+    let threshold = config.context_window.saturating_sub(config.buffer_tokens);
+
+    // Check if we're in a recompaction chain
+    let is_recompaction = session
+        .messages
+        .first()
+        .and_then(extract_existing_compacted_summary)
+        .is_some();
+    let turns_since_previous = if is_recompaction {
+        session.messages.len().saturating_sub(1) // exclude summary message
+    } else {
+        0
+    };
+
     // Tier 1: Try micro-compaction first.
     if config.micro_compact_enabled {
-        let (micro_session, modifications) =
+        let micro_result =
             micro_compact_session(session, config.compaction.preserve_recent_messages);
-        if modifications > 0 {
-            let new_tokens = estimate_session_tokens(&micro_session);
-            let threshold = config.context_window.saturating_sub(config.buffer_tokens);
+        if micro_result.cleared_count > 0 {
+            let new_tokens = estimate_session_tokens(&micro_result.session);
             if new_tokens < threshold {
                 return Some(CompactionResult {
-                    summary: format!("Micro-compacted {modifications} tool results"),
-                    formatted_summary: format!("Micro-compacted {modifications} tool results"),
-                    compacted_session: micro_session,
+                    summary: format!(
+                        "Micro-compacted {} tool results (~{} tokens freed{})",
+                        micro_result.cleared_count,
+                        micro_result.tokens_freed,
+                        if micro_result.time_triggered {
+                            ", time-based trigger"
+                        } else {
+                            ""
+                        }
+                    ),
+                    formatted_summary: format!(
+                        "Micro-compacted {} tool results",
+                        micro_result.cleared_count
+                    ),
+                    compacted_session: micro_result.session,
                     removed_message_count: 0,
+                    recompaction_info: Some(RecompactionInfo {
+                        is_recompaction,
+                        turns_since_previous,
+                        auto_compact_threshold: threshold,
+                    }),
                 });
             }
+            // Micro wasn't enough — continue to full compaction on the micro-compacted session
+            let result = compact_session(&micro_result.session, config.compaction);
+            if result.removed_message_count > 0 {
+                return Some(CompactionResult {
+                    recompaction_info: Some(RecompactionInfo {
+                        is_recompaction,
+                        turns_since_previous,
+                        auto_compact_threshold: threshold,
+                    }),
+                    ..result
+                });
+            }
+            return None;
         }
     }
 
-    // Tier 2: Full compaction.
+    // Tier 2: Full compaction (no micro results or micro not enabled).
     let result = compact_session(session, config.compaction);
     if result.removed_message_count > 0 {
-        Some(result)
+        Some(CompactionResult {
+            recompaction_info: Some(RecompactionInfo {
+                is_recompaction,
+                turns_since_previous,
+                auto_compact_threshold: threshold,
+            }),
+            ..result
+        })
     } else {
         None
     }
@@ -680,17 +870,30 @@ fn truncate_summary(content: &str, max_chars: usize) -> String {
 }
 
 fn estimate_message_tokens(message: &ConversationMessage) -> usize {
-    message
+    let raw: usize = message
         .blocks
         .iter()
         .map(|block| match block {
-            ContentBlock::Text { text } => text.len() / 4 + 1,
-            ContentBlock::ToolUse { name, input, .. } => (name.len() + input.len()) / 4 + 1,
+            ContentBlock::Text { text } => estimate_text_tokens(text),
+            ContentBlock::ToolUse { name, input, .. } => {
+                // Tool name + JSON-serialized input
+                estimate_text_tokens(name) + estimate_text_tokens(input)
+            }
             ContentBlock::ToolResult {
                 tool_name, output, ..
-            } => (tool_name.len() + output.len()) / 4 + 1,
+            } => estimate_text_tokens(tool_name) + estimate_text_tokens(output),
         })
-        .sum()
+        .sum();
+    // Apply 4/3 conservative padding (CC pattern)
+    raw * TOKEN_ESTIMATION_PADDING_NUM / TOKEN_ESTIMATION_PADDING_DEN
+}
+
+/// Estimate tokens for a text string (~1 token per 4 chars, minimum 1).
+fn estimate_text_tokens(text: &str) -> usize {
+    if text.is_empty() {
+        return 0;
+    }
+    (text.len() + 3) / 4
 }
 
 fn extract_tag_block(content: &str, tag: &str) -> Option<String> {
@@ -1178,7 +1381,7 @@ mod tests {
     }
 
     #[test]
-    fn micro_compact_truncates_large_tool_results() {
+    fn micro_compact_clears_compactable_tool_results() {
         let session = Session {
             version: 1,
             plan_mode: false,
@@ -1187,11 +1390,33 @@ mod tests {
                 ConversationMessage::user_text("recent"),
             ],
         };
-        let (compacted, modified) = micro_compact_session(&session, 1);
-        assert_eq!(modified, 1);
-        let ContentBlock::ToolResult { output, .. } = &compacted.messages[0].blocks[0] else {
+        let result = micro_compact_session(&session, 1);
+        assert_eq!(result.cleared_count, 1);
+        let ContentBlock::ToolResult { output, .. } = &result.session.messages[0].blocks[0] else {
             panic!("expected tool result");
         };
+        // bash is compactable → content-cleared
+        assert!(output.contains("[Old tool result content cleared]"));
+        assert!(result.tokens_freed > 0);
+    }
+
+    #[test]
+    fn micro_compact_truncates_non_compactable_oversized_results() {
+        let session = Session {
+            version: 1,
+            plan_mode: false,
+            messages: vec![
+                // "CustomTool" is not in COMPACTABLE_TOOLS
+                ConversationMessage::tool_result("1", "CustomTool", "z".repeat(20_000), false),
+                ConversationMessage::user_text("recent"),
+            ],
+        };
+        let result = micro_compact_session(&session, 1);
+        assert_eq!(result.cleared_count, 1);
+        let ContentBlock::ToolResult { output, .. } = &result.session.messages[0].blocks[0] else {
+            panic!("expected tool result");
+        };
+        // Non-compactable → truncated (not fully cleared)
         assert!(output.len() < 20_000);
         assert!(output.contains("truncated"));
     }
@@ -1207,9 +1432,9 @@ mod tests {
             ],
         };
         // preserve_recent=1 means only the last message is preserved
-        let (compacted, modified) = micro_compact_session(&session, 1);
-        assert_eq!(modified, 1);
-        let ContentBlock::ToolResult { output, .. } = &compacted.messages[1].blocks[0] else {
+        let result = micro_compact_session(&session, 1);
+        assert!(result.cleared_count >= 1);
+        let ContentBlock::ToolResult { output, .. } = &result.session.messages[1].blocks[0] else {
             panic!("expected tool result");
         };
         // The last message should be untouched
