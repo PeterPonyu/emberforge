@@ -5,13 +5,17 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_stream::stream;
+use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use runtime::{ConversationMessage, Session as RuntimeSession};
+use runtime::{
+    BridgeMessage, BridgeState, ControlRequestBody, ConversationMessage, InboundAction,
+    Session as RuntimeSession,
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, RwLock};
 
@@ -24,6 +28,7 @@ const BROADCAST_CAPACITY: usize = 64;
 pub struct AppState {
     sessions: SessionStore,
     next_session_id: Arc<AtomicU64>,
+    bridge: Arc<RwLock<BridgeState>>,
 }
 
 impl AppState {
@@ -32,6 +37,7 @@ impl AppState {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             next_session_id: Arc::new(AtomicU64::new(1)),
+            bridge: Arc::new(RwLock::new(BridgeState::new())),
         }
     }
 
@@ -170,6 +176,8 @@ pub fn app(state: AppState) -> Router {
         .route("/sessions/{id}/message", post(send_message))
         .route("/sessions/{id}/teleport", get(teleport_export))
         .route("/sessions/import", post(teleport_import))
+        .route("/bridge", get(bridge_ws_handler))
+        .route("/bridge/sessions", post(create_bridge_session).get(list_bridge_sessions))
         .with_state(state)
 }
 
@@ -284,6 +292,105 @@ async fn stream_session_events(
     };
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+// ── Bridge endpoints ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateBridgeSessionRequest {
+    #[serde(default)]
+    pub ide_name: Option<String>,
+    #[serde(default)]
+    pub ide_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateBridgeSessionResponse {
+    pub session_id: String,
+}
+
+async fn create_bridge_session(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateBridgeSessionRequest>,
+) -> (StatusCode, Json<CreateBridgeSessionResponse>) {
+    let bridge = state.bridge.read().await;
+    let session_id = bridge.create_session(payload.ide_name, payload.ide_version);
+    (
+        StatusCode::CREATED,
+        Json(CreateBridgeSessionResponse { session_id }),
+    )
+}
+
+async fn list_bridge_sessions(
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    let bridge = state.bridge.read().await;
+    let sessions = bridge.list_sessions();
+    Json(serde_json::json!({ "sessions": sessions }))
+}
+
+async fn bridge_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_bridge_socket(socket, state))
+}
+
+async fn handle_bridge_socket(mut socket: WebSocket, state: AppState) {
+    // Send initial capabilities
+    let init_msg = serde_json::json!({
+        "type": "system",
+        "uuid": format!("init-{}", unix_timestamp_millis()),
+        "content": "Bridge connected",
+        "subtype": "bridge_init"
+    });
+    let _ = socket
+        .send(WsMessage::Text(serde_json::to_string(&init_msg).unwrap_or_default().into()))
+        .await;
+
+    // Keepalive + message loop
+    loop {
+        tokio::select! {
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(WsMessage::Text(text))) => {
+                        let bridge = state.bridge.read().await;
+                        if let Some(action) = bridge.process_inbound(&text) {
+                            match action {
+                                InboundAction::UserMessage { uuid: _, content } => {
+                                    // Echo back as assistant (placeholder — real impl routes to conversation runtime)
+                                    let response = bridge.build_assistant_message(
+                                        &format!("[bridge] Received: {}", &content[..content.len().min(100)])
+                                    );
+                                    if let Ok(json) = serde_json::to_string(&response) {
+                                        let _ = socket.send(WsMessage::Text(json.into())).await;
+                                    }
+                                }
+                                InboundAction::ControlRequest { request_id, request } => {
+                                    let response = bridge.handle_control_request(&request_id, &request);
+                                    if let Ok(json) = serde_json::to_string(&response) {
+                                        let _ = socket.send(WsMessage::Text(json.into())).await;
+                                    }
+                                }
+                                InboundAction::ControlResponse { .. } => {
+                                    // Received a response to a request we sent — handle async
+                                }
+                            }
+                        }
+                    }
+                    Some(Ok(WsMessage::Ping(data))) => {
+                        let _ = socket.send(WsMessage::Pong(data)).await;
+                    }
+                    Some(Ok(WsMessage::Close(_))) | None => break,
+                    _ => {}
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_secs(15)) => {
+                // Send keepalive ping
+                let _ = socket.send(WsMessage::Ping(vec![].into())).await;
+            }
+        }
+    }
 }
 
 async fn health_check() -> Json<HealthResponse> {

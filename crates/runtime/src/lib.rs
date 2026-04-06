@@ -160,7 +160,10 @@ pub use bash_classifier::{
     classify_command, classify_command_api, classify_command_cached, clear_classification_cache,
     is_auto_approvable, ApiClassificationResult, ClassificationResult, SafetyLabel,
 };
-pub use bridge::{BridgeError, BridgeNotification, BridgeRequest, BridgeResponse, BridgeState};
+pub use bridge::{
+    BoundedUuidSet, BridgeMessage, BridgeSession, BridgeState, ControlRequestBody,
+    ControlResponseBody, ControlResponseStatus, InboundAction,
+};
 pub use task_store::{
     create_task_manifest, drain_notifications, generate_task_id, list_manifests,
     load_manifest, read_task_output, save_manifest, spawn_shell_task, stop_task,

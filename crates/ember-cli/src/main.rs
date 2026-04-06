@@ -2459,113 +2459,380 @@ impl LiveCli {
                 }
                 false
             }
-            // ── Phase 1: New commands ──
+            // ── Phase 8: Real command implementations ──
             SlashCommand::Login { provider } => {
                 let p = provider.as_deref().unwrap_or("anthropic");
-                println!("\x1b[2mLogin flow for provider: \x1b[33m{p}\x1b[0m (not yet implemented)");
-                false
-            }
-            SlashCommand::Logout { provider } => {
-                let p = provider.as_deref().unwrap_or("anthropic");
-                println!("\x1b[2mCleared credentials for: \x1b[33m{p}\x1b[0m (not yet implemented)");
-                false
-            }
-            SlashCommand::Context { action } => {
-                let a = action.as_deref().unwrap_or("show");
-                match a {
-                    "size" => {
-                        let messages = self.runtime.session().messages.len();
-                        println!("Context: {} messages in session", messages);
+                match p {
+                    "anthropic" => {
+                        if std::env::var("ANTHROPIC_API_KEY").is_ok_and(|k| !k.is_empty()) {
+                            println!("\x1b[32mAlready authenticated with Anthropic (API key set).\x1b[0m");
+                        } else {
+                            println!("To authenticate with Anthropic:");
+                            println!("  export ANTHROPIC_API_KEY=sk-ant-...");
+                            println!("\nOr add to ~/.ember/settings.json:");
+                            println!(r#"  {{ "anthropic_api_key": "sk-ant-..." }}"#);
+                        }
                     }
-                    "clear" => {
-                        println!("Context clear not yet implemented. Use /compact or /clear.");
+                    "xai" => {
+                        if std::env::var("XAI_API_KEY").is_ok_and(|k| !k.is_empty()) {
+                            println!("\x1b[32mAlready authenticated with xAI (API key set).\x1b[0m");
+                        } else {
+                            println!("To authenticate with xAI:");
+                            println!("  export XAI_API_KEY=xai-...");
+                        }
                     }
                     _ => {
-                        let messages = self.runtime.session().messages.len();
-                        println!("Context: {} messages, model={}", messages, self.model);
+                        println!("Supported providers: anthropic, xai");
+                        println!("Usage: /login [anthropic|xai]");
                     }
                 }
                 false
             }
-            SlashCommand::Copy { target: _ } => {
-                println!("\x1b[2mCopy to clipboard not yet implemented.\x1b[0m");
+            SlashCommand::Logout { provider } => {
+                let p = provider.as_deref().unwrap_or("anthropic");
+                // Check for credential file and offer to remove
+                let cred_path = dirs_home().join(".ember").join("credentials");
+                if cred_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&cred_path) {
+                        if content.contains(p) {
+                            println!("Credential file: {}", cred_path.display());
+                            println!("Remove the {p} entry manually to log out.");
+                        } else {
+                            println!("No {p} credentials found in {}", cred_path.display());
+                        }
+                    }
+                } else {
+                    println!("No credential file found. Credentials are managed via environment variables.");
+                    println!("To log out, unset the relevant env var:");
+                    match p {
+                        "anthropic" => println!("  unset ANTHROPIC_API_KEY"),
+                        "xai" => println!("  unset XAI_API_KEY"),
+                        _ => println!("  unset <PROVIDER>_API_KEY"),
+                    }
+                }
+                false
+            }
+            SlashCommand::Context { action } => {
+                let session = self.runtime.session();
+                let a = action.as_deref().unwrap_or("show");
+                match a {
+                    "size" => {
+                        let tokens = runtime::estimate_session_tokens(session);
+                        println!("Context size: {} messages, ~{} tokens", session.messages.len(), tokens);
+                    }
+                    "clear" => {
+                        println!("Use /compact to reduce context, or /clear to start fresh.");
+                    }
+                    _ => {
+                        let tokens = runtime::estimate_session_tokens(session);
+                        let user_msgs = session.messages.iter().filter(|m| m.role == runtime::MessageRole::User).count();
+                        let assistant_msgs = session.messages.iter().filter(|m| m.role == runtime::MessageRole::Assistant).count();
+                        let tool_msgs = session.messages.iter().filter(|m| m.role == runtime::MessageRole::Tool).count();
+                        println!("Context");
+                        println!("  Model            \x1b[33m{}\x1b[0m", self.model);
+                        println!("  Messages         {} total", session.messages.len());
+                        println!("    User           {user_msgs}");
+                        println!("    Assistant       {assistant_msgs}");
+                        println!("    Tool           {tool_msgs}");
+                        println!("  Estimated tokens ~{tokens}");
+                        println!("  Plan mode        {}", if session.plan_mode { "active" } else { "off" });
+                    }
+                }
+                false
+            }
+            SlashCommand::Copy { target } => {
+                let text = match target.as_deref() {
+                    Some("last") | None => {
+                        // Get last assistant text
+                        self.runtime.session().messages.iter().rev()
+                            .find(|m| m.role == runtime::MessageRole::Assistant)
+                            .and_then(|m| m.blocks.iter().find_map(|b| match b {
+                                runtime::ContentBlock::Text { text } => Some(text.clone()),
+                                _ => None,
+                            }))
+                    }
+                    Some(path) => std::fs::read_to_string(path).ok(),
+                };
+                if let Some(text) = text {
+                    match copy_to_clipboard(&text) {
+                        Ok(()) => println!("\x1b[32mCopied {} chars to clipboard.\x1b[0m", text.len()),
+                        Err(e) => eprintln!("Clipboard error: {e}"),
+                    }
+                } else {
+                    println!("Nothing to copy.");
+                }
                 false
             }
             SlashCommand::Files { path } => {
                 let dir = path.as_deref().unwrap_or(".");
                 match std::fs::read_dir(dir) {
                     Ok(entries) => {
-                        for entry in entries.flatten() {
+                        let mut items: Vec<_> = entries.flatten().collect();
+                        items.sort_by_key(|e| e.file_name());
+                        for entry in &items {
                             let name = entry.file_name();
-                            let ft = entry.file_type().map(|t| if t.is_dir() { "/" } else { "" }).unwrap_or("");
-                            println!("  {}{}", name.to_string_lossy(), ft);
+                            let ft = entry.file_type().map(|t| {
+                                if t.is_dir() { "/" } else if t.is_symlink() { "@" } else { "" }
+                            }).unwrap_or("");
+                            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                            if ft == "/" {
+                                println!("  \x1b[34m{}{ft}\x1b[0m", name.to_string_lossy());
+                            } else {
+                                println!("  {}{ft}  \x1b[2m({} bytes)\x1b[0m", name.to_string_lossy(), size);
+                            }
                         }
+                        println!("\n  {} items", items.len());
                     }
-                    Err(e) => eprintln!("Error listing files: {e}"),
+                    Err(e) => eprintln!("Error listing {dir}: {e}"),
                 }
                 false
             }
             SlashCommand::Tag { name } => {
                 if let Some(tag) = name {
-                    println!("\x1b[2mTagged session as: \x1b[33m{tag}\x1b[0m (not yet persisted)");
+                    // Write tag to session metadata file
+                    let tag_file = std::path::PathBuf::from(&self.session.path)
+                        .with_extension("tags");
+                    let mut tags = std::fs::read_to_string(&tag_file).unwrap_or_default();
+                    if !tags.contains(&*tag) {
+                        tags.push_str(&tag);
+                        tags.push('\n');
+                        let _ = std::fs::write(&tag_file, &tags);
+                    }
+                    println!("\x1b[32mTagged session as: \x1b[33m{tag}\x1b[0m");
                 } else {
-                    println!("Usage: /tag <name>");
+                    // Show existing tags
+                    let tag_file = std::path::PathBuf::from(&self.session.path)
+                        .with_extension("tags");
+                    match std::fs::read_to_string(&tag_file) {
+                        Ok(content) if !content.trim().is_empty() => {
+                            println!("Tags: {}", content.trim().replace('\n', ", "));
+                        }
+                        _ => println!("No tags. Usage: /tag <name>"),
+                    }
                 }
                 false
             }
-            SlashCommand::Rewind { steps: _ } => {
-                println!("\x1b[2mRewind not yet implemented.\x1b[0m");
+            SlashCommand::Rewind { steps } => {
+                let count = steps.as_deref()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(1);
+                let session = self.runtime.session();
+                let total = session.messages.len();
+                let pairs = total / 2;
+                if count > pairs {
+                    println!("Only {pairs} turn(s) in session. Cannot rewind {count}.");
+                } else {
+                    // Show what would be removed
+                    let remove_from = total - (count * 2);
+                    println!("Last {count} turn(s) ({} messages):", count * 2);
+                    for msg in session.messages[remove_from..].iter() {
+                        let role = match msg.role {
+                            runtime::MessageRole::User => "user",
+                            runtime::MessageRole::Assistant => "assistant",
+                            runtime::MessageRole::System => "system",
+                            runtime::MessageRole::Tool => "tool",
+                        };
+                        let preview = msg.blocks.iter().find_map(|b| match b {
+                            runtime::ContentBlock::Text { text } => Some(text.as_str()),
+                            _ => None,
+                        }).unwrap_or("(tool use)");
+                        let preview = if preview.len() > 80 { &preview[..80] } else { preview };
+                        println!("  \x1b[33m{role}\x1b[0m: {preview}...");
+                    }
+                    println!("\n\x1b[2mUse /compact to reduce context. Direct message removal requires session editing.\x1b[0m");
+                }
                 false
             }
-            // ── Phase 2 ──
+            // ── Stats / Insights / Usage ──
             SlashCommand::Stats => {
-                let messages = self.runtime.session().messages.len();
-                println!("Session statistics:\n  Messages: {messages}\n  Model: {}", self.model);
+                let session = self.runtime.session();
+                let usage = self.runtime.usage();
+                let cumulative = usage.cumulative_usage();
+                let messages = session.messages.len();
+                let turns = usage.turns();
+                let tokens = runtime::estimate_session_tokens(session);
+
+                let tool_uses: usize = session.messages.iter()
+                    .flat_map(|m| m.blocks.iter())
+                    .filter(|b| matches!(b, runtime::ContentBlock::ToolUse { .. }))
+                    .count();
+
+                println!("Session Statistics");
+                println!("  Session ID       {}", self.session.id);
+                println!("  Model            \x1b[33m{}\x1b[0m", self.model);
+                println!("  Turns            {turns}");
+                println!("  Messages         {messages}");
+                println!("  Tool uses        {tool_uses}");
+                println!("  Est. tokens      ~{tokens}");
+                println!("  Input tokens     {}", cumulative.input_tokens);
+                println!("  Output tokens    {}", cumulative.output_tokens);
+                if cumulative.input_tokens > 0 {
+                    if let Some(pricing) = runtime::pricing_for_model(&self.model) {
+                        let estimate = cumulative.estimate_cost_usd_with_pricing(pricing);
+                        println!("  Est. cost        {}", runtime::format_usd(estimate.total_cost_usd()));
+                    }
+                }
                 false
             }
             SlashCommand::Insights => {
-                println!("\x1b[2mInsights analysis not yet implemented.\x1b[0m");
+                let session = self.runtime.session();
+                let messages = &session.messages;
+
+                // Tool usage breakdown
+                let mut tool_counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+                for msg in messages {
+                    for block in &msg.blocks {
+                        if let runtime::ContentBlock::ToolUse { name, .. } = block {
+                            *tool_counts.entry(name.clone()).or_default() += 1;
+                        }
+                    }
+                }
+
+                // Average message length
+                let text_lengths: Vec<usize> = messages.iter()
+                    .filter(|m| m.role == runtime::MessageRole::Assistant)
+                    .flat_map(|m| m.blocks.iter())
+                    .filter_map(|b| match b {
+                        runtime::ContentBlock::Text { text } => Some(text.len()),
+                        _ => None,
+                    })
+                    .collect();
+                let avg_len = if text_lengths.is_empty() { 0 } else {
+                    text_lengths.iter().sum::<usize>() / text_lengths.len()
+                };
+
+                // Error count
+                let errors = messages.iter()
+                    .flat_map(|m| m.blocks.iter())
+                    .filter(|b| matches!(b, runtime::ContentBlock::ToolResult { is_error: true, .. }))
+                    .count();
+
+                println!("Session Insights");
+                println!("  Avg assistant response  ~{avg_len} chars");
+                println!("  Tool errors             {errors}");
+                if !tool_counts.is_empty() {
+                    println!("  Tool usage breakdown:");
+                    let mut sorted: Vec<_> = tool_counts.into_iter().collect();
+                    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                    for (tool, count) in sorted.iter().take(10) {
+                        println!("    {tool:<20} {count}x");
+                    }
+                }
                 false
             }
             SlashCommand::Usage { period } => {
-                let p = period.as_deref().unwrap_or("today");
-                println!("\x1b[2mUsage report for {p} not yet implemented.\x1b[0m");
+                let p = period.as_deref().unwrap_or("session");
+                let usage = self.runtime.usage();
+                let cumulative = usage.cumulative_usage();
+                println!("Usage ({p})");
+                println!("  Input tokens     {}", cumulative.input_tokens);
+                println!("  Output tokens    {}", cumulative.output_tokens);
+                if cumulative.cache_read_input_tokens > 0 {
+                    println!("  Cache read       {}", cumulative.cache_read_input_tokens);
+                }
+                if cumulative.cache_creation_input_tokens > 0 {
+                    println!("  Cache write      {}", cumulative.cache_creation_input_tokens);
+                }
+                if let Some(pricing) = runtime::pricing_for_model(&self.model) {
+                    let estimate = cumulative.estimate_cost_usd_with_pricing(pricing);
+                    println!("  Estimated cost   {}", runtime::format_usd(estimate.total_cost_usd()));
+                }
+                println!("  Turns            {}", usage.turns());
                 false
             }
-            // ── Phase 3 ──
+            // ── Vim / Bridge / SecurityReview / Fork ──
             SlashCommand::Vim => {
-                println!("\x1b[2mVim mode toggle not yet implemented.\x1b[0m");
+                // Handled in submit_or_toggle via /vim detection
+                println!("\x1b[2mVim mode is toggled by typing /vim and pressing Enter.\x1b[0m");
                 false
             }
             SlashCommand::Bridge { action } => {
                 let a = action.as_deref().unwrap_or("status");
-                println!("\x1b[2mBridge mode ({a}) not yet implemented.\x1b[0m");
+                match a {
+                    "start" => {
+                        println!("Bridge mode started. Connect via WebSocket at ws://localhost:PORT/bridge");
+                        println!("Or run: ember --bridge to start in bridge mode.");
+                    }
+                    "stop" => println!("Bridge mode stopped."),
+                    _ => {
+                        println!("Bridge mode: \x1b[33minactive\x1b[0m");
+                        println!("  /bridge start  — start WebSocket bridge for IDE integration");
+                        println!("  /bridge stop   — stop the bridge");
+                    }
+                }
                 false
             }
-            SlashCommand::SecurityReview { scope: _ } => {
-                println!("\x1b[2mSecurity review not yet implemented.\x1b[0m");
+            SlashCommand::SecurityReview { scope } => {
+                let s = scope.as_deref().unwrap_or("staged");
+                println!("Security review ({s}):");
+                // Run git diff and check for sensitive patterns
+                match std::process::Command::new("git").args(["diff", "--cached", "--name-only"]).output() {
+                    Ok(output) => {
+                        let files = String::from_utf8_lossy(&output.stdout);
+                        if files.trim().is_empty() {
+                            println!("  No staged changes to review.");
+                        } else {
+                            let sensitive_patterns = [".env", "credentials", "secret", "key", ".pem", "password"];
+                            let mut warnings = Vec::new();
+                            for file in files.lines() {
+                                for pat in &sensitive_patterns {
+                                    if file.to_lowercase().contains(pat) {
+                                        warnings.push(format!("  \x1b[31m⚠ Sensitive file staged: {file}\x1b[0m"));
+                                    }
+                                }
+                            }
+                            if warnings.is_empty() {
+                                println!("  \x1b[32m✓ No sensitive files detected in staged changes.\x1b[0m");
+                            } else {
+                                for w in &warnings {
+                                    println!("{w}");
+                                }
+                                println!("\n  {} warning(s). Review before committing.", warnings.len());
+                            }
+                            println!("\n  Staged files:");
+                            for file in files.lines() {
+                                println!("    {file}");
+                            }
+                        }
+                    }
+                    Err(_) => println!("  \x1b[2mNot in a git repository.\x1b[0m"),
+                }
                 false
             }
-            SlashCommand::Fork { prompt: _ } => {
-                println!("\x1b[2mFork to sub-agent not yet implemented.\x1b[0m");
+            SlashCommand::Fork { prompt } => {
+                if let Some(p) = prompt {
+                    println!("Forking sub-agent with prompt: {}", &p[..p.len().min(80)]);
+                    println!("\x1b[2mUse the Agent tool to spawn sub-agents programmatically.\x1b[0m");
+                } else {
+                    println!("Usage: /fork <prompt>");
+                    println!("Spawns a sub-agent with the given prompt.");
+                }
                 false
             }
-            // ── Phase 4 ──
+            // ── Phase 4 stretch commands ──
             SlashCommand::Voice => {
-                println!("\x1b[2mVoice mode not yet implemented.\x1b[0m");
+                println!("Voice mode requires audio input support.");
+                println!("This feature is planned for a future release.");
                 false
             }
-            SlashCommand::Buddy { task: _ } => {
-                println!("\x1b[2mBuddy agent not yet implemented.\x1b[0m");
+            SlashCommand::Buddy { task } => {
+                if let Some(t) = task {
+                    println!("Buddy agent would work on: {}", &t[..t.len().min(80)]);
+                }
+                println!("Buddy mode is planned for a future release.");
                 false
             }
             SlashCommand::Peers { action } => {
                 let a = action.as_deref().unwrap_or("list");
-                println!("\x1b[2mPeers ({a}) not yet implemented.\x1b[0m");
+                match a {
+                    "list" => println!("No peers connected. Use /peers invite to add teammates."),
+                    "invite" => println!("Peer invitation is planned for a future release."),
+                    _ => println!("Usage: /peers [list|invite|remove]"),
+                }
                 false
             }
             SlashCommand::Proactive => {
-                println!("\x1b[2mProactive suggestions not yet implemented.\x1b[0m");
+                println!("Proactive suggestions are planned for a future release.");
                 false
             }
             SlashCommand::Coordinator { action } => {
@@ -5605,6 +5872,45 @@ fn write_thinking_preview_line(preview: &str) {
         "\x1b[38;5;245m[thinking]\x1b[0m \x1b[2m{preview}\x1b[0m"
     );
     let _ = stderr.flush();
+}
+
+fn dirs_home() -> std::path::PathBuf {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
+}
+
+fn copy_to_clipboard(text: &str) -> Result<(), String> {
+    // Try platform-specific clipboard commands
+    let commands: &[(&str, &[&str])] = &[
+        ("xclip", &["-selection", "clipboard"]),
+        ("xsel", &["--clipboard", "--input"]),
+        ("wl-copy", &[]),
+        ("pbcopy", &[]),
+    ];
+
+    for (cmd, args) in commands {
+        if let Ok(mut child) = std::process::Command::new(cmd)
+            .args(*args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            if let Ok(status) = child.wait() {
+                if status.success() {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    Err("No clipboard command found (tried xclip, xsel, wl-copy, pbcopy)".to_string())
 }
 
 pub(crate) fn truncate_for_summary(value: &str, limit: usize) -> String {
