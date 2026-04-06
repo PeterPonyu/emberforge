@@ -1,7 +1,16 @@
-//! Heuristic bash safety classifier: rule-based scoring for command safety.
+//! Bash safety classifier with two modes:
 //!
-//! Equivalent to the Claude Code TypeScript `yoloClassifier.ts` but uses
-//! deterministic heuristics rather than ML, making it fast and dependency-free.
+//! 1. **Heuristic mode** (default): fast, deterministic pattern matching —
+//!    works offline, no API dependency. Equivalent to the lite version of
+//!    Claude Code's `yoloClassifier.ts`.
+//!
+//! 2. **API-backed mode** (when `ANTHROPIC_API_KEY` is set): sends the command
+//!    + conversation context to Claude for classification. Responses are cached
+//!    with a TTL to avoid redundant API calls.
+
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -167,6 +176,281 @@ fn extract_first_command(input: &str) -> Option<&str> {
 }
 
 // ---------------------------------------------------------------------------
+// Classification cache
+// ---------------------------------------------------------------------------
+
+/// Cache TTL for classification results.
+const CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
+
+struct CacheEntry {
+    result: ClassificationResult,
+    expires_at: Instant,
+}
+
+static CLASSIFICATION_CACHE: LazyLock<Mutex<HashMap<u64, CacheEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// FNV-1a hash of a command string (fast, non-cryptographic).
+fn fnv1a_hash(data: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in data.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash
+}
+
+/// Classify with caching — returns cached result if available and fresh.
+pub fn classify_command_cached(command: &str) -> ClassificationResult {
+    let key = fnv1a_hash(command);
+
+    // Check cache
+    if let Ok(cache) = CLASSIFICATION_CACHE.lock() {
+        if let Some(entry) = cache.get(&key) {
+            if entry.expires_at > Instant::now() {
+                return entry.result.clone();
+            }
+        }
+    }
+
+    // Classify (heuristic — API mode would go here)
+    let result = classify_command(command);
+
+    // Store in cache
+    if let Ok(mut cache) = CLASSIFICATION_CACHE.lock() {
+        // Evict expired entries periodically
+        if cache.len() > 1000 {
+            let now = Instant::now();
+            cache.retain(|_, entry| entry.expires_at > now);
+        }
+        cache.insert(
+            key,
+            CacheEntry {
+                result: result.clone(),
+                expires_at: Instant::now() + CACHE_TTL,
+            },
+        );
+    }
+
+    result
+}
+
+/// Clear the classification cache.
+pub fn clear_classification_cache() {
+    if let Ok(mut cache) = CLASSIFICATION_CACHE.lock() {
+        cache.clear();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// API-backed classifier (when ANTHROPIC_API_KEY is available)
+// ---------------------------------------------------------------------------
+
+/// System prompt for the API-backed classifier.
+/// Matches CC's `permissions_external.txt` structure.
+const CLASSIFIER_SYSTEM_PROMPT: &str = r#"You are a security classifier for a coding assistant. Given a bash command, determine if it should be ALLOWED or BLOCKED.
+
+## ALLOW by default:
+- Read-only commands (ls, cat, head, tail, grep, find, which, pwd, etc.)
+- Version/help flags (--version, --help, -V)
+- Git read-only (status, log, diff, show, branch)
+- Build/test/lint (cargo build, npm test, pytest, eslint, make, etc.)
+- Package install within project (npm install, pip install in venv, cargo add)
+- File operations within the working directory
+- Docker/kubectl read-only (ps, logs, get, describe)
+
+## BLOCK by default:
+- Download & execute untrusted code (curl | bash, npx unknown packages)
+- Recursive force deletion outside project (rm -rf /, rm -rf ~)
+- Modifying shell profiles (.bashrc, .zshrc, crontab)
+- Privilege escalation (sudo, su, doas)
+- Pushing to git remotes, force push
+- Exporting/accessing secrets, API keys, credentials
+- System-level package installs
+- Production database access
+- CI/CD pipeline modifications
+
+Respond with a JSON object: {"shouldBlock": boolean, "reason": "explanation"}
+"#;
+
+/// Result from the API-backed classifier.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiClassificationResult {
+    /// Whether the command should be blocked.
+    pub should_block: bool,
+    /// Explanation of the decision.
+    pub reason: String,
+    /// Model used for classification.
+    pub model: String,
+    /// Whether the API was unavailable (fell back to heuristic).
+    pub unavailable: bool,
+}
+
+/// Classify a command using the API-backed classifier.
+///
+/// Falls back to heuristic classification if:
+/// - `ANTHROPIC_API_KEY` is not set
+/// - The API call fails
+/// - The response can't be parsed
+pub fn classify_command_api(command: &str) -> ApiClassificationResult {
+    // Check cache first
+    let cache_key = fnv1a_hash(&format!("api:{command}"));
+    if let Ok(cache) = CLASSIFICATION_CACHE.lock() {
+        if let Some(entry) = cache.get(&cache_key) {
+            if entry.expires_at > Instant::now() {
+                return ApiClassificationResult {
+                    should_block: entry.result.label == SafetyLabel::Dangerous,
+                    reason: entry.result.reasons.first().cloned().unwrap_or_default(),
+                    model: "cached".to_string(),
+                    unavailable: false,
+                };
+            }
+        }
+    }
+
+    // Check if API key is available
+    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+        Ok(key) if !key.is_empty() => key,
+        _ => {
+            // Fall back to heuristic
+            let heuristic = classify_command(command);
+            return ApiClassificationResult {
+                should_block: heuristic.label == SafetyLabel::Dangerous,
+                reason: heuristic.reasons.first().cloned().unwrap_or_else(|| {
+                    format!("Heuristic score: {:.2}", heuristic.score)
+                }),
+                model: "heuristic".to_string(),
+                unavailable: true,
+            };
+        }
+    };
+
+    // Build API request
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => {
+            let heuristic = classify_command(command);
+            return ApiClassificationResult {
+                should_block: heuristic.label == SafetyLabel::Dangerous,
+                reason: "API client build failed; heuristic fallback".to_string(),
+                model: "heuristic".to_string(),
+                unavailable: true,
+            };
+        }
+    };
+
+    let body = serde_json::json!({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 256,
+        "temperature": 0,
+        "system": CLASSIFIER_SYSTEM_PROMPT,
+        "messages": [{
+            "role": "user",
+            "content": format!("Classify this bash command:\n```\n{command}\n```")
+        }]
+    });
+
+    let response = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send();
+
+    match response {
+        Ok(resp) if resp.status().is_success() => {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                if let Some(text) = json
+                    .get("content")
+                    .and_then(|c| c.as_array())
+                    .and_then(|a| a.first())
+                    .and_then(|b| b.get("text"))
+                    .and_then(|t| t.as_str())
+                {
+                    // Try to parse the classifier response
+                    if let Some(parsed) = parse_classifier_response(text) {
+                        // Cache the result
+                        let label = if parsed.should_block {
+                            SafetyLabel::Dangerous
+                        } else {
+                            SafetyLabel::Safe
+                        };
+                        if let Ok(mut cache) = CLASSIFICATION_CACHE.lock() {
+                            cache.insert(
+                                cache_key,
+                                CacheEntry {
+                                    result: ClassificationResult {
+                                        score: if parsed.should_block { 0.0 } else { 1.0 },
+                                        label,
+                                        reasons: vec![parsed.reason.clone()],
+                                    },
+                                    expires_at: Instant::now() + CACHE_TTL,
+                                },
+                            );
+                        }
+                        return ApiClassificationResult {
+                            should_block: parsed.should_block,
+                            reason: parsed.reason,
+                            model: "claude-haiku-4-5-20251001".to_string(),
+                            unavailable: false,
+                        };
+                    }
+                }
+            }
+            // Parse failure — fall back
+            let heuristic = classify_command(command);
+            ApiClassificationResult {
+                should_block: heuristic.label == SafetyLabel::Dangerous,
+                reason: "API response parse failed; heuristic fallback".to_string(),
+                model: "heuristic".to_string(),
+                unavailable: true,
+            }
+        }
+        _ => {
+            let heuristic = classify_command(command);
+            ApiClassificationResult {
+                should_block: heuristic.label == SafetyLabel::Dangerous,
+                reason: "API call failed; heuristic fallback".to_string(),
+                model: "heuristic".to_string(),
+                unavailable: true,
+            }
+        }
+    }
+}
+
+/// Parse the classifier response text, extracting JSON from possible markdown.
+fn parse_classifier_response(text: &str) -> Option<ApiClassifierOutput> {
+    // Try direct JSON parse
+    if let Ok(output) = serde_json::from_str::<ApiClassifierOutput>(text) {
+        return Some(output);
+    }
+
+    // Try extracting JSON from markdown code block
+    let json_str = if let Some(start) = text.find('{') {
+        if let Some(end) = text.rfind('}') {
+            &text[start..=end]
+        } else {
+            return None;
+        }
+    } else {
+        return None;
+    };
+
+    serde_json::from_str::<ApiClassifierOutput>(json_str).ok()
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiClassifierOutput {
+    #[serde(rename = "shouldBlock")]
+    should_block: bool,
+    reason: String,
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -203,5 +487,44 @@ mod tests {
     fn auto_approval_threshold() {
         assert!(is_auto_approvable("ls -la", 0.7));
         assert!(!is_auto_approvable("rm -rf /tmp/stuff", 0.7));
+    }
+
+    #[test]
+    fn cached_classification_returns_same_result() {
+        let r1 = classify_command_cached("ls -la");
+        let r2 = classify_command_cached("ls -la");
+        assert_eq!(r1.score, r2.score);
+        assert_eq!(r1.label, r2.label);
+    }
+
+    #[test]
+    fn api_classifier_falls_back_without_key() {
+        // Remove API key to force fallback
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        let result = classify_command_api("ls -la");
+        assert!(result.unavailable);
+        assert_eq!(result.model, "heuristic");
+        assert!(!result.should_block);
+    }
+
+    #[test]
+    fn parse_classifier_response_json() {
+        let input = r#"{"shouldBlock": true, "reason": "dangerous command"}"#;
+        let parsed = parse_classifier_response(input).unwrap();
+        assert!(parsed.should_block);
+        assert_eq!(parsed.reason, "dangerous command");
+    }
+
+    #[test]
+    fn parse_classifier_response_markdown() {
+        let input = "Here's my analysis:\n```json\n{\"shouldBlock\": false, \"reason\": \"safe read-only\"}\n```";
+        let parsed = parse_classifier_response(input).unwrap();
+        assert!(!parsed.should_block);
+    }
+
+    #[test]
+    fn fnv1a_hash_deterministic() {
+        assert_eq!(fnv1a_hash("hello"), fnv1a_hash("hello"));
+        assert_ne!(fnv1a_hash("hello"), fnv1a_hash("world"));
     }
 }

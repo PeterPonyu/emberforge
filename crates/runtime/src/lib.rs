@@ -123,8 +123,10 @@ pub use cost_tracker::{
     TimingMetrics,
 };
 pub use permissions::{
-    DenialTracker, PermissionMode, PermissionOutcome, PermissionPolicy, PermissionPromptDecision,
-    PermissionPrompter, PermissionRequest, PermissionRule, RuleBehavior, RuleSource,
+    check_tool_permissions, format_rule_value, is_internal_writable_path, is_path_within_workspace,
+    is_sensitive_path, parse_rule_value, parse_rules_from_settings, DenialTracker, PermissionMode,
+    PermissionOutcome, PermissionPolicy, PermissionPromptDecision, PermissionPrompter,
+    PermissionRequest, PermissionRule, RuleBehavior, RuleSource, ToolPermissionResult,
 };
 pub use output_mode::{
     build_json_response, message_to_output_events, OutputEvent, OutputMode, OutputWriter,
@@ -151,7 +153,10 @@ pub use context_collapse::{
     collapse_context, compute_importance, estimate_tokens, CollapseConfig, CollapseResult,
     CollapseStrategy, ContextSegment,
 };
-pub use bash_classifier::{classify_command, is_auto_approvable, ClassificationResult, SafetyLabel};
+pub use bash_classifier::{
+    classify_command, classify_command_api, classify_command_cached, clear_classification_cache,
+    is_auto_approvable, ApiClassificationResult, ClassificationResult, SafetyLabel,
+};
 pub use bridge::{BridgeError, BridgeNotification, BridgeRequest, BridgeResponse, BridgeState};
 pub use task_store::{
     create_task_manifest, drain_notifications, generate_task_id, list_manifests,
