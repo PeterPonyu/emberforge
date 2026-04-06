@@ -29,6 +29,7 @@ mod prompt;
 mod remote;
 pub mod sandbox;
 mod session;
+pub mod task_store;
 pub mod teleport;
 pub mod cost_tracker;
 pub mod transport;
@@ -151,6 +152,11 @@ pub use context_collapse::{
 };
 pub use bash_classifier::{classify_command, is_auto_approvable, ClassificationResult, SafetyLabel};
 pub use bridge::{BridgeError, BridgeNotification, BridgeRequest, BridgeResponse, BridgeState};
+pub use task_store::{
+    create_task_manifest, drain_notifications, generate_task_id, list_manifests,
+    load_manifest, read_task_output, save_manifest, spawn_shell_task, stop_task,
+    task_store_dir, update_manifest_status, TaskKind, TaskManifest, TaskNotification, TaskStatus,
+};
 
 #[cfg(test)]
 pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {

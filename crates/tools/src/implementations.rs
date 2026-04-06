@@ -2631,94 +2631,113 @@ pub(crate) fn execute_exit_worktree(input: crate::types::ExitWorktreeInput) -> R
     })
 }
 
-// ── Phase 2: Task management implementations ───────────────────
-
-static TASK_STORE: LazyLock<Mutex<Vec<TaskRecord>>> = LazyLock::new(|| Mutex::new(Vec::new()));
-
-struct TaskRecord {
-    id: String,
-    name: String,
-    status: String,
-    created_at: String,
-    output: String,
-    notes: String,
-    prompt: String,
-}
+// ── Phase 2: Task management — disk-backed via runtime::task_store ──
 
 pub(crate) fn execute_task_create(input: crate::types::TaskCreateInput) -> Result<crate::types::TaskCreateOutput, String> {
-    let task_id = uuid_v4();
-    let created_at = iso8601_now();
+    use runtime::task_store;
 
-    let record = TaskRecord {
-        id: task_id.clone(),
-        name: input.name.clone(),
-        status: "pending".to_string(),
-        created_at: created_at.clone(),
-        output: String::new(),
-        notes: input.description.unwrap_or_default(),
-        prompt: input.prompt,
-    };
+    // Create manifest on disk
+    let manifest = task_store::create_task_manifest(
+        task_store::TaskKind::Shell,
+        &input.name,
+        &input.prompt,
+        input.model.as_deref(),
+    )
+    .map_err(|e| e.to_string())?;
 
-    TASK_STORE.lock().map_err(|e| e.to_string())?.push(record);
+    let task_id = manifest.agent_id.clone();
+
+    // Spawn the shell task immediately (real subprocess)
+    let running = task_store::spawn_shell_task(&task_id, &input.prompt)
+        .map_err(|e| e.to_string())?;
 
     Ok(crate::types::TaskCreateOutput {
         task_id,
         name: input.name,
-        status: "pending".to_string(),
-        message: "Task created.".to_string(),
+        status: running.status.clone(),
+        message: format!(
+            "Task created and running (PID {}).",
+            running.worker_pid.unwrap_or(0)
+        ),
     })
 }
 
 pub(crate) fn execute_task_update(input: crate::types::TaskUpdateInput) -> Result<crate::types::TaskUpdateOutput, String> {
-    let mut store = TASK_STORE.lock().map_err(|e| e.to_string())?;
-    let task = store.iter_mut().find(|t| t.id == input.task_id);
-    match task {
-        Some(t) => {
-            if let Some(status) = input.status {
-                t.status = status;
-            }
-            if let Some(notes) = input.notes {
-                t.notes = notes;
-            }
-            Ok(crate::types::TaskUpdateOutput {
-                task_id: input.task_id,
-                updated: true,
-                message: "Task updated.".to_string(),
-            })
-        }
-        None => Ok(crate::types::TaskUpdateOutput {
+    use runtime::task_store;
+
+    let status = input.status.as_deref().and_then(|s| match s {
+        "pending" => Some(task_store::TaskStatus::Pending),
+        "running" => Some(task_store::TaskStatus::Running),
+        "completed" => Some(task_store::TaskStatus::Completed),
+        "failed" => Some(task_store::TaskStatus::Failed),
+        "cancelled" => Some(task_store::TaskStatus::Cancelled),
+        _ => None,
+    });
+
+    if let Some(status) = status {
+        task_store::update_manifest_status(
+            &input.task_id,
+            status,
+            input.notes.as_deref(),
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(crate::types::TaskUpdateOutput {
+            task_id: input.task_id,
+            updated: true,
+            message: "Task updated.".to_string(),
+        })
+    } else if input.notes.is_some() {
+        // Notes-only update: load, modify detail, save
+        task_store::update_manifest_status(
+            &input.task_id,
+            task_store::TaskStatus::Running,
+            input.notes.as_deref(),
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(crate::types::TaskUpdateOutput {
+            task_id: input.task_id,
+            updated: true,
+            message: "Task notes updated.".to_string(),
+        })
+    } else {
+        Ok(crate::types::TaskUpdateOutput {
             task_id: input.task_id,
             updated: false,
-            message: "Task not found.".to_string(),
-        }),
+            message: "No status or notes provided.".to_string(),
+        })
     }
 }
 
 pub(crate) fn execute_task_get(input: crate::types::TaskGetInput) -> Result<crate::types::TaskGetOutput, String> {
-    let store = TASK_STORE.lock().map_err(|e| e.to_string())?;
-    let task = store.iter().find(|t| t.id == input.task_id);
-    match task {
-        Some(t) => Ok(crate::types::TaskGetOutput {
-            task_id: t.id.clone(),
-            name: t.name.clone(),
-            status: t.status.clone(),
-            created_at: t.created_at.clone(),
-            output: if t.output.is_empty() { None } else { Some(t.output.clone()) },
-        }),
-        None => Err(format!("Task {} not found", input.task_id)),
-    }
+    use runtime::task_store;
+
+    let manifest = task_store::load_manifest(&input.task_id).map_err(|e| e.to_string())?;
+    let output = task_store::read_task_output(&input.task_id, 50)
+        .ok()
+        .and_then(|(o, _)| if o.is_empty() { None } else { Some(o) });
+
+    Ok(crate::types::TaskGetOutput {
+        task_id: manifest.agent_id,
+        name: manifest.description,
+        status: manifest.status,
+        created_at: manifest.created_at,
+        output,
+    })
 }
 
 pub(crate) fn execute_task_list(input: crate::types::TaskListInput) -> Result<crate::types::TaskListOutput, String> {
-    let store = TASK_STORE.lock().map_err(|e| e.to_string())?;
-    let tasks: Vec<crate::types::TaskSummaryItem> = store
+    use runtime::task_store;
+
+    let manifests = task_store::list_manifests(input.status_filter.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    let tasks: Vec<crate::types::TaskSummaryItem> = manifests
         .iter()
-        .filter(|t| input.status_filter.as_ref().is_none_or(|f| &t.status == f))
-        .map(|t| crate::types::TaskSummaryItem {
-            task_id: t.id.clone(),
-            name: t.name.clone(),
-            status: t.status.clone(),
-            created_at: t.created_at.clone(),
+        .map(|m| crate::types::TaskSummaryItem {
+            task_id: m.agent_id.clone(),
+            name: m.description.clone(),
+            status: m.status.clone(),
+            created_at: m.created_at.clone(),
         })
         .collect();
     let count = tasks.len();
@@ -2726,51 +2745,33 @@ pub(crate) fn execute_task_list(input: crate::types::TaskListInput) -> Result<cr
 }
 
 pub(crate) fn execute_task_stop(input: crate::types::TaskStopInput) -> Result<crate::types::TaskStopOutput, String> {
-    let mut store = TASK_STORE.lock().map_err(|e| e.to_string())?;
-    let task = store.iter_mut().find(|t| t.id == input.task_id);
-    match task {
-        Some(t) if t.status == "running" || t.status == "pending" => {
-            t.status = "cancelled".to_string();
-            Ok(crate::types::TaskStopOutput {
-                task_id: input.task_id,
-                stopped: true,
-                message: "Task stopped.".to_string(),
-            })
-        }
-        Some(_) => Ok(crate::types::TaskStopOutput {
-            task_id: input.task_id,
-            stopped: false,
-            message: "Task is not in a stoppable state.".to_string(),
-        }),
-        None => Ok(crate::types::TaskStopOutput {
-            task_id: input.task_id,
-            stopped: false,
-            message: "Task not found.".to_string(),
-        }),
-    }
+    use runtime::task_store;
+
+    let stopped = task_store::stop_task(&input.task_id).map_err(|e| e.to_string())?;
+
+    Ok(crate::types::TaskStopOutput {
+        task_id: input.task_id,
+        stopped,
+        message: if stopped {
+            "Task stop requested (SIGTERM sent).".to_string()
+        } else {
+            "Task is not in a stoppable state or not found.".to_string()
+        },
+    })
 }
 
 pub(crate) fn execute_task_output(input: crate::types::TaskOutputInput) -> Result<crate::types::TaskOutputOutput, String> {
-    let store = TASK_STORE.lock().map_err(|e| e.to_string())?;
-    let task = store.iter().find(|t| t.id == input.task_id);
-    match task {
-        Some(t) => {
-            let tail = input.tail.unwrap_or(100);
-            let lines: Vec<&str> = t.output.lines().collect();
-            let truncated = lines.len() > tail;
-            let output = if truncated {
-                lines[lines.len() - tail..].join("\n")
-            } else {
-                t.output.clone()
-            };
-            Ok(crate::types::TaskOutputOutput {
-                task_id: input.task_id,
-                output,
-                truncated,
-            })
-        }
-        None => Err(format!("Task {} not found", input.task_id)),
-    }
+    use runtime::task_store;
+
+    let tail = input.tail.unwrap_or(100);
+    let (output, truncated) = task_store::read_task_output(&input.task_id, tail)
+        .map_err(|e| e.to_string())?;
+
+    Ok(crate::types::TaskOutputOutput {
+        task_id: input.task_id,
+        output,
+        truncated,
+    })
 }
 
 // ── Phase 2: Inter-agent messaging ─────────────────────────────
