@@ -1682,6 +1682,7 @@ fn run_resume_command(
         | SlashCommand::Buddy { .. }
         | SlashCommand::Peers { .. }
         | SlashCommand::Proactive
+        | SlashCommand::Coordinator { .. }
         | SlashCommand::Unknown(_) => Err("unsupported resumed slash command".into()),
     }
 }
@@ -2565,6 +2566,30 @@ impl LiveCli {
             }
             SlashCommand::Proactive => {
                 println!("\x1b[2mProactive suggestions not yet implemented.\x1b[0m");
+                false
+            }
+            SlashCommand::Coordinator { action } => {
+                let a = action.as_deref().unwrap_or("status");
+                match a {
+                    "on" => {
+                        println!("\x1b[33mCoordinator mode enabled.\x1b[0m");
+                        println!("You are now a coordinator. Use Agent to spawn workers, SendMessage to continue them.");
+                        println!("Worker results arrive as <task-notification> XML in user messages.");
+                    }
+                    "off" => {
+                        println!("\x1b[2mCoordinator mode disabled. Back to normal mode.\x1b[0m");
+                    }
+                    _ => {
+                        println!("Coordinator mode: \x1b[33mnot active\x1b[0m");
+                        println!("  Use /coordinator on  to enable multi-agent orchestration");
+                        println!("  Use /coordinator off to return to normal mode");
+                        println!("\n  In coordinator mode:");
+                        println!("    - You direct workers via Agent + SendMessage");
+                        println!("    - Workers can't see your conversation");
+                        println!("    - Results arrive as <task-notification> XML");
+                        println!("    - Scratchpad at .ember/scratchpad/ for shared knowledge");
+                    }
+                }
                 false
             }
             SlashCommand::Unknown(name) => {

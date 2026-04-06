@@ -145,7 +145,10 @@ pub use usage::{
     format_usd, pricing_for_model, ModelPricing, TokenUsage, UsageCostEstimate, UsageTracker,
 };
 pub use coordinator::{
-    BroadcastMessage, Coordinator, ScratchpadEntry, WorkerAgent, WorkerStatus,
+    coordinator_system_prompt, ensure_scratchpad_dir, is_scratchpad_path, is_task_notification,
+    parse_task_notification, BroadcastMessage, Coordinator, ScratchpadEntry,
+    TaskNotificationParsed, WorkerAgent, WorkerStatus, COORDINATOR_ONLY_TOOLS,
+    WORKER_ALLOWED_TOOLS, WORKER_DENIED_TOOLS,
 };
 pub use teleport::{export_session, import_session, validate_bundle, TeleportBundle};
 pub use file_history::{FileHistoryStore, FileSnapshot};

@@ -509,6 +509,14 @@ pub(crate) const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
         resume_supported: false,
         category: SlashCommandCategory::Automation,
     },
+    SlashCommandSpec {
+        name: "coordinator",
+        aliases: &["coord"],
+        summary: "Toggle coordinator mode (multi-agent orchestration)",
+        argument_hint: Some("[on|off|status]"),
+        resume_supported: false,
+        category: SlashCommandCategory::Automation,
+    },
 ];
 
 #[must_use]

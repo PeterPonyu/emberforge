@@ -141,6 +141,9 @@ pub enum SlashCommand {
         action: Option<String>,
     },
     Proactive,
+    Coordinator {
+        action: Option<String>,
+    },
     Unknown(String),
 }
 
@@ -298,6 +301,9 @@ impl SlashCommand {
                 action: parts.next().map(ToOwned::to_owned),
             },
             "proactive" => Self::Proactive,
+            "coordinator" | "coord" => Self::Coordinator {
+                action: parts.next().map(ToOwned::to_owned),
+            },
             other => Self::Unknown(other.to_string()),
         })
     }

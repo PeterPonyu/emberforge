@@ -1210,6 +1210,7 @@ pub fn handle_slash_command(
         | SlashCommand::Buddy { .. }
         | SlashCommand::Peers { .. }
         | SlashCommand::Proactive
+        | SlashCommand::Coordinator { .. }
         | SlashCommand::Unknown(_) => None,
     }
 }

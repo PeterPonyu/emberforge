@@ -391,7 +391,7 @@ fn renders_help_from_shared_specs() {
     assert!(help.contains("/agents"));
     assert!(help.contains("/skills"));
     assert!(help.contains("/tasks [list|show <id>|logs <id>|attach <id>|stop <id>|restart <id>]"));
-    assert_eq!(slash_command_specs().len(), 55);
+    assert_eq!(slash_command_specs().len(), 56);
     assert_eq!(resume_supported_slash_commands().len(), 20);
 }
 
