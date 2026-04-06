@@ -55,8 +55,8 @@ pub use agent_loader::{
 pub use bash_security::{validate_bash_command, SecurityVerdict};
 pub use cron::{
     create_task, delete_task, describe_schedule, format_task_summary, load_durable_tasks,
-    parse_cron, save_durable_tasks, schedule_matches, tick, CronParseError, CronSchedule,
-    ScheduledTask, SchedulerTickResult,
+    parse_cron, save_durable_tasks, schedule_matches, start_default_scheduler, start_scheduler,
+    tick, CronParseError, CronSchedule, ScheduledTask, SchedulerHandle, SchedulerTickResult,
 };
 pub use memory::{
     build_memory_manifest, build_memory_prompt, ensure_memory_dir, load_entrypoint,

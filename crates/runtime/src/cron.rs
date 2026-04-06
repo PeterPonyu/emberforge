@@ -1,12 +1,17 @@
 //! Cron scheduling system for the emberforge CLI tool.
 //!
-//! Provides cron expression parsing, task scheduling, and persistence.
+//! Provides cron expression parsing, task scheduling, persistence,
+//! and a background scheduler loop that fires tasks at their scheduled times.
 //! Supports standard 5-field cron format: `minute hour day-of-month month day-of-week`.
 
 use serde::{Deserialize, Serialize};
-use std::io;
-use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // ---------------------------------------------------------------------------
 // Data structures
@@ -633,6 +638,183 @@ pub fn format_task_summary(task: &ScheduledTask) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Background scheduler
+// ---------------------------------------------------------------------------
+
+/// Tick interval for the scheduler (60 seconds = check once per minute).
+const SCHEDULER_TICK_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Handle to a running scheduler thread. Drop or call `stop()` to shut down.
+#[derive(Debug)]
+pub struct SchedulerHandle {
+    stop_flag: Arc<AtomicBool>,
+    thread: Option<thread::JoinHandle<()>>,
+}
+
+impl SchedulerHandle {
+    /// Signal the scheduler to stop and wait for the thread to finish.
+    pub fn stop(&mut self) {
+        self.stop_flag.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.thread.take() {
+            let _ = handle.join();
+        }
+    }
+
+    /// Check if the scheduler is still running.
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.thread.as_ref().is_some_and(|h| !h.is_finished())
+    }
+}
+
+impl Drop for SchedulerHandle {
+    fn drop(&mut self) {
+        self.stop_flag.store(true, Ordering::Relaxed);
+        // Don't join on drop — the thread will notice the flag and exit.
+    }
+}
+
+/// Start the background cron scheduler.
+///
+/// Spawns a thread that wakes every 60 seconds, loads durable tasks from
+/// `project_dir`, calls `tick()` to find triggered tasks, and executes
+/// each triggered task via the provided callback.
+///
+/// Returns a `SchedulerHandle` that can be used to stop the scheduler.
+pub fn start_scheduler<F>(project_dir: PathBuf, on_trigger: F) -> io::Result<SchedulerHandle>
+where
+    F: Fn(&ScheduledTask) + Send + 'static,
+{
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let flag_clone = stop_flag.clone();
+
+    let thread = thread::Builder::new()
+        .name("ember-cron-scheduler".to_string())
+        .spawn(move || {
+            scheduler_loop(&project_dir, &flag_clone, &on_trigger);
+        })
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+    Ok(SchedulerHandle {
+        stop_flag,
+        thread: Some(thread),
+    })
+}
+
+/// The main scheduler loop. Runs until the stop flag is set.
+fn scheduler_loop<F>(project_dir: &Path, stop_flag: &AtomicBool, on_trigger: &F)
+where
+    F: Fn(&ScheduledTask),
+{
+    // Wait a few seconds on startup to let the REPL initialize
+    thread::sleep(Duration::from_secs(5));
+
+    let log_path = project_dir.join(".ember").join("cron.log");
+
+    loop {
+        if stop_flag.load(Ordering::Relaxed) {
+            break;
+        }
+
+        // Load, tick, save, execute
+        match load_durable_tasks(project_dir) {
+            Ok(mut tasks) => {
+                let result = tick(&mut tasks);
+
+                // Save updated state (run counts, removed one-shots/expired)
+                if !result.triggered.is_empty() || !result.expired.is_empty() {
+                    let _ = save_durable_tasks(project_dir, &tasks);
+                }
+
+                // Log expired tasks
+                for expired_id in &result.expired {
+                    let _ = append_cron_log(
+                        &log_path,
+                        &format!("EXPIRED task {expired_id} (exceeded max age)"),
+                    );
+                }
+
+                // Execute triggered tasks
+                for task in &result.triggered {
+                    let _ = append_cron_log(
+                        &log_path,
+                        &format!(
+                            "TRIGGERED task {} ({}) — run #{} — schedule: {}",
+                            task.id, task.name, task.run_count, task.schedule
+                        ),
+                    );
+                    on_trigger(task);
+                }
+            }
+            Err(e) => {
+                let _ = append_cron_log(&log_path, &format!("ERROR loading tasks: {e}"));
+            }
+        }
+
+        // Sleep for the tick interval, checking stop flag every second
+        for _ in 0..SCHEDULER_TICK_INTERVAL.as_secs() {
+            if stop_flag.load(Ordering::Relaxed) {
+                return;
+            }
+            thread::sleep(Duration::from_secs(1));
+        }
+    }
+}
+
+/// Start a scheduler that spawns shell tasks via `task_store` for each trigger.
+///
+/// This is the default integration: triggered cron tasks create real background
+/// shell tasks via the Phase 1 task store infrastructure.
+pub fn start_default_scheduler(project_dir: PathBuf) -> io::Result<SchedulerHandle> {
+    start_scheduler(project_dir, |task| {
+        use crate::task_store;
+
+        let manifest = match task_store::create_task_manifest(
+            task_store::TaskKind::Shell,
+            &format!("[cron] {}", task.name),
+            &task.prompt,
+            None,
+        ) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("\x1b[31m[cron] Failed to create task manifest: {e}\x1b[0m");
+                return;
+            }
+        };
+
+        match task_store::spawn_shell_task(&manifest.agent_id, &task.prompt) {
+            Ok(running) => {
+                eprintln!(
+                    "\x1b[2m[cron] Triggered '{}' → task {} (PID {})\x1b[0m",
+                    task.name,
+                    running.agent_id,
+                    running.worker_pid.unwrap_or(0)
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "\x1b[31m[cron] Failed to spawn task '{}': {e}\x1b[0m",
+                    task.name
+                );
+            }
+        }
+    })
+}
+
+/// Append a line to the cron log file.
+fn append_cron_log(log_path: &Path, message: &str) -> io::Result<()> {
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)?;
+    let timestamp = iso8601_now();
+    writeln!(file, "[{timestamp}] {message}")
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -1059,5 +1241,67 @@ mod tests {
         let s = format!("{err}");
         assert!(s.contains("wrong count"));
         assert!(!s.contains("field"));
+    }
+
+    // -- Scheduler tests --
+
+    #[test]
+    fn scheduler_handle_starts_and_stops() {
+        let dir = std::env::temp_dir().join("ember-cron-sched-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let triggered = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let triggered_clone = triggered.clone();
+
+        let mut handle = start_scheduler(dir.clone(), move |task| {
+            triggered_clone
+                .lock()
+                .unwrap()
+                .push(task.id.clone());
+        })
+        .unwrap();
+
+        assert!(handle.is_running());
+
+        // Stop quickly — don't wait for a full tick
+        handle.stop();
+        assert!(!handle.is_running());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scheduler_handle_drop_sets_stop_flag() {
+        let dir = std::env::temp_dir().join("ember-cron-drop-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let flag = {
+            let handle = start_scheduler(dir.clone(), |_| {}).unwrap();
+            handle.stop_flag.clone()
+        };
+
+        // After drop, flag should be set
+        assert!(flag.load(Ordering::Relaxed));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn append_cron_log_creates_file() {
+        let dir = std::env::temp_dir().join("ember-cron-log-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let log = dir.join("cron.log");
+
+        append_cron_log(&log, "test entry 1").unwrap();
+        append_cron_log(&log, "test entry 2").unwrap();
+
+        let content = std::fs::read_to_string(&log).unwrap();
+        assert!(content.contains("test entry 1"));
+        assert!(content.contains("test entry 2"));
+        assert_eq!(content.lines().count(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
