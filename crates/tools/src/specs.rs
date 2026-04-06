@@ -456,5 +456,174 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
             }),
             required_permission: PermissionMode::ReadOnly,
         },
+        // ── Phase 1: Cron & Worktree tools ─────────────────────────────
+        ToolSpec {
+            name: "CronCreate",
+            description: "Create a scheduled cron task that runs a prompt on a recurring schedule.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Human-readable task name" },
+                    "schedule": { "type": "string", "description": "Cron expression (5-field: min hour day month dow)" },
+                    "prompt": { "type": "string", "description": "Prompt to execute on each trigger" },
+                    "description": { "type": "string", "description": "Optional description" },
+                    "one_shot": { "type": "boolean", "description": "If true, run once then auto-delete" }
+                },
+                "required": ["name", "schedule", "prompt"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
+        ToolSpec {
+            name: "CronDelete",
+            description: "Delete a scheduled cron task by its ID.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string", "description": "ID of the task to delete" }
+                },
+                "required": ["task_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
+        ToolSpec {
+            name: "CronList",
+            description: "List all scheduled cron tasks and their status.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "EnterWorktree",
+            description: "Create and enter a git worktree for isolated work. Returns the worktree path and branch.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path for the new worktree" },
+                    "branch": { "type": "string", "description": "Branch name (created if it does not exist)" }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
+        ToolSpec {
+            name: "ExitWorktree",
+            description: "Exit and optionally remove a git worktree.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path of the worktree to exit" },
+                    "remove": { "type": "boolean", "description": "If true, remove the worktree directory" }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
+        // ── Phase 2: Task management tools ─────────────────────────────
+        ToolSpec {
+            name: "TaskCreate",
+            description: "Create a new background task (agent or shell).",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Task name" },
+                    "prompt": { "type": "string", "description": "Task prompt or command" },
+                    "description": { "type": "string" },
+                    "model": { "type": "string", "description": "Optional model override" }
+                },
+                "required": ["name", "prompt"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::DangerFullAccess,
+        },
+        ToolSpec {
+            name: "TaskUpdate",
+            description: "Update status or notes on an existing task.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string" },
+                    "status": { "type": "string", "enum": ["pending", "running", "completed", "failed", "cancelled"] },
+                    "notes": { "type": "string" }
+                },
+                "required": ["task_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
+        ToolSpec {
+            name: "TaskGet",
+            description: "Get detailed information about a specific task.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string" }
+                },
+                "required": ["task_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "TaskList",
+            description: "List all tasks, optionally filtered by status.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "status_filter": { "type": "string", "enum": ["pending", "running", "completed", "failed", "cancelled"] }
+                },
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "TaskStop",
+            description: "Stop a running task by its ID.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string" }
+                },
+                "required": ["task_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
+        ToolSpec {
+            name: "TaskOutput",
+            description: "Get the output/logs of a task.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string" },
+                    "tail": { "type": "integer", "minimum": 1, "description": "Number of recent lines to return" }
+                },
+                "required": ["task_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        // ── Phase 2: Inter-agent messaging ─────────────────────────────
+        ToolSpec {
+            name: "SendMessage",
+            description: "Send a message to another agent or teammate by name or ID.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "to": { "type": "string", "description": "Agent name or ID to send to" },
+                    "message": { "type": "string", "description": "Message content" },
+                    "context": { "type": "object", "description": "Optional structured context" }
+                },
+                "required": ["to", "message"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
     ]
 }

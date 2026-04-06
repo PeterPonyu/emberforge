@@ -4,6 +4,7 @@ mod doctor;
 mod init;
 mod input;
 mod keywords;
+mod vim;
 #[allow(dead_code)]
 mod notifications;
 mod render;
@@ -1663,6 +1664,24 @@ fn run_resume_command(
         | SlashCommand::Effort { .. }
         | SlashCommand::Theme { .. }
         | SlashCommand::Fast
+        | SlashCommand::Login { .. }
+        | SlashCommand::Logout { .. }
+        | SlashCommand::Context { .. }
+        | SlashCommand::Copy { .. }
+        | SlashCommand::Files { .. }
+        | SlashCommand::Tag { .. }
+        | SlashCommand::Rewind { .. }
+        | SlashCommand::Stats
+        | SlashCommand::Insights
+        | SlashCommand::Usage { .. }
+        | SlashCommand::Vim
+        | SlashCommand::Bridge { .. }
+        | SlashCommand::SecurityReview { .. }
+        | SlashCommand::Fork { .. }
+        | SlashCommand::Voice
+        | SlashCommand::Buddy { .. }
+        | SlashCommand::Peers { .. }
+        | SlashCommand::Proactive
         | SlashCommand::Unknown(_) => Err("unsupported resumed slash command".into()),
     }
 }
@@ -2437,6 +2456,115 @@ impl LiveCli {
                         self.ui_config.theme().as_str()
                     );
                 }
+                false
+            }
+            // ── Phase 1: New commands ──
+            SlashCommand::Login { provider } => {
+                let p = provider.as_deref().unwrap_or("anthropic");
+                println!("\x1b[2mLogin flow for provider: \x1b[33m{p}\x1b[0m (not yet implemented)");
+                false
+            }
+            SlashCommand::Logout { provider } => {
+                let p = provider.as_deref().unwrap_or("anthropic");
+                println!("\x1b[2mCleared credentials for: \x1b[33m{p}\x1b[0m (not yet implemented)");
+                false
+            }
+            SlashCommand::Context { action } => {
+                let a = action.as_deref().unwrap_or("show");
+                match a {
+                    "size" => {
+                        let messages = self.runtime.session().messages.len();
+                        println!("Context: {} messages in session", messages);
+                    }
+                    "clear" => {
+                        println!("Context clear not yet implemented. Use /compact or /clear.");
+                    }
+                    _ => {
+                        let messages = self.runtime.session().messages.len();
+                        println!("Context: {} messages, model={}", messages, self.model);
+                    }
+                }
+                false
+            }
+            SlashCommand::Copy { target: _ } => {
+                println!("\x1b[2mCopy to clipboard not yet implemented.\x1b[0m");
+                false
+            }
+            SlashCommand::Files { path } => {
+                let dir = path.as_deref().unwrap_or(".");
+                match std::fs::read_dir(dir) {
+                    Ok(entries) => {
+                        for entry in entries.flatten() {
+                            let name = entry.file_name();
+                            let ft = entry.file_type().map(|t| if t.is_dir() { "/" } else { "" }).unwrap_or("");
+                            println!("  {}{}", name.to_string_lossy(), ft);
+                        }
+                    }
+                    Err(e) => eprintln!("Error listing files: {e}"),
+                }
+                false
+            }
+            SlashCommand::Tag { name } => {
+                if let Some(tag) = name {
+                    println!("\x1b[2mTagged session as: \x1b[33m{tag}\x1b[0m (not yet persisted)");
+                } else {
+                    println!("Usage: /tag <name>");
+                }
+                false
+            }
+            SlashCommand::Rewind { steps: _ } => {
+                println!("\x1b[2mRewind not yet implemented.\x1b[0m");
+                false
+            }
+            // ── Phase 2 ──
+            SlashCommand::Stats => {
+                let messages = self.runtime.session().messages.len();
+                println!("Session statistics:\n  Messages: {messages}\n  Model: {}", self.model);
+                false
+            }
+            SlashCommand::Insights => {
+                println!("\x1b[2mInsights analysis not yet implemented.\x1b[0m");
+                false
+            }
+            SlashCommand::Usage { period } => {
+                let p = period.as_deref().unwrap_or("today");
+                println!("\x1b[2mUsage report for {p} not yet implemented.\x1b[0m");
+                false
+            }
+            // ── Phase 3 ──
+            SlashCommand::Vim => {
+                println!("\x1b[2mVim mode toggle not yet implemented.\x1b[0m");
+                false
+            }
+            SlashCommand::Bridge { action } => {
+                let a = action.as_deref().unwrap_or("status");
+                println!("\x1b[2mBridge mode ({a}) not yet implemented.\x1b[0m");
+                false
+            }
+            SlashCommand::SecurityReview { scope: _ } => {
+                println!("\x1b[2mSecurity review not yet implemented.\x1b[0m");
+                false
+            }
+            SlashCommand::Fork { prompt: _ } => {
+                println!("\x1b[2mFork to sub-agent not yet implemented.\x1b[0m");
+                false
+            }
+            // ── Phase 4 ──
+            SlashCommand::Voice => {
+                println!("\x1b[2mVoice mode not yet implemented.\x1b[0m");
+                false
+            }
+            SlashCommand::Buddy { task: _ } => {
+                println!("\x1b[2mBuddy agent not yet implemented.\x1b[0m");
+                false
+            }
+            SlashCommand::Peers { action } => {
+                let a = action.as_deref().unwrap_or("list");
+                println!("\x1b[2mPeers ({a}) not yet implemented.\x1b[0m");
+                false
+            }
+            SlashCommand::Proactive => {
+                println!("\x1b[2mProactive suggestions not yet implemented.\x1b[0m");
                 false
             }
             SlashCommand::Unknown(name) => {
@@ -6726,7 +6854,8 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
             names,
             vec![
                 "help", "status", "compact", "clear", "cost", "config", "memory", "init", "diff",
-                "version", "export", "agents", "skills",
+                "version", "export", "agents", "skills", "context", "copy", "files", "tag",
+                "stats", "insights", "usage",
             ]
         );
     }

@@ -42,6 +42,20 @@ pub fn execute_tool(name: &str, input: &Value) -> Result<String, ToolExecError> 
         "LSPTool" => from_value::<LspToolInput>(input).and_then(run_lsp_tool),
         "ListMcpResources" => from_value::<ListMcpResourcesInput>(input).and_then(run_list_mcp_resources),
         "ReadMcpResource" => from_value::<ReadMcpResourceInput>(input).and_then(run_read_mcp_resource),
+        // ── Phase 1: Cron & Worktree tools ──
+        "CronCreate" => from_value::<CronCreateInput>(input).and_then(run_cron_create),
+        "CronDelete" => from_value::<CronDeleteInput>(input).and_then(run_cron_delete),
+        "CronList" => from_value::<CronListInput>(input).and_then(run_cron_list),
+        "EnterWorktree" => from_value::<EnterWorktreeInput>(input).and_then(run_enter_worktree),
+        "ExitWorktree" => from_value::<ExitWorktreeInput>(input).and_then(run_exit_worktree),
+        // ── Phase 2: Task management & messaging ──
+        "TaskCreate" => from_value::<TaskCreateInput>(input).and_then(run_task_create),
+        "TaskUpdate" => from_value::<TaskUpdateInput>(input).and_then(run_task_update),
+        "TaskGet" => from_value::<TaskGetInput>(input).and_then(run_task_get),
+        "TaskList" => from_value::<TaskListInput>(input).and_then(run_task_list),
+        "TaskStop" => from_value::<TaskStopInput>(input).and_then(run_task_stop),
+        "TaskOutput" => from_value::<TaskOutputInput>(input).and_then(run_task_output),
+        "SendMessage" => from_value::<SendMessageInput>(input).and_then(run_send_message),
         _ => Err(ToolExecError::UnsupportedTool(name.to_string())),
     }
 }
@@ -190,4 +204,56 @@ pub(crate) fn run_list_mcp_resources(input: ListMcpResourcesInput) -> Result<Str
 
 pub(crate) fn run_read_mcp_resource(input: ReadMcpResourceInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_read_mcp_resource(input)?)
+}
+
+// ── Phase 1: Cron & Worktree run wrappers ──────────────────────
+
+pub(crate) fn run_cron_create(input: CronCreateInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_cron_create(input)?)
+}
+
+pub(crate) fn run_cron_delete(input: CronDeleteInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_cron_delete(input)?)
+}
+
+pub(crate) fn run_cron_list(input: CronListInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_cron_list(input)?)
+}
+
+pub(crate) fn run_enter_worktree(input: EnterWorktreeInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_enter_worktree(input)?)
+}
+
+pub(crate) fn run_exit_worktree(input: ExitWorktreeInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_exit_worktree(input)?)
+}
+
+// ── Phase 2: Task management & messaging run wrappers ──────────
+
+pub(crate) fn run_task_create(input: TaskCreateInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_task_create(input)?)
+}
+
+pub(crate) fn run_task_update(input: TaskUpdateInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_task_update(input)?)
+}
+
+pub(crate) fn run_task_get(input: TaskGetInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_task_get(input)?)
+}
+
+pub(crate) fn run_task_list(input: TaskListInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_task_list(input)?)
+}
+
+pub(crate) fn run_task_stop(input: TaskStopInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_task_stop(input)?)
+}
+
+pub(crate) fn run_task_output(input: TaskOutputInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_task_output(input)?)
+}
+
+pub(crate) fn run_send_message(input: SendMessageInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_send_message(input)?)
 }

@@ -1,11 +1,16 @@
 pub mod agent_loader;
 pub mod bash_security;
+pub mod bash_classifier;
 mod bash;
+pub mod bridge;
 mod bootstrap;
 mod compact;
+pub mod coordinator;
+pub mod context_collapse;
 pub mod cron;
 mod config;
 mod conversation;
+pub mod file_history;
 mod file_ops;
 pub mod git;
 mod hooks;
@@ -24,6 +29,7 @@ mod prompt;
 mod remote;
 pub mod sandbox;
 mod session;
+pub mod teleport;
 pub mod cost_tracker;
 pub mod transport;
 mod usage;
@@ -134,6 +140,17 @@ pub use session::{ContentBlock, ConversationMessage, MessageRole, Session, Sessi
 pub use usage::{
     format_usd, pricing_for_model, ModelPricing, TokenUsage, UsageCostEstimate, UsageTracker,
 };
+pub use coordinator::{
+    BroadcastMessage, Coordinator, ScratchpadEntry, WorkerAgent, WorkerStatus,
+};
+pub use teleport::{export_session, import_session, validate_bundle, TeleportBundle};
+pub use file_history::{FileHistoryStore, FileSnapshot};
+pub use context_collapse::{
+    collapse_context, compute_importance, estimate_tokens, CollapseConfig, CollapseResult,
+    CollapseStrategy, ContextSegment,
+};
+pub use bash_classifier::{classify_command, is_auto_approvable, ClassificationResult, SafetyLabel};
+pub use bridge::{BridgeError, BridgeNotification, BridgeRequest, BridgeResponse, BridgeState};
 
 #[cfg(test)]
 pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {

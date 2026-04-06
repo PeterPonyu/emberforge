@@ -391,15 +391,16 @@ fn renders_help_from_shared_specs() {
     assert!(help.contains("/agents"));
     assert!(help.contains("/skills"));
     assert!(help.contains("/tasks [list|show <id>|logs <id>|attach <id>|stop <id>|restart <id>]"));
-    assert_eq!(slash_command_specs().len(), 37);
-    assert_eq!(resume_supported_slash_commands().len(), 13);
+    assert_eq!(slash_command_specs().len(), 55);
+    assert_eq!(resume_supported_slash_commands().len(), 20);
 }
 
 #[test]
 fn suggests_close_slash_commands() {
     let suggestions = suggest_slash_commands("stats", 3);
     assert!(!suggestions.is_empty());
-    assert_eq!(suggestions[0], "/status");
+    // "/stats" is now an exact match, so it comes before "/status"
+    assert_eq!(suggestions[0], "/stats");
 }
 
 #[test]

@@ -136,13 +136,40 @@ pub struct SendMessageRequest {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HealthResponse {
+    pub status: String,
+    pub version: String,
+    pub uptime_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeleportExportResponse {
+    pub session_id: SessionId,
+    pub bundle_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeleportImportRequest {
+    pub bundle_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeleportImportResponse {
+    pub session_id: SessionId,
+    pub source_host: String,
+}
+
 #[must_use]
 pub fn app(state: AppState) -> Router {
     Router::new()
+        .route("/health", get(health_check))
         .route("/sessions", post(create_session).get(list_sessions))
-        .route("/sessions/{id}", get(get_session))
+        .route("/sessions/{id}", get(get_session).delete(delete_session))
         .route("/sessions/{id}/events", get(stream_session_events))
         .route("/sessions/{id}/message", post(send_message))
+        .route("/sessions/{id}/teleport", get(teleport_export))
+        .route("/sessions/import", post(teleport_import))
         .with_state(state)
 }
 
@@ -257,6 +284,79 @@ async fn stream_session_events(
     };
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+async fn health_check() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "ok".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        uptime_ms: unix_timestamp_millis(), // simplified; real uptime would track start time
+    })
+}
+
+async fn delete_session(
+    State(state): State<AppState>,
+    Path(id): Path<SessionId>,
+) -> ApiResult<StatusCode> {
+    let mut sessions = state.sessions.write().await;
+    sessions
+        .remove(&id)
+        .ok_or_else(|| not_found(format!("session `{id}` not found")))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn teleport_export(
+    State(state): State<AppState>,
+    Path(id): Path<SessionId>,
+) -> ApiResult<Json<TeleportExportResponse>> {
+    let sessions = state.sessions.read().await;
+    let session = sessions
+        .get(&id)
+        .ok_or_else(|| not_found(format!("session `{id}` not found")))?;
+
+    let bundle = runtime::TeleportBundle {
+        version: 1,
+        session: session.conversation.clone(),
+        source_host: std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".to_string()),
+        exported_at: unix_timestamp_millis().to_string(),
+        title: Some(format!("Teleported session {id}")),
+    };
+    let bundle_json = serde_json::to_string(&bundle)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?;
+
+    Ok(Json(TeleportExportResponse {
+        session_id: id,
+        bundle_json,
+    }))
+}
+
+async fn teleport_import(
+    State(state): State<AppState>,
+    Json(payload): Json<TeleportImportRequest>,
+) -> ApiResult<(StatusCode, Json<TeleportImportResponse>)> {
+    let bundle: runtime::TeleportBundle = serde_json::from_str(&payload.bundle_json)
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() })))?;
+
+    runtime::validate_bundle(&bundle)
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e })))?;
+
+    let session_id = state.allocate_session_id();
+    let mut session = Session::new(session_id.clone());
+    session.conversation = bundle.session;
+
+    state
+        .sessions
+        .write()
+        .await
+        .insert(session_id.clone(), session);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(TeleportImportResponse {
+            session_id,
+            source_host: bundle.source_host,
+        }),
+    ))
 }
 
 fn unix_timestamp_millis() -> u64 {

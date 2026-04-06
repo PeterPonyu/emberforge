@@ -1192,6 +1192,24 @@ pub fn handle_slash_command(
         | SlashCommand::Effort { .. }
         | SlashCommand::Theme { .. }
         | SlashCommand::Fast
+        | SlashCommand::Login { .. }
+        | SlashCommand::Logout { .. }
+        | SlashCommand::Context { .. }
+        | SlashCommand::Copy { .. }
+        | SlashCommand::Files { .. }
+        | SlashCommand::Tag { .. }
+        | SlashCommand::Rewind { .. }
+        | SlashCommand::Stats
+        | SlashCommand::Insights
+        | SlashCommand::Usage { .. }
+        | SlashCommand::Vim
+        | SlashCommand::Bridge { .. }
+        | SlashCommand::SecurityReview { .. }
+        | SlashCommand::Fork { .. }
+        | SlashCommand::Voice
+        | SlashCommand::Buddy { .. }
+        | SlashCommand::Peers { .. }
+        | SlashCommand::Proactive
         | SlashCommand::Unknown(_) => None,
     }
 }

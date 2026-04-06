@@ -442,3 +442,183 @@ pub(crate) struct McpToolOutput {
 pub(crate) struct LspToolOutput {
     pub(crate) data: Value,
 }
+
+// ── Phase 1 & 2: Cron, Worktree, Task, SendMessage tool types ──
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct CronCreateInput {
+    pub(crate) name: String,
+    pub(crate) schedule: String,
+    pub(crate) prompt: String,
+    pub(crate) description: Option<String>,
+    pub(crate) one_shot: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct CronCreateOutput {
+    pub(crate) task_id: String,
+    pub(crate) name: String,
+    pub(crate) schedule_description: String,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct CronDeleteInput {
+    pub(crate) task_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct CronDeleteOutput {
+    pub(crate) deleted: bool,
+    pub(crate) task_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct CronListInput {
+    pub(crate) _placeholder: Option<()>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct CronListOutput {
+    pub(crate) tasks: Vec<CronTaskSummary>,
+    pub(crate) count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct CronTaskSummary {
+    pub(crate) task_id: String,
+    pub(crate) name: String,
+    pub(crate) schedule: String,
+    pub(crate) run_count: u32,
+    pub(crate) recurring: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct EnterWorktreeInput {
+    pub(crate) path: String,
+    pub(crate) branch: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct EnterWorktreeOutput {
+    pub(crate) worktree_path: String,
+    pub(crate) branch: String,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ExitWorktreeInput {
+    pub(crate) path: String,
+    pub(crate) remove: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ExitWorktreeOutput {
+    pub(crate) removed: bool,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct TaskCreateInput {
+    pub(crate) name: String,
+    pub(crate) prompt: String,
+    pub(crate) description: Option<String>,
+    pub(crate) model: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TaskCreateOutput {
+    pub(crate) task_id: String,
+    pub(crate) name: String,
+    pub(crate) status: String,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TaskUpdateInput {
+    pub(crate) task_id: String,
+    pub(crate) status: Option<String>,
+    pub(crate) notes: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TaskUpdateOutput {
+    pub(crate) task_id: String,
+    pub(crate) updated: bool,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TaskGetInput {
+    pub(crate) task_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TaskGetOutput {
+    pub(crate) task_id: String,
+    pub(crate) name: String,
+    pub(crate) status: String,
+    pub(crate) created_at: String,
+    pub(crate) output: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TaskListInput {
+    pub(crate) status_filter: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TaskListOutput {
+    pub(crate) tasks: Vec<TaskSummaryItem>,
+    pub(crate) count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TaskSummaryItem {
+    pub(crate) task_id: String,
+    pub(crate) name: String,
+    pub(crate) status: String,
+    pub(crate) created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TaskStopInput {
+    pub(crate) task_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TaskStopOutput {
+    pub(crate) task_id: String,
+    pub(crate) stopped: bool,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TaskOutputInput {
+    pub(crate) task_id: String,
+    pub(crate) tail: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TaskOutputOutput {
+    pub(crate) task_id: String,
+    pub(crate) output: String,
+    pub(crate) truncated: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct SendMessageInput {
+    pub(crate) to: String,
+    pub(crate) message: String,
+    pub(crate) context: Option<Value>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SendMessageOutput {
+    pub(crate) delivered: bool,
+    pub(crate) to: String,
+    pub(crate) message: String,
+}

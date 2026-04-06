@@ -1612,6 +1612,16 @@ pub(crate) fn make_agent_id() -> String {
     format!("agent-{nanos}")
 }
 
+fn uuid_v4() -> String {
+    use std::time::SystemTime;
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let pid = std::process::id();
+    format!("{:016x}-{:08x}", nanos, pid)
+}
+
 fn slugify_agent_name(description: &str) -> String {
     let mut out = description
         .chars()
@@ -2510,4 +2520,273 @@ pub(crate) fn execute_read_mcp_resource(input: crate::types::ReadMcpResourceInpu
         "uri": input.resource_uri,
         "message": "Configure MCP servers in .claw.json to read resources"
     }))
+}
+
+// ── Phase 1: Cron tool implementations ─────────────────────────
+
+pub(crate) fn execute_cron_create(input: crate::types::CronCreateInput) -> Result<crate::types::CronCreateOutput, String> {
+    use runtime::{create_task, load_durable_tasks, save_durable_tasks};
+
+    let recurring = !input.one_shot.unwrap_or(false);
+    let project_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+
+    let task = create_task(&input.name, &input.schedule, &input.prompt, recurring, true)
+        .map_err(|e| format!("Invalid cron expression: {e}"))?;
+    let task_id = task.id.clone();
+    let schedule_desc = input.schedule.clone();
+
+    let mut tasks = load_durable_tasks(&project_dir).unwrap_or_default();
+    tasks.push(task);
+    save_durable_tasks(&project_dir, &tasks).map_err(|e| e.to_string())?;
+
+    Ok(crate::types::CronCreateOutput {
+        task_id,
+        name: input.name,
+        schedule_description: schedule_desc,
+        message: "Scheduled task created successfully.".to_string(),
+    })
+}
+
+pub(crate) fn execute_cron_delete(input: crate::types::CronDeleteInput) -> Result<crate::types::CronDeleteOutput, String> {
+    use runtime::{load_durable_tasks, save_durable_tasks, delete_task};
+
+    let project_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+    let mut tasks = load_durable_tasks(&project_dir).unwrap_or_default();
+    let deleted = delete_task(&mut tasks, &input.task_id);
+    if deleted {
+        save_durable_tasks(&project_dir, &tasks).map_err(|e| e.to_string())?;
+    }
+
+    Ok(crate::types::CronDeleteOutput {
+        deleted,
+        task_id: input.task_id,
+    })
+}
+
+pub(crate) fn execute_cron_list(_input: crate::types::CronListInput) -> Result<crate::types::CronListOutput, String> {
+    use runtime::load_durable_tasks;
+
+    let project_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+    let tasks = load_durable_tasks(&project_dir).unwrap_or_default();
+    let summaries: Vec<crate::types::CronTaskSummary> = tasks
+        .iter()
+        .map(|t| crate::types::CronTaskSummary {
+            task_id: t.id.clone(),
+            name: t.name.clone(),
+            schedule: t.schedule.clone(),
+            run_count: t.run_count,
+            recurring: t.recurring,
+        })
+        .collect();
+    let count = summaries.len();
+
+    Ok(crate::types::CronListOutput {
+        tasks: summaries,
+        count,
+    })
+}
+
+// ── Phase 1: Worktree tool implementations ─────────────────────
+
+pub(crate) fn execute_enter_worktree(input: crate::types::EnterWorktreeInput) -> Result<crate::types::EnterWorktreeOutput, String> {
+    use runtime::{find_git_root, create_worktree};
+
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    let git_root = find_git_root(&cwd).ok_or_else(|| "Not in a git repository".to_string())?;
+    let worktree_path = std::path::PathBuf::from(&input.path);
+    let branch = input.branch.clone().unwrap_or_else(|| {
+        format!("ember-worktree-{}", &uuid_v4()[..8])
+    });
+
+    create_worktree(&git_root, &worktree_path, &branch).map_err(|e| e.to_string())?;
+
+    Ok(crate::types::EnterWorktreeOutput {
+        worktree_path: worktree_path.display().to_string(),
+        branch,
+        message: "Worktree created. Switch your working directory to the worktree path.".to_string(),
+    })
+}
+
+pub(crate) fn execute_exit_worktree(input: crate::types::ExitWorktreeInput) -> Result<crate::types::ExitWorktreeOutput, String> {
+    use runtime::{find_git_root, remove_worktree};
+
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    let git_root = find_git_root(&cwd).ok_or_else(|| "Not in a git repository".to_string())?;
+    let worktree_path = std::path::PathBuf::from(&input.path);
+
+    let removed = if input.remove.unwrap_or(true) {
+        remove_worktree(&git_root, &worktree_path).map_err(|e| e.to_string())?;
+        true
+    } else {
+        false
+    };
+
+    Ok(crate::types::ExitWorktreeOutput {
+        removed,
+        message: if removed {
+            "Worktree removed.".to_string()
+        } else {
+            "Worktree left in place.".to_string()
+        },
+    })
+}
+
+// ── Phase 2: Task management implementations ───────────────────
+
+static TASK_STORE: LazyLock<Mutex<Vec<TaskRecord>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+struct TaskRecord {
+    id: String,
+    name: String,
+    status: String,
+    created_at: String,
+    output: String,
+    notes: String,
+    prompt: String,
+}
+
+pub(crate) fn execute_task_create(input: crate::types::TaskCreateInput) -> Result<crate::types::TaskCreateOutput, String> {
+    let task_id = uuid_v4();
+    let created_at = iso8601_now();
+
+    let record = TaskRecord {
+        id: task_id.clone(),
+        name: input.name.clone(),
+        status: "pending".to_string(),
+        created_at: created_at.clone(),
+        output: String::new(),
+        notes: input.description.unwrap_or_default(),
+        prompt: input.prompt,
+    };
+
+    TASK_STORE.lock().map_err(|e| e.to_string())?.push(record);
+
+    Ok(crate::types::TaskCreateOutput {
+        task_id,
+        name: input.name,
+        status: "pending".to_string(),
+        message: "Task created.".to_string(),
+    })
+}
+
+pub(crate) fn execute_task_update(input: crate::types::TaskUpdateInput) -> Result<crate::types::TaskUpdateOutput, String> {
+    let mut store = TASK_STORE.lock().map_err(|e| e.to_string())?;
+    let task = store.iter_mut().find(|t| t.id == input.task_id);
+    match task {
+        Some(t) => {
+            if let Some(status) = input.status {
+                t.status = status;
+            }
+            if let Some(notes) = input.notes {
+                t.notes = notes;
+            }
+            Ok(crate::types::TaskUpdateOutput {
+                task_id: input.task_id,
+                updated: true,
+                message: "Task updated.".to_string(),
+            })
+        }
+        None => Ok(crate::types::TaskUpdateOutput {
+            task_id: input.task_id,
+            updated: false,
+            message: "Task not found.".to_string(),
+        }),
+    }
+}
+
+pub(crate) fn execute_task_get(input: crate::types::TaskGetInput) -> Result<crate::types::TaskGetOutput, String> {
+    let store = TASK_STORE.lock().map_err(|e| e.to_string())?;
+    let task = store.iter().find(|t| t.id == input.task_id);
+    match task {
+        Some(t) => Ok(crate::types::TaskGetOutput {
+            task_id: t.id.clone(),
+            name: t.name.clone(),
+            status: t.status.clone(),
+            created_at: t.created_at.clone(),
+            output: if t.output.is_empty() { None } else { Some(t.output.clone()) },
+        }),
+        None => Err(format!("Task {} not found", input.task_id)),
+    }
+}
+
+pub(crate) fn execute_task_list(input: crate::types::TaskListInput) -> Result<crate::types::TaskListOutput, String> {
+    let store = TASK_STORE.lock().map_err(|e| e.to_string())?;
+    let tasks: Vec<crate::types::TaskSummaryItem> = store
+        .iter()
+        .filter(|t| input.status_filter.as_ref().is_none_or(|f| &t.status == f))
+        .map(|t| crate::types::TaskSummaryItem {
+            task_id: t.id.clone(),
+            name: t.name.clone(),
+            status: t.status.clone(),
+            created_at: t.created_at.clone(),
+        })
+        .collect();
+    let count = tasks.len();
+    Ok(crate::types::TaskListOutput { tasks, count })
+}
+
+pub(crate) fn execute_task_stop(input: crate::types::TaskStopInput) -> Result<crate::types::TaskStopOutput, String> {
+    let mut store = TASK_STORE.lock().map_err(|e| e.to_string())?;
+    let task = store.iter_mut().find(|t| t.id == input.task_id);
+    match task {
+        Some(t) if t.status == "running" || t.status == "pending" => {
+            t.status = "cancelled".to_string();
+            Ok(crate::types::TaskStopOutput {
+                task_id: input.task_id,
+                stopped: true,
+                message: "Task stopped.".to_string(),
+            })
+        }
+        Some(_) => Ok(crate::types::TaskStopOutput {
+            task_id: input.task_id,
+            stopped: false,
+            message: "Task is not in a stoppable state.".to_string(),
+        }),
+        None => Ok(crate::types::TaskStopOutput {
+            task_id: input.task_id,
+            stopped: false,
+            message: "Task not found.".to_string(),
+        }),
+    }
+}
+
+pub(crate) fn execute_task_output(input: crate::types::TaskOutputInput) -> Result<crate::types::TaskOutputOutput, String> {
+    let store = TASK_STORE.lock().map_err(|e| e.to_string())?;
+    let task = store.iter().find(|t| t.id == input.task_id);
+    match task {
+        Some(t) => {
+            let tail = input.tail.unwrap_or(100);
+            let lines: Vec<&str> = t.output.lines().collect();
+            let truncated = lines.len() > tail;
+            let output = if truncated {
+                lines[lines.len() - tail..].join("\n")
+            } else {
+                t.output.clone()
+            };
+            Ok(crate::types::TaskOutputOutput {
+                task_id: input.task_id,
+                output,
+                truncated,
+            })
+        }
+        None => Err(format!("Task {} not found", input.task_id)),
+    }
+}
+
+// ── Phase 2: Inter-agent messaging ─────────────────────────────
+
+static MESSAGE_LOG: LazyLock<Mutex<Vec<(String, String, String)>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+pub(crate) fn execute_send_message(input: crate::types::SendMessageInput) -> Result<crate::types::SendMessageOutput, String> {
+    MESSAGE_LOG
+        .lock()
+        .map_err(|e| e.to_string())?
+        .push((input.to.clone(), input.message.clone(), iso8601_now()));
+
+    Ok(crate::types::SendMessageOutput {
+        delivered: true,
+        to: input.to,
+        message: "Message delivered.".to_string(),
+    })
 }

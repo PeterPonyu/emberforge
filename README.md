@@ -1,6 +1,6 @@
 # Emberforge
 
-![Emberforge pixel logo](assets/emberforge-pixel-logo.svg)
+![Emberforge](assets/badge.svg)
 
 **A local-first coding forge for serious developers.**
 

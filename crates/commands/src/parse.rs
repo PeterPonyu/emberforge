@@ -93,6 +93,54 @@ pub enum SlashCommand {
         mode: Option<String>,
     },
     Fast,
+    // ── Phase 1: High-priority missing commands ──
+    Login {
+        provider: Option<String>,
+    },
+    Logout {
+        provider: Option<String>,
+    },
+    Context {
+        action: Option<String>,
+    },
+    Copy {
+        target: Option<String>,
+    },
+    Files {
+        path: Option<String>,
+    },
+    Tag {
+        name: Option<String>,
+    },
+    Rewind {
+        steps: Option<String>,
+    },
+    // ── Phase 2: Stats & insights ──
+    Stats,
+    Insights,
+    Usage {
+        period: Option<String>,
+    },
+    // ── Phase 3: Advanced commands ──
+    Vim,
+    Bridge {
+        action: Option<String>,
+    },
+    SecurityReview {
+        scope: Option<String>,
+    },
+    Fork {
+        prompt: Option<String>,
+    },
+    // ── Phase 4: Stretch goal commands ──
+    Voice,
+    Buddy {
+        task: Option<String>,
+    },
+    Peers {
+        action: Option<String>,
+    },
+    Proactive,
     Unknown(String),
 }
 
@@ -202,6 +250,54 @@ impl SlashCommand {
                 mode: parts.next().map(ToOwned::to_owned),
             },
             "fast" => Self::Fast,
+            // ── Phase 1 ──
+            "login" => Self::Login {
+                provider: parts.next().map(ToOwned::to_owned),
+            },
+            "logout" => Self::Logout {
+                provider: parts.next().map(ToOwned::to_owned),
+            },
+            "context" | "ctx" => Self::Context {
+                action: parts.next().map(ToOwned::to_owned),
+            },
+            "copy" | "cp" => Self::Copy {
+                target: remainder_after_command(trimmed, command),
+            },
+            "files" | "ls" => Self::Files {
+                path: parts.next().map(ToOwned::to_owned),
+            },
+            "tag" => Self::Tag {
+                name: parts.next().map(ToOwned::to_owned),
+            },
+            "rewind" => Self::Rewind {
+                steps: parts.next().map(ToOwned::to_owned),
+            },
+            // ── Phase 2 ──
+            "stats" => Self::Stats,
+            "insights" => Self::Insights,
+            "usage" => Self::Usage {
+                period: parts.next().map(ToOwned::to_owned),
+            },
+            // ── Phase 3 ──
+            "vim" => Self::Vim,
+            "bridge" => Self::Bridge {
+                action: parts.next().map(ToOwned::to_owned),
+            },
+            "security-review" | "secreview" => Self::SecurityReview {
+                scope: remainder_after_command(trimmed, command),
+            },
+            "fork" => Self::Fork {
+                prompt: remainder_after_command(trimmed, command),
+            },
+            // ── Phase 4 ──
+            "voice" => Self::Voice,
+            "buddy" => Self::Buddy {
+                task: remainder_after_command(trimmed, command),
+            },
+            "peers" | "teammates" => Self::Peers {
+                action: parts.next().map(ToOwned::to_owned),
+            },
+            "proactive" => Self::Proactive,
             other => Self::Unknown(other.to_string()),
         })
     }
