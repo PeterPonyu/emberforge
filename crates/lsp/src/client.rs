@@ -15,11 +15,13 @@ use tokio::sync::{oneshot, Mutex};
 use crate::error::LspError;
 use crate::types::{LspServerConfig, SymbolLocation};
 
+type PendingRequests = Arc<Mutex<BTreeMap<i64, oneshot::Sender<Result<Value, LspError>>>>>;
+
 pub(crate) struct LspClient {
     config: LspServerConfig,
     writer: Mutex<BufWriter<ChildStdin>>,
     child: Mutex<Child>,
-    pending_requests: Arc<Mutex<BTreeMap<i64, oneshot::Sender<Result<Value, LspError>>>>>,
+    pending_requests: PendingRequests,
     diagnostics: Arc<Mutex<BTreeMap<String, Vec<Diagnostic>>>>,
     open_documents: Mutex<BTreeMap<PathBuf, i32>>,
     next_request_id: AtomicI64,
@@ -59,7 +61,7 @@ impl LspClient {
 
         client.spawn_reader(stdout);
         if let Some(stderr) = stderr {
-            client.spawn_stderr_drain(stderr);
+            Self::spawn_stderr_drain(stderr);
         }
         client.initialize().await?;
         Ok(client)
@@ -281,10 +283,7 @@ impl LspClient {
 
             if let Err(error) = result {
                 let mut pending = pending_requests.lock().await;
-                let drained = pending
-                    .iter()
-                    .map(|(id, _)| *id)
-                    .collect::<Vec<_>>();
+                let drained = pending.keys().copied().collect::<Vec<_>>();
                 for id in drained {
                     if let Some(sender) = pending.remove(&id) {
                         let _ = sender.send(Err(LspError::Protocol(error.to_string())));
@@ -294,7 +293,7 @@ impl LspClient {
         });
     }
 
-    fn spawn_stderr_drain<R>(&self, stderr: R)
+    fn spawn_stderr_drain<R>(stderr: R)
     where
         R: AsyncRead + Unpin + Send + 'static,
     {

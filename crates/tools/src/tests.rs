@@ -1618,3 +1618,88 @@ fn team_delete_cleans_files() {
     crate::team_helpers::cleanup_team_directories("doomed", dir.path()).unwrap();
     assert!(!crate::team_helpers::get_team_file_path("doomed", dir.path()).exists());
 }
+
+// ── Phase 4: AppState bridge + Workflow tests ──
+
+#[test]
+fn team_context_flows_through_app_state() {
+    use std::sync::Arc;
+    use runtime::AppState;
+
+    // Use a tempdir as HOME so the real default_teams_dir resolves there
+    // and we don't pollute the user's actual ~/.local/share/emberforge/teams.
+    let tmp_home = tempfile::tempdir().unwrap();
+    let prev_home = std::env::var_os("HOME");
+    let prev_xdg = std::env::var_os("XDG_DATA_HOME");
+    let prev_team = std::env::var_os("EMBERFORGE_TEAM_NAME");
+
+    std::env::set_var("HOME", tmp_home.path());
+    std::env::remove_var("XDG_DATA_HOME");
+    std::env::remove_var("EMBERFORGE_TEAM_NAME");
+
+    let state = AppState::new();
+    let unique_team = format!("appstate-test-{}", std::process::id());
+
+    let create_input = crate::types::TeamCreateInput {
+        team_name: unique_team.clone(),
+        description: None,
+        agent_type: None,
+    };
+    let create_result =
+        crate::implementations::execute_team_create(create_input, Some(Arc::clone(&state)));
+    assert!(create_result.is_ok(), "team create failed: {create_result:?}");
+
+    let ctx_after_create = state.get_team_context();
+    assert!(
+        ctx_after_create.is_some(),
+        "team_context should be Some(_) after execute_team_create"
+    );
+    assert!(
+        ctx_after_create.unwrap().team_name.starts_with("appstate-test-"),
+        "team_context.team_name should match the created team"
+    );
+
+    let delete_input = crate::types::TeamDeleteInput {};
+    let delete_result =
+        crate::implementations::execute_team_delete(delete_input, Some(Arc::clone(&state)));
+    assert!(delete_result.is_ok(), "team delete failed: {delete_result:?}");
+
+    assert!(
+        state.get_team_context().is_none(),
+        "team_context should be None after execute_team_delete"
+    );
+
+    // Restore environment
+    if let Some(h) = prev_home {
+        std::env::set_var("HOME", h);
+    } else {
+        std::env::remove_var("HOME");
+    }
+    if let Some(x) = prev_xdg {
+        std::env::set_var("XDG_DATA_HOME", x);
+    } else {
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+    if let Some(t) = prev_team {
+        std::env::set_var("EMBERFORGE_TEAM_NAME", t);
+    }
+}
+
+#[test]
+fn workflow_tool_dispatches() {
+    use serde_json::json;
+    let result = crate::executor::execute_tool(
+        "Workflow",
+        &json!({"workflow_name": "test-flow"}),
+    );
+    assert!(result.is_ok(), "workflow dispatch failed: {result:?}");
+    let output = result.unwrap();
+    assert!(
+        output.contains("test-flow"),
+        "output should contain the workflow_name: {output}"
+    );
+    assert!(
+        output.contains("accepted"),
+        "output should contain the status: {output}"
+    );
+}

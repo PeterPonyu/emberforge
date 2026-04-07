@@ -660,5 +660,21 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
             }),
             required_permission: PermissionMode::WorkspaceWrite,
         },
+        ToolSpec {
+            name: "Workflow",
+            description: "Execute a named workflow with optional parameters. \
+                          Currently a structured stub that records the request \
+                          and returns a receipt; full workflow dispatch is deferred.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workflow_name": { "type": "string" },
+                    "parameters": { "type": "object" }
+                },
+                "required": ["workflow_name"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
     ]
 }

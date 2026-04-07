@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
-
-use crate::types::*;
+use crate::types::{PluginDefinition, PluginMetadata, Plugin, PluginHooks, PluginTool};
 use crate::error::PluginError;
 
 #[derive(Debug, Clone, PartialEq)]

@@ -652,3 +652,23 @@ pub(crate) struct TeamDeleteOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) team_name: Option<String>,
 }
+
+// ── Phase 4: Workflow tool types ──
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct WorkflowInput {
+    pub(crate) workflow_name: String,
+    /// Optional parameters passed to the workflow. Schema is intentionally
+    /// loose during the iter2 stub phase; future iterations will replace this
+    /// with a typed parameter map once workflow definitions are wired in.
+    #[serde(default)]
+    pub(crate) parameters: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WorkflowOutput {
+    pub(crate) workflow_name: String,
+    pub(crate) status: String,
+    pub(crate) message: String,
+}

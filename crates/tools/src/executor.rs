@@ -1,9 +1,11 @@
 use std::env;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use runtime::{execute_bash, glob_search, grep_search, read_file, write_file, edit_file};
 use runtime::{BashCommandInput, GrepSearchInput};
 use runtime::{validate_bash_command, SecurityVerdict, PermissionMode};
+use runtime::AppState;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -11,6 +13,25 @@ use crate::error::ToolExecError;
 use crate::types::*;
 use crate::implementations::*;
 
+/// Execute a tool by name with an optional session-scoped [`AppState`].
+///
+/// Most tools ignore `app_state`. The team orchestration tools (TeamCreate,
+/// TeamDelete) read/write the team context stored in `AppState`.
+pub fn execute_tool_with_context(
+    name: &str,
+    input: &Value,
+    app_state: Option<Arc<AppState>>,
+) -> Result<String, ToolExecError> {
+    match name {
+        "TeamCreate" => from_value::<TeamCreateInput>(input)
+            .and_then(|i| run_team_create(i, app_state)),
+        "TeamDelete" => from_value::<TeamDeleteInput>(input)
+            .and_then(|i| run_team_delete(i, app_state)),
+        other => execute_tool(other, input),
+    }
+}
+
+/// Execute a tool by name. Convenience wrapper that passes no `AppState`.
 pub fn execute_tool(name: &str, input: &Value) -> Result<String, ToolExecError> {
     match name {
         "bash" => from_value::<BashCommandInput>(input).and_then(run_bash),
@@ -57,8 +78,12 @@ pub fn execute_tool(name: &str, input: &Value) -> Result<String, ToolExecError> 
         "TaskOutput" => from_value::<TaskOutputInput>(input).and_then(run_task_output),
         "SendMessage" => from_value::<SendMessageInput>(input).and_then(run_send_message),
         // ── Phase 3: Team orchestration ──
-        "TeamCreate" => from_value::<TeamCreateInput>(input).and_then(run_team_create),
-        "TeamDelete" => from_value::<TeamDeleteInput>(input).and_then(run_team_delete),
+        "TeamCreate" => from_value::<TeamCreateInput>(input)
+            .and_then(|i| run_team_create(i, None)),
+        "TeamDelete" => from_value::<TeamDeleteInput>(input)
+            .and_then(|i| run_team_delete(i, None)),
+        // ── Phase 4: Workflow ──
+        "Workflow" => from_value::<WorkflowInput>(input).and_then(run_workflow),
         _ => Err(ToolExecError::UnsupportedTool(name.to_string())),
     }
 }
@@ -179,8 +204,6 @@ pub(crate) fn to_pretty_json<T: serde::Serialize>(value: T) -> Result<String, To
     serde_json::to_string_pretty(&value).map_err(ToolExecError::Serialize)
 }
 
-// ── New tool run wrappers for TS parity ──────────────────────────
-
 pub(crate) fn run_ask_user_question(input: AskUserQuestionInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_ask_user_question(input)?)
 }
@@ -209,8 +232,6 @@ pub(crate) fn run_read_mcp_resource(input: ReadMcpResourceInput) -> Result<Strin
     to_pretty_json(execute_read_mcp_resource(input)?)
 }
 
-// ── Phase 1: Cron & Worktree run wrappers ──────────────────────
-
 pub(crate) fn run_cron_create(input: CronCreateInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_cron_create(input)?)
 }
@@ -230,8 +251,6 @@ pub(crate) fn run_enter_worktree(input: EnterWorktreeInput) -> Result<String, To
 pub(crate) fn run_exit_worktree(input: ExitWorktreeInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_exit_worktree(input)?)
 }
-
-// ── Phase 2: Task management & messaging run wrappers ──────────
 
 pub(crate) fn run_task_create(input: TaskCreateInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_task_create(input)?)
@@ -261,12 +280,20 @@ pub(crate) fn run_send_message(input: SendMessageInput) -> Result<String, ToolEx
     to_pretty_json(execute_send_message(input)?)
 }
 
-// ── Phase 3: Team orchestration run wrappers ────────────────────
-
-pub(crate) fn run_team_create(input: TeamCreateInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_team_create(input)?)
+pub(crate) fn run_team_create(
+    input: TeamCreateInput,
+    app_state: Option<Arc<AppState>>,
+) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_team_create(input, app_state)?)
 }
 
-pub(crate) fn run_team_delete(input: TeamDeleteInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_team_delete(input)?)
+pub(crate) fn run_team_delete(
+    input: TeamDeleteInput,
+    app_state: Option<Arc<AppState>>,
+) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_team_delete(input, app_state)?)
+}
+
+pub(crate) fn run_workflow(input: WorkflowInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_workflow(input)?)
 }

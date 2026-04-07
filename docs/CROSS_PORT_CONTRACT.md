@@ -517,7 +517,7 @@ Hooks allow plugins and external systems to react to runtime events (tool use, s
 }
 ```
 
-### 4.2 16 Hook Event Types
+### 4.2 17 Hook Event Types
 
 | Event Type | Trigger | Context (tool_name) | Example Use |
 |----------|---------|-------------------|-------------|
@@ -809,7 +809,40 @@ This will list all files larger than 100 megabytes in /path and subdirectories.
 
 ---
 
-## 8. Conformance Checklist
+## 8. Canonical Default Model Registry
+
+All four ports of Emberforge should use the **same default model name** when no model is explicitly provided or configured via environment variables. This ensures consistent behavior across implementations.
+
+### 8.1 Recommended Canonical Default: `qwen3:8b`
+
+**Rationale:**
+- **Local-only**: Does not require API keys or internet connectivity (works via Ollama)
+- **Matches existing cpp port**: The C++ port already defaults to `qwen3:8b`, establishing a precedent
+- **Low friction**: Ollama is widely available and easy to install
+- **No licensing concerns**: Open-source model
+
+### 8.2 Current Port Defaults (Iteration 1)
+
+| Port | Current default | Source | Notes |
+|---|---|---|---|
+| Rust | (no hardcoded default) | `crates/api/src/client.rs` | Caller must provide model; no fallback constant |
+| C++ | `qwen3:8b` | `apps/ember_cli/main.cpp:14` | Set via env var `EMBER_MODEL` or hardcoded string |
+| Go | `claude-sonnet-4-6` | `pkg/api/provider.go:3` (const `DefaultModel`) | API-based model; requires `ANTHROPIC_API_KEY` |
+| TypeScript | `llama3.2` | `packages/api/src/ollama_provider.ts:10` | Set in constructor default parameter |
+
+### 8.3 Migration Path (Iteration 3 and beyond)
+
+**Note:** This section documents the canonical target; ports are **NOT** expected to align immediately. Aligning all four ports to use `qwen3:8b` as the default is deferred to a future iteration (iter3 or later) to avoid unnecessary churn in iter2.
+
+When ports do align, the changes will be:
+1. Rust: Add a constant `const DEFAULT_MODEL: &str = "qwen3:8b"` in `crates/api/src/client.rs` and use it as the fallback when no model is provided
+2. Go: Update `const DefaultModel = "qwen3:8b"` in `pkg/api/provider.go:3`
+3. TypeScript: Update the default parameter in `packages/api/src/ollama_provider.ts` constructor from `"llama3.2"` to `"qwen3:8b"`
+4. C++: No change needed (already at the canonical default)
+
+---
+
+## 9. Conformance Checklist
 
 For each port to be considered compliant, it must:
 
@@ -818,7 +851,7 @@ For each port to be considered compliant, it must:
 - [ ] **Content Blocks**: Serialize ContentBlock variants (text, tool_use, tool_result) with `type` discriminator
 - [ ] **Tool Specs**: Define tools with name, description, input_schema, required_permission
 - [ ] **Permissions**: Serialize permissions as: `read_only`, `workspace_write`, `danger_full_access`
-- [ ] **Hook Events**: Support all 16 event types listed in § 4.2
+- [ ] **Hook Events**: Support all 17 event types listed in § 4.2
 - [ ] **Hook Backends**: Support both command and HTTP backends with proper exit code semantics
 - [ ] **Plugin Manifest**: Load and validate `plugin.json` matching schema in § 5.1
 - [ ] **Agent Definitions**: Load agent JSON files with camelCase field names (agentType, displayName, etc.)

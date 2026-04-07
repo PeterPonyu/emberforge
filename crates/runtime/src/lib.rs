@@ -1,3 +1,4 @@
+pub mod app_state;
 pub mod agent_loader;
 pub mod bash_security;
 pub mod bash_classifier;
@@ -35,6 +36,7 @@ pub mod cost_tracker;
 pub mod transport;
 mod usage;
 
+pub use app_state::{AppState, TeamContext};
 pub use lsp::{
     FileDiagnostics, LspContextEnrichment, LspError, LspManager, LspServerConfig,
     SymbolLocation, WorkspaceDiagnostics,

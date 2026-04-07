@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use api::{
@@ -15,6 +15,7 @@ use runtime::{
     ConversationRuntime, MessageRole, PermissionMode, PermissionPolicy, RuntimeError, Session,
     TokenUsage, ToolError, ToolExecutor,
 };
+use runtime::{AppState, TeamContext};
 use serde_json::{json, Value};
 
 use crate::registry::ToolSpec;
@@ -2801,6 +2802,7 @@ pub(crate) fn execute_send_message(input: crate::types::SendMessageInput) -> Res
 
 pub(crate) fn execute_team_create(
     input: TeamCreateInput,
+    app_state: Option<Arc<AppState>>,
 ) -> Result<TeamCreateOutput, String> {
     let teams_dir = default_teams_dir();
     let final_name = generate_unique_team_name(&input.team_name, &teams_dir);
@@ -2834,23 +2836,40 @@ pub(crate) fn execute_team_create(
     write_team_file(&final_name, &team, &teams_dir)?;
     register_team_for_session_cleanup(&final_name);
 
-    let team_file_path = get_team_file_path(&final_name, &teams_dir)
-        .to_string_lossy()
-        .into_owned();
+    let team_file_path = get_team_file_path(&final_name, &teams_dir);
+    let team_file_path_str = team_file_path.to_string_lossy().into_owned();
+
+    // Store the active team context in AppState so that execute_team_delete
+    // can find the team name without needing the EMBERFORGE_TEAM_NAME env var.
+    if let Some(state) = app_state {
+        state.set_team_context(Some(TeamContext {
+            team_name: final_name.clone(),
+            team_file_path: team_file_path.clone(),
+            lead_agent_id: lead_agent_id.clone(),
+        }));
+    }
 
     Ok(TeamCreateOutput {
         team_name: final_name,
-        team_file_path,
+        team_file_path: team_file_path_str,
         lead_agent_id,
     })
 }
 
 pub(crate) fn execute_team_delete(
     _input: TeamDeleteInput,
+    app_state: Option<Arc<AppState>>,
 ) -> Result<TeamDeleteOutput, String> {
-    // Retrieve team name from environment — when a team context is active,
-    // the tool host sets EMBERFORGE_TEAM_NAME. If absent, there is no team.
-    let Some(team_name) = std::env::var("EMBERFORGE_TEAM_NAME").ok().filter(|s| !s.is_empty()) else {
+    // Resolve the active team name. Prefer the in-process AppState context
+    // (set by execute_team_create); fall back to the EMBERFORGE_TEAM_NAME env
+    // var for callers that still use the legacy env-var bridge.
+    let team_name_opt = app_state
+        .as_ref()
+        .and_then(|s| s.get_team_context())
+        .map(|ctx| ctx.team_name)
+        .or_else(|| std::env::var("EMBERFORGE_TEAM_NAME").ok().filter(|s| !s.is_empty()));
+
+    let Some(team_name) = team_name_opt else {
         return Ok(TeamDeleteOutput {
             success: true,
             message: "No team name found, nothing to clean up".to_string(),
@@ -2860,7 +2879,6 @@ pub(crate) fn execute_team_delete(
 
     let teams_dir = default_teams_dir();
 
-    // Check for active non-lead members before cleaning up.
     if let Some(team) = read_team_file(&team_name, &teams_dir) {
         let active: Vec<&str> = team
             .members
@@ -2887,9 +2905,25 @@ pub(crate) fn execute_team_delete(
     cleanup_team_directories(&team_name, &teams_dir)?;
     unregister_team_for_session_cleanup(&team_name);
 
+    if let Some(state) = app_state {
+        state.set_team_context(None);
+    }
+
     Ok(TeamDeleteOutput {
         success: true,
         message: format!("Cleaned up directories for team \"{team_name}\""),
         team_name: Some(team_name),
+    })
+}
+
+/// Execute a named workflow. Currently a structured stub: it validates the
+/// input, records the workflow name and parameters, and returns a receipt.
+/// Real workflow dispatch (loading workflow definitions, running steps) is
+/// deferred and will replace this stub in a future story.
+pub(crate) fn execute_workflow(input: WorkflowInput) -> Result<WorkflowOutput, String> {
+    Ok(WorkflowOutput {
+        workflow_name: input.workflow_name,
+        status: "accepted".to_string(),
+        message: "Workflow accepted for execution (stub implementation).".to_string(),
     })
 }
