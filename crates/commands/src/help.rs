@@ -119,7 +119,7 @@ pub fn suggest_slash_commands(input: &str, limit: usize) -> Vec<String> {
         })
         .collect::<Vec<_>>();
 
-    ranked.sort_by(|left, right| left.cmp(right));
+    ranked.sort();
     ranked.dedup_by(|left, right| left.2 == right.2);
     ranked
         .into_iter()

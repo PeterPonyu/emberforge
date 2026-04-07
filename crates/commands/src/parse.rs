@@ -73,7 +73,6 @@ pub enum SlashCommand {
     Skills {
         args: Option<String>,
     },
-    // ── New commands for TS parity ──
     Hooks,
     Mcp {
         action: Option<String>,
@@ -85,7 +84,6 @@ pub enum SlashCommand {
     Review {
         scope: Option<String>,
     },
-    // ── Tier 2 features ──
     Effort {
         level: Option<String>,
     },
@@ -93,7 +91,6 @@ pub enum SlashCommand {
         mode: Option<String>,
     },
     Fast,
-    // ── Phase 1: High-priority missing commands ──
     Login {
         provider: Option<String>,
     },
@@ -115,13 +112,11 @@ pub enum SlashCommand {
     Rewind {
         steps: Option<String>,
     },
-    // ── Phase 2: Stats & insights ──
     Stats,
     Insights,
     Usage {
         period: Option<String>,
     },
-    // ── Phase 3: Advanced commands ──
     Vim,
     Bridge {
         action: Option<String>,
@@ -132,7 +127,6 @@ pub enum SlashCommand {
     Fork {
         prompt: Option<String>,
     },
-    // ── Phase 4: Stretch goal commands ──
     Voice,
     Buddy {
         task: Option<String>,
@@ -157,6 +151,17 @@ impl SlashCommand {
 
         let mut parts = trimmed.trim_start_matches('/').split_whitespace();
         let command = parts.next().unwrap_or_default();
+        Some(
+            Self::parse_core(command, trimmed, &mut parts)
+                .unwrap_or_else(|| Self::parse_extended(command, trimmed, &mut parts)),
+        )
+    }
+
+    fn parse_core<'a>(
+        command: &str,
+        trimmed: &str,
+        parts: &mut impl Iterator<Item = &'a str>,
+    ) -> Option<Self> {
         Some(match command {
             "help" => Self::Help,
             "status" => Self::Status,
@@ -233,7 +238,16 @@ impl SlashCommand {
             "skills" => Self::Skills {
                 args: remainder_after_command(trimmed, command),
             },
-            // ── New commands for TS parity ──
+            _ => return None,
+        })
+    }
+
+    fn parse_extended<'a>(
+        command: &str,
+        trimmed: &str,
+        parts: &mut impl Iterator<Item = &'a str>,
+    ) -> Self {
+        match command {
             "hooks" => Self::Hooks,
             "mcp" => Self::Mcp {
                 action: parts.next().map(ToOwned::to_owned),
@@ -245,7 +259,6 @@ impl SlashCommand {
             "review" => Self::Review {
                 scope: remainder_after_command(trimmed, command),
             },
-            // ── Tier 2 features ──
             "effort" => Self::Effort {
                 level: parts.next().map(ToOwned::to_owned),
             },
@@ -253,7 +266,6 @@ impl SlashCommand {
                 mode: parts.next().map(ToOwned::to_owned),
             },
             "fast" => Self::Fast,
-            // ── Phase 1 ──
             "login" => Self::Login {
                 provider: parts.next().map(ToOwned::to_owned),
             },
@@ -275,13 +287,11 @@ impl SlashCommand {
             "rewind" => Self::Rewind {
                 steps: parts.next().map(ToOwned::to_owned),
             },
-            // ── Phase 2 ──
             "stats" => Self::Stats,
             "insights" => Self::Insights,
             "usage" => Self::Usage {
                 period: parts.next().map(ToOwned::to_owned),
             },
-            // ── Phase 3 ──
             "vim" => Self::Vim,
             "bridge" => Self::Bridge {
                 action: parts.next().map(ToOwned::to_owned),
@@ -292,7 +302,6 @@ impl SlashCommand {
             "fork" => Self::Fork {
                 prompt: remainder_after_command(trimmed, command),
             },
-            // ── Phase 4 ──
             "voice" => Self::Voice,
             "buddy" => Self::Buddy {
                 task: remainder_after_command(trimmed, command),
@@ -305,7 +314,7 @@ impl SlashCommand {
                 action: parts.next().map(ToOwned::to_owned),
             },
             other => Self::Unknown(other.to_string()),
-        })
+        }
     }
 }
 
@@ -317,4 +326,3 @@ fn remainder_after_command(input: &str, command: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
 }
-

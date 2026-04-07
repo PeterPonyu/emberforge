@@ -871,7 +871,44 @@ Do not create drift without explicit review of all four implementations.
 
 ---
 
-## 10. Conformance Checklist
+## 10. Parity Test Fixtures
+
+Parity fixtures are canonical scenario files that all four ports should eventually consume and replay with matching observable output. They prevent silent wire-level drift as independent port projects evolve.
+
+### 10.1 Fixture Location and Purpose
+
+Fixtures are stored in `emberforge-translations/parity_fixtures/` (a sibling directory to the four port repos). This location is intentional: the fixtures are **shared, owned-by-none reference data**. No single port owns them; each port independently decides when to consume them. Storing them outside any port repo ensures they remain neutral ground.
+
+### 10.2 Fixture Format
+
+Each fixture is a newline-delimited JSON file (`.jsonl`):
+- **Filename:** `scenario_NNN_description.jsonl` (e.g., `scenario_001_session_lifecycle.jsonl`)
+- **Format:** One JSON object per line (no trailing commas, proper escaping)
+- **Deterministic:** Uses fixed timestamps (`2026-04-07T12:00:00Z`) so output is reproducible
+
+### 10.3 Schema Compliance
+
+All fixtures conform to the schemas in §1 (Session Record) and §2 (ConversationMessage Variants). Each line represents a single record (session metadata, message, tool use, tool result, etc.) that your port's SessionStore should handle.
+
+### 10.4 Per-Port Integration
+
+Each port should create a parity test that:
+1. Loads the fixture file line-by-line
+2. Parses each line as JSON using language-native JSON libraries
+3. Drives each record through the port's SessionStore (or equivalent) implementation
+4. Asserts that the output matches the fixture semantics
+
+See `emberforge-translations/parity_fixtures/README.md` for language-specific test patterns and pseudocode examples.
+
+### 10.5 Current Fixtures
+
+- **scenario_001_session_lifecycle.jsonl** — Session lifecycle: create → user message → assistant tool use → tool result → assistant response → close
+
+Additional scenarios will be added as cross-port alignment needs grow.
+
+---
+
+## 11. Conformance Checklist
 
 For each port to be considered compliant, it must:
 

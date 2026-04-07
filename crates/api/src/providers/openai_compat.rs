@@ -271,7 +271,7 @@ impl MessageStream {
             }
 
             if self.done {
-                self.pending.extend(self.state.finish()?);
+                self.pending.extend(self.state.finish());
                 if let Some(event) = self.pending.pop_front() {
                     return Ok(Some(event));
                 }
@@ -281,7 +281,7 @@ impl MessageStream {
             match self.response.chunk().await? {
                 Some(chunk) => {
                     for parsed in self.parser.push(&chunk)? {
-                        self.pending.extend(self.state.ingest_chunk(parsed)?);
+                        self.pending.extend(self.state.ingest_chunk(parsed));
                     }
                 }
                 None => {
@@ -316,12 +316,19 @@ impl OpenAiSseParser {
     }
 }
 
+#[derive(Debug, Default, PartialEq)]
+enum TextState {
+    #[default]
+    NotStarted,
+    Started,
+    Finished,
+}
+
 #[derive(Debug)]
 struct StreamState {
     model: String,
     message_started: bool,
-    text_started: bool,
-    text_finished: bool,
+    text_state: TextState,
     finished: bool,
     /// Accumulated reasoning/thinking content from Ollama thinking models.
     /// If the stream finishes with NO text content, this gets promoted to text.
@@ -336,8 +343,7 @@ impl StreamState {
         Self {
             model,
             message_started: false,
-            text_started: false,
-            text_finished: false,
+            text_state: TextState::NotStarted,
             finished: false,
             reasoning_buffer: String::new(),
             stop_reason: None,
@@ -346,7 +352,7 @@ impl StreamState {
         }
     }
 
-    fn ingest_chunk(&mut self, chunk: ChatCompletionChunk) -> Result<Vec<StreamEvent>, ApiError> {
+    fn ingest_chunk(&mut self, chunk: ChatCompletionChunk) -> Vec<StreamEvent> {
         let mut events = Vec::new();
         if !self.message_started {
             self.message_started = true;
@@ -391,8 +397,8 @@ impl StreamState {
             }
 
             if let Some(content) = choice.delta.content.filter(|value| !value.is_empty()) {
-                if !self.text_started {
-                    self.text_started = true;
+                if self.text_state == TextState::NotStarted {
+                    self.text_state = TextState::Started;
                     events.push(StreamEvent::ContentBlockStart(ContentBlockStartEvent {
                         index: 0,
                         content_block: OutputContentBlock::Text {
@@ -411,7 +417,7 @@ impl StreamState {
                 state.apply(tool_call);
                 let block_index = state.block_index();
                 if !state.started {
-                    if let Some(start_event) = state.start_event()? {
+                    if let Some(start_event) = state.start_event() {
                         state.started = true;
                         events.push(StreamEvent::ContentBlockStart(start_event));
                     } else {
@@ -444,12 +450,12 @@ impl StreamState {
             }
         }
 
-        Ok(events)
+        events
     }
 
-    fn finish(&mut self) -> Result<Vec<StreamEvent>, ApiError> {
+    fn finish(&mut self) -> Vec<StreamEvent> {
         if self.finished {
-            return Ok(Vec::new());
+            return Vec::new();
         }
         self.finished = true;
 
@@ -459,8 +465,11 @@ impl StreamState {
         // (e.g. qwen3, deepseek-r1 via Ollama OAI-compat) and produced no
         // visible text, promote the reasoning buffer to text content so the
         // user sees a response instead of nothing.
-        if !self.text_started && !self.reasoning_buffer.is_empty() && self.tool_calls.is_empty() {
-            self.text_started = true;
+        if self.text_state == TextState::NotStarted
+            && !self.reasoning_buffer.is_empty()
+            && self.tool_calls.is_empty()
+        {
+            self.text_state = TextState::Started;
             events.push(StreamEvent::ContentBlockStart(ContentBlockStartEvent {
                 index: 0,
                 content_block: OutputContentBlock::Text {
@@ -475,8 +484,8 @@ impl StreamState {
             }));
         }
 
-        if self.text_started && !self.text_finished {
-            self.text_finished = true;
+        if self.text_state == TextState::Started {
+            self.text_state = TextState::Finished;
             events.push(StreamEvent::ContentBlockStop(ContentBlockStopEvent {
                 index: 0,
             }));
@@ -484,7 +493,7 @@ impl StreamState {
 
         for state in self.tool_calls.values_mut() {
             if !state.started {
-                if let Some(start_event) = state.start_event()? {
+                if let Some(start_event) = state.start_event() {
                     state.started = true;
                     events.push(StreamEvent::ContentBlockStart(start_event));
                     if let Some(delta_event) = state.delta_event() {
@@ -519,7 +528,7 @@ impl StreamState {
             }));
             events.push(StreamEvent::MessageStop(MessageStopEvent {}));
         }
-        Ok(events)
+        events
     }
 }
 
@@ -552,22 +561,20 @@ impl ToolCallState {
         self.openai_index + 1
     }
 
-    fn start_event(&self) -> Result<Option<ContentBlockStartEvent>, ApiError> {
-        let Some(name) = self.name.clone() else {
-            return Ok(None);
-        };
+    fn start_event(&self) -> Option<ContentBlockStartEvent> {
+        let name = self.name.clone()?;
         let id = self
             .id
             .clone()
             .unwrap_or_else(|| format!("tool_call_{}", self.openai_index));
-        Ok(Some(ContentBlockStartEvent {
+        Some(ContentBlockStartEvent {
             index: self.block_index(),
             content_block: OutputContentBlock::ToolUse {
                 id,
                 name,
                 input: json!({}),
             },
-        }))
+        })
     }
 
     fn delta_event(&mut self) -> Option<ContentBlockDeltaEvent> {
@@ -656,7 +663,7 @@ struct ChunkDelta {
     #[serde(default)]
     content: Option<String>,
     /// Ollama sends thinking/reasoning tokens in this field for thinking models
-    /// (e.g. qwen3, deepseek-r1). Standard OpenAI API doesn't use this field.
+    /// (e.g. qwen3, deepseek-r1). Standard `OpenAI` API doesn't use this field.
     #[serde(default)]
     reasoning: Option<String>,
     #[serde(default)]
