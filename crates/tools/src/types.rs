@@ -622,3 +622,33 @@ pub(crate) struct SendMessageOutput {
     pub(crate) to: String,
     pub(crate) message: String,
 }
+
+// ── Phase 3: Team orchestration tool types ──
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct TeamCreateInput {
+    pub(crate) team_name: String,
+    pub(crate) description: Option<String>,
+    pub(crate) agent_type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TeamCreateOutput {
+    pub(crate) team_name: String,
+    pub(crate) team_file_path: String,
+    pub(crate) lead_agent_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TeamDeleteInput {
+    // empty input per spec
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TeamDeleteOutput {
+    pub(crate) success: bool,
+    pub(crate) message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) team_name: Option<String>,
+}

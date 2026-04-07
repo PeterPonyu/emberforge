@@ -1561,3 +1561,60 @@ impl HttpResponse {
         .into_bytes()
     }
 }
+
+// ── team_helpers unit tests ──────────────────────────────────────
+
+#[test]
+fn team_file_round_trip() {
+    let dir = tempfile::tempdir().unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    let team = crate::team_helpers::TeamFile {
+        name: "test-team".to_string(),
+        description: Some("A test team".to_string()),
+        created_at: now,
+        lead_agent_id: "team-lead@test-team".to_string(),
+        lead_session_id: "sess-abc".to_string(),
+        members: vec![crate::team_helpers::TeamMember {
+            agent_id: "team-lead@test-team".to_string(),
+            name: crate::team_helpers::TEAM_LEAD_NAME.to_string(),
+            agent_type: crate::team_helpers::TEAM_LEAD_NAME.to_string(),
+            model: "claude-3".to_string(),
+            joined_at: now,
+            tmux_pane_id: String::new(),
+            cwd: "/tmp".to_string(),
+            subscriptions: vec![],
+            is_active: None,
+        }],
+    };
+
+    crate::team_helpers::write_team_file("test-team", &team, dir.path()).unwrap();
+    let loaded = crate::team_helpers::read_team_file("test-team", dir.path()).unwrap();
+    assert_eq!(loaded, team);
+}
+
+#[test]
+fn team_delete_cleans_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    let team = crate::team_helpers::TeamFile {
+        name: "doomed".to_string(),
+        description: None,
+        created_at: now,
+        lead_agent_id: "team-lead@doomed".to_string(),
+        lead_session_id: String::new(),
+        members: vec![],
+    };
+
+    crate::team_helpers::write_team_file("doomed", &team, dir.path()).unwrap();
+    assert!(crate::team_helpers::get_team_file_path("doomed", dir.path()).exists());
+    crate::team_helpers::cleanup_team_directories("doomed", dir.path()).unwrap();
+    assert!(!crate::team_helpers::get_team_file_path("doomed", dir.path()).exists());
+}

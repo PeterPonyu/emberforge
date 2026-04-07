@@ -56,6 +56,9 @@ pub fn execute_tool(name: &str, input: &Value) -> Result<String, ToolExecError> 
         "TaskStop" => from_value::<TaskStopInput>(input).and_then(run_task_stop),
         "TaskOutput" => from_value::<TaskOutputInput>(input).and_then(run_task_output),
         "SendMessage" => from_value::<SendMessageInput>(input).and_then(run_send_message),
+        // ── Phase 3: Team orchestration ──
+        "TeamCreate" => from_value::<TeamCreateInput>(input).and_then(run_team_create),
+        "TeamDelete" => from_value::<TeamDeleteInput>(input).and_then(run_team_delete),
         _ => Err(ToolExecError::UnsupportedTool(name.to_string())),
     }
 }
@@ -256,4 +259,14 @@ pub(crate) fn run_task_output(input: TaskOutputInput) -> Result<String, ToolExec
 
 pub(crate) fn run_send_message(input: SendMessageInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_send_message(input)?)
+}
+
+// ── Phase 3: Team orchestration run wrappers ────────────────────
+
+pub(crate) fn run_team_create(input: TeamCreateInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_team_create(input)?)
+}
+
+pub(crate) fn run_team_delete(input: TeamDeleteInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_team_delete(input)?)
 }

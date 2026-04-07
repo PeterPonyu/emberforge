@@ -20,6 +20,11 @@ use serde_json::{json, Value};
 use crate::registry::ToolSpec;
 use crate::executor::execute_tool;
 use crate::specs::mvp_tool_specs;
+use crate::team_helpers::{
+    cleanup_team_directories, default_teams_dir, generate_unique_team_name, get_team_file_path,
+    now_millis, read_team_file, register_team_for_session_cleanup, unregister_team_for_session_cleanup,
+    write_team_file, TeamFile, TeamMember, TEAM_LEAD_NAME,
+};
 use crate::types::*;
 
 pub(crate) fn execute_web_fetch(input: &WebFetchInput) -> Result<WebFetchOutput, String> {
@@ -2789,5 +2794,102 @@ pub(crate) fn execute_send_message(input: crate::types::SendMessageInput) -> Res
         delivered: true,
         to: input.to,
         message: "Message delivered.".to_string(),
+    })
+}
+
+// ── Phase 3: Team orchestration ──────────────────────────────────
+
+pub(crate) fn execute_team_create(
+    input: TeamCreateInput,
+) -> Result<TeamCreateOutput, String> {
+    let teams_dir = default_teams_dir();
+    let final_name = generate_unique_team_name(&input.team_name, &teams_dir);
+    let lead_agent_id = format!("{TEAM_LEAD_NAME}@{final_name}");
+    let lead_agent_type = input.agent_type.unwrap_or_else(|| TEAM_LEAD_NAME.to_string());
+    let now = now_millis();
+
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    let team = TeamFile {
+        name: final_name.clone(),
+        description: input.description,
+        created_at: now,
+        lead_agent_id: lead_agent_id.clone(),
+        lead_session_id: String::new(),
+        members: vec![TeamMember {
+            agent_id: lead_agent_id.clone(),
+            name: TEAM_LEAD_NAME.to_string(),
+            agent_type: lead_agent_type,
+            model: String::new(),
+            joined_at: now,
+            tmux_pane_id: String::new(),
+            cwd,
+            subscriptions: Vec::new(),
+            is_active: None,
+        }],
+    };
+
+    write_team_file(&final_name, &team, &teams_dir)?;
+    register_team_for_session_cleanup(&final_name);
+
+    let team_file_path = get_team_file_path(&final_name, &teams_dir)
+        .to_string_lossy()
+        .into_owned();
+
+    Ok(TeamCreateOutput {
+        team_name: final_name,
+        team_file_path,
+        lead_agent_id,
+    })
+}
+
+pub(crate) fn execute_team_delete(
+    _input: TeamDeleteInput,
+) -> Result<TeamDeleteOutput, String> {
+    // Retrieve team name from environment — when a team context is active,
+    // the tool host sets EMBERFORGE_TEAM_NAME. If absent, there is no team.
+    let Some(team_name) = std::env::var("EMBERFORGE_TEAM_NAME").ok().filter(|s| !s.is_empty()) else {
+        return Ok(TeamDeleteOutput {
+            success: true,
+            message: "No team name found, nothing to clean up".to_string(),
+            team_name: None,
+        });
+    };
+
+    let teams_dir = default_teams_dir();
+
+    // Check for active non-lead members before cleaning up.
+    if let Some(team) = read_team_file(&team_name, &teams_dir) {
+        let active: Vec<&str> = team
+            .members
+            .iter()
+            .filter(|m| m.name != TEAM_LEAD_NAME)
+            .filter(|m| m.is_active != Some(false))
+            .map(|m| m.name.as_str())
+            .collect();
+
+        if !active.is_empty() {
+            return Ok(TeamDeleteOutput {
+                success: false,
+                message: format!(
+                    "Cannot cleanup team with {} active member(s): {}. \
+                     Use requestShutdown to gracefully terminate teammates first.",
+                    active.len(),
+                    active.join(", ")
+                ),
+                team_name: Some(team_name),
+            });
+        }
+    }
+
+    cleanup_team_directories(&team_name, &teams_dir)?;
+    unregister_team_for_session_cleanup(&team_name);
+
+    Ok(TeamDeleteOutput {
+        success: true,
+        message: format!("Cleaned up directories for team \"{team_name}\""),
+        team_name: Some(team_name),
     })
 }

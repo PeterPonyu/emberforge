@@ -625,5 +625,40 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
             }),
             required_permission: PermissionMode::WorkspaceWrite,
         },
+        // ── Phase 3: Team orchestration tools ──────────────────────────
+        ToolSpec {
+            name: "TeamCreate",
+            description: "Create a new team for coordinating multiple agents.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "team_name": {
+                        "type": "string",
+                        "description": "Name for the new team to create."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Team description/purpose."
+                    },
+                    "agent_type": {
+                        "type": "string",
+                        "description": "Type/role of the team lead (e.g., \"researcher\", \"test-runner\")."
+                    }
+                },
+                "required": ["team_name"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
+        ToolSpec {
+            name: "TeamDelete",
+            description: "Clean up team and task directories when the swarm is complete.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
     ]
 }

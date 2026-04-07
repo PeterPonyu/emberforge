@@ -3,6 +3,7 @@ mod executor;
 mod implementations;
 mod registry;
 mod specs;
+pub mod team_helpers;
 mod types;
 
 #[cfg(test)]
