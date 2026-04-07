@@ -103,10 +103,10 @@ impl Default for MemoryConfig {
 /// Strip optional surrounding quotes (single or double) from a value string.
 fn strip_quotes(s: &str) -> &str {
     let s = s.trim();
-    if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
-        if s.len() >= 2 {
-            return &s[1..s.len() - 1];
-        }
+    if ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
+        && s.len() >= 2
+    {
+        return &s[1..s.len() - 1];
     }
     s
 }
@@ -119,6 +119,7 @@ fn strip_quotes(s: &str) -> &str {
 ///
 /// The second element of the tuple is the body text that follows the
 /// frontmatter block.
+#[must_use]
 pub fn parse_frontmatter(content: &str) -> Option<(MemoryFrontmatter, &str)> {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
@@ -197,17 +198,13 @@ pub fn scan_memory_dir(dir: &Path, config: &MemoryConfig) -> io::Result<Vec<Memo
     let mut files: Vec<MemoryFile> = Vec::new();
 
     for entry in fs::read_dir(dir)? {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+        let Ok(entry) = entry else { continue };
         let path = entry.path();
 
         // Only consider .md files.
         let is_md = path
             .extension()
-            .map(|e| e.eq_ignore_ascii_case("md"))
-            .unwrap_or(false);
+            .is_some_and(|e| e.eq_ignore_ascii_case("md"));
         if !is_md {
             continue;
         }
@@ -228,15 +225,12 @@ pub fn scan_memory_dir(dir: &Path, config: &MemoryConfig) -> io::Result<Vec<Memo
             }
         };
 
-        let (frontmatter, body) = match parse_frontmatter(&content) {
-            Some(pair) => pair,
-            None => {
-                eprintln!(
-                    "memory: skipping {} (invalid or missing frontmatter)",
-                    path.display()
-                );
-                continue;
-            }
+        let Some((frontmatter, body)) = parse_frontmatter(&content) else {
+            eprintln!(
+                "memory: skipping {} (invalid or missing frontmatter)",
+                path.display()
+            );
+            continue;
         };
 
         let modified = entry
@@ -284,9 +278,8 @@ pub fn load_entrypoint(dir: &Path, config: &MemoryConfig) -> io::Result<Option<M
 /// Truncate content to fit within both a line limit and a byte limit.
 fn truncate_content(s: &str, max_lines: usize, max_bytes: usize) -> String {
     let mut result = String::new();
-    let mut line_count = 0;
 
-    for line in s.lines() {
+    for (line_count, line) in s.lines().enumerate() {
         if line_count >= max_lines {
             break;
         }
@@ -303,7 +296,6 @@ fn truncate_content(s: &str, max_lines: usize, max_bytes: usize) -> String {
             result.push('\n');
         }
         result.push_str(line);
-        line_count += 1;
     }
 
     result
@@ -341,7 +333,7 @@ fn format_date(time: SystemTime) -> String {
             // Simple date calculation (no chrono dependency).
             let days = secs / 86_400;
             let (year, month, day) = days_to_ymd(days);
-            format!("{:04}-{:02}-{:02}", year, month, day)
+            format!("{year:04}-{month:02}-{day:02}")
         }
         Err(_) => "unknown".to_string(),
     }
@@ -350,23 +342,28 @@ fn format_date(time: SystemTime) -> String {
 /// Convert days since Unix epoch to (year, month, day).
 fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     // Algorithm adapted from Howard Hinnant's `civil_from_days`.
-    let z = days as i64 + 719_468;
+    // days fits in i64 for any realistic date (< 2^53 days since epoch).
+    let days_i64 = i64::try_from(days).unwrap_or(i64::MAX);
+    let z = days_i64 + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = (z - era * 146_097) as u64; // day of era [0, 146096]
-    let yoe =
-        (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // year of era [0, 399]
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // day of year [0, 365]
-    let mp = (5 * doy + 2) / 153; // [0, 11]
-    let d = doy - (153 * mp + 2) / 5 + 1; // day [1, 31]
+    let z_offset = z - era * 146_097;
+    let doe = u64::try_from(z_offset).unwrap_or(0); // day of era [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // year of era [0, 399]
+    let yoe_i64 = i64::try_from(yoe).unwrap_or(0);
+    let y = yoe_i64 + era * 400;
+    let day_of_year = doe - (365 * yoe + yoe / 4 - yoe / 100); // day of year [0, 365]
+    let mp = (5 * day_of_year + 2) / 153; // [0, 11]
+    let d = day_of_year - (153 * mp + 2) / 5 + 1; // day [1, 31]
     let m = if mp < 10 { mp + 3 } else { mp - 9 }; // month [1, 12]
     let y = if m <= 2 { y + 1 } else { y };
-    (y as u64, m, d)
+    let y_u64 = u64::try_from(y).unwrap_or(1970);
+    (y_u64, m, d)
 }
 
 /// Build a one-line-per-file manifest string for presenting to the LLM.
 ///
 /// Format: `[type] filename.md (YYYY-MM-DD) — description`
+#[must_use]
 pub fn build_memory_manifest(files: &[MemoryFile]) -> String {
     let mut out = String::new();
     for f in files {
@@ -376,13 +373,9 @@ pub fn build_memory_manifest(files: &[MemoryFile]) -> String {
             .and_then(|n| n.to_str())
             .unwrap_or("?");
         let date = format_date(f.modified);
-        let line = format!(
-            "[{}] {} ({}) \u{2014} {}\n",
-            f.frontmatter.memory_type.label(),
-            fname,
-            date,
-            f.frontmatter.description,
-        );
+        let type_label = f.frontmatter.memory_type.label();
+        let description = &f.frontmatter.description;
+        let line = format!("[{type_label}] {fname} ({date}) \u{2014} {description}\n");
         out.push_str(&line);
     }
     out
@@ -437,7 +430,7 @@ pub fn build_memory_prompt(config: &MemoryConfig) -> io::Result<Option<String>> 
             let files = scan_memory_dir(&user_dir, config)?;
             if !files.is_empty() {
                 let manifest = build_memory_manifest(&files);
-                sections.push(format!("### User Memory Files\n\n{}", manifest));
+                sections.push(format!("### User Memory Files\n\n{manifest}"));
             }
         }
     }
@@ -455,7 +448,7 @@ pub fn build_memory_prompt(config: &MemoryConfig) -> io::Result<Option<String>> 
             let files = scan_memory_dir(&proj_dir, config)?;
             if !files.is_empty() {
                 let manifest = build_memory_manifest(&files);
-                sections.push(format!("### Project Memory Files\n\n{}", manifest));
+                sections.push(format!("### Project Memory Files\n\n{manifest}"));
             }
         }
     }

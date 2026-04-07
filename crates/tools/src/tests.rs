@@ -1703,3 +1703,58 @@ fn workflow_tool_dispatches() {
         "output should contain the status: {output}"
     );
 }
+
+#[test]
+fn brief_tool_dispatches() {
+    use serde_json::json;
+    // "Brief" is an alias for SendUserMessage — handled by the same dispatch arm.
+    let result = crate::executor::execute_tool(
+        "Brief",
+        &json!({"message": "hello user", "status": "normal"}),
+    );
+    assert!(result.is_ok(), "brief dispatch failed: {result:?}");
+    let output = result.unwrap();
+    assert!(
+        output.contains("hello user"),
+        "output should contain the message: {output}"
+    );
+    assert!(
+        output.contains("sentAt"),
+        "output should contain sentAt timestamp: {output}"
+    );
+}
+
+#[test]
+fn discover_skills_tool_dispatches() {
+    use serde_json::json;
+    let result = crate::executor::execute_tool("DiscoverSkills", &json!({}));
+    assert!(result.is_ok(), "discover_skills dispatch failed: {result:?}");
+    let output = result.unwrap();
+    assert!(
+        output.contains("skills"),
+        "output should contain skills field: {output}"
+    );
+    assert!(
+        output.contains("stub"),
+        "output should contain stub notice: {output}"
+    );
+}
+
+#[test]
+fn verify_plan_execution_tool_dispatches() {
+    use serde_json::json;
+    let result = crate::executor::execute_tool(
+        "VerifyPlanExecution",
+        &json!({"plan_id": "plan-abc-123"}),
+    );
+    assert!(result.is_ok(), "verify_plan_execution dispatch failed: {result:?}");
+    let output = result.unwrap();
+    assert!(
+        output.contains("plan-abc-123"),
+        "output should contain the plan_id: {output}"
+    );
+    assert!(
+        output.contains("stub"),
+        "output should contain stub notice: {output}"
+    );
+}

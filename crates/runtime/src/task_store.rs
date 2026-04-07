@@ -1,14 +1,14 @@
 //! Disk-backed task store: persistent task state using `.ember-agents/` manifests.
 //!
 //! Provides a typed API over the same JSON manifest format used by the agent
-//! system, so that tasks created via TaskCreate tools are visible to the CLI's
+//! system, so that tasks created via `TaskCreate` tools are visible to the CLI's
 //! `/tasks` command and vice versa.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -165,7 +165,7 @@ pub fn generate_task_id(kind: TaskKind) -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let pid = std::process::id() as u128;
+    let pid = u128::from(std::process::id());
     let seed = nanos.wrapping_mul(pid.wrapping_add(1));
 
     let mut id = String::with_capacity(9);
@@ -173,7 +173,7 @@ pub fn generate_task_id(kind: TaskKind) -> String {
     let mut state = seed;
     for _ in 0..8 {
         state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
-        let idx = (state >> 64) as usize % TASK_ID_ALPHABET.len();
+        let idx = usize::try_from(state >> 64).unwrap_or(0) % TASK_ID_ALPHABET.len();
         id.push(TASK_ID_ALPHABET[idx] as char);
     }
     id
@@ -420,7 +420,7 @@ pub fn spawn_shell_task(task_id: &str, command: &str) -> io::Result<TaskManifest
         .spawn(move || {
             monitor_shell_task(child, &monitor_task_id, &monitor_output);
         })
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        .map_err(io::Error::other)?;
 
     // Spawn stall watchdog
     let watchdog_task_id = task_id.to_string();
@@ -430,7 +430,7 @@ pub fn spawn_shell_task(task_id: &str, command: &str) -> io::Result<TaskManifest
         .spawn(move || {
             stall_watchdog(&watchdog_task_id, &watchdog_output);
         })
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        .map_err(io::Error::other)?;
 
     Ok(manifest)
 }
@@ -438,12 +438,11 @@ pub fn spawn_shell_task(task_id: &str, command: &str) -> io::Result<TaskManifest
 /// Monitor a shell child process: wait for exit, update manifest status.
 fn monitor_shell_task(mut child: Child, task_id: &str, _output_path: &Path) {
     let exit_status = child.wait();
-    let now = iso8601_now();
 
     let (status, detail) = match exit_status {
         Ok(es) if es.success() => (
             TaskStatus::Completed,
-            format!("Exited with code 0"),
+            "Exited with code 0".to_string(),
         ),
         Ok(es) => {
             let code = es.code().unwrap_or(-1);
@@ -490,10 +489,7 @@ fn stall_watchdog(task_id: &str, output_path: &Path) {
         thread::sleep(STALL_POLL_INTERVAL);
 
         // Check if task is still active
-        let manifest = match load_manifest(task_id) {
-            Ok(m) => m,
-            Err(_) => break,
-        };
+        let Ok(manifest) = load_manifest(task_id) else { break };
         let status: TaskStatus = serde_json::from_value(
             serde_json::Value::String(manifest.status.clone()),
         )
@@ -590,7 +586,6 @@ pub fn stop_task(task_id: &str) -> io::Result<bool> {
     if let Some(pid) = manifest.worker_pid {
         #[cfg(unix)]
         {
-            use std::os::unix::process::CommandExt;
             let _ = Command::new("kill")
                 .arg("-TERM")
                 .arg(pid.to_string())
@@ -650,7 +645,7 @@ fn write_task_notification(task_id: &str, status: &str, summary: &str) -> io::Re
 
     NOTIFICATION_QUEUE
         .lock()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+        .map_err(|e| io::Error::other(e.to_string()))?
         .push(notification);
 
     Ok(())
@@ -658,10 +653,7 @@ fn write_task_notification(task_id: &str, status: &str, summary: &str) -> io::Re
 
 /// Drain all pending task notifications, returning XML fragments for injection.
 pub fn drain_notifications() -> Vec<String> {
-    let mut queue = match NOTIFICATION_QUEUE.lock() {
-        Ok(q) => q,
-        Err(_) => return Vec::new(),
-    };
+    let Ok(mut queue) = NOTIFICATION_QUEUE.lock() else { return Vec::new() };
     let notifications: Vec<TaskNotification> = queue.drain(..).collect();
     drop(queue);
 

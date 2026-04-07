@@ -29,6 +29,7 @@ pub enum HookEvent {
 }
 
 impl HookEvent {
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::PreToolUse => "PreToolUse",
@@ -51,7 +52,7 @@ impl HookEvent {
         }
     }
 
-    /// Whether this event fires for tool-related hooks (has tool_name context).
+    /// Whether this event fires for tool-related hooks (has `tool_name` context).
     #[must_use]
     pub fn is_tool_event(self) -> bool {
         matches!(
@@ -204,7 +205,7 @@ impl HookRunner {
 
     #[must_use]
     pub fn run_pre_tool_use(&self, tool_name: &str, tool_input: &str) -> HookRunResult {
-        self.run_commands(
+        Self::run_commands(
             HookEvent::PreToolUse,
             self.config.pre_tool_use(),
             tool_name,
@@ -222,7 +223,7 @@ impl HookRunner {
         tool_output: &str,
         is_error: bool,
     ) -> HookRunResult {
-        self.run_commands(
+        Self::run_commands(
             HookEvent::PostToolUse,
             self.config.post_tool_use(),
             tool_name,
@@ -251,10 +252,10 @@ impl HookRunner {
             return;
         }
         // Fire-and-forget for lifecycle events: we don't block on the result.
-        let _ = self.run_commands(event, &commands, context_key, context_value, None, false);
+        let _ = Self::run_commands(event, &commands, context_key, context_value, None, false);
     }
 
-    /// Execute an HTTP hook by POSTing the payload to the given URL.
+    /// Execute an HTTP hook by posting the payload to the given URL.
     #[allow(dead_code)]
     fn run_http_hook(
         url: &str,
@@ -300,7 +301,6 @@ impl HookRunner {
     }
 
     fn run_commands(
-        &self,
         event: HookEvent,
         commands: &[String],
         tool_name: &str,

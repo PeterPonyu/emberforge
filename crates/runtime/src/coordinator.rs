@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 // Tool restriction constants (CC parity)
 // ---------------------------------------------------------------------------
 
-/// Tools available to worker agents (CC's ASYNC_AGENT_ALLOWED_TOOLS).
+/// Tools available to worker agents (CC's `ASYNC_AGENT_ALLOWED_TOOLS`).
 pub const WORKER_ALLOWED_TOOLS: &[&str] = &[
     "read_file",
     "write_file",
@@ -35,7 +35,7 @@ pub const WORKER_ALLOWED_TOOLS: &[&str] = &[
     "PowerShell",
 ];
 
-/// Tools explicitly denied for workers (CC's ALL_AGENT_DISALLOWED_TOOLS).
+/// Tools explicitly denied for workers (CC's `ALL_AGENT_DISALLOWED_TOOLS`).
 pub const WORKER_DENIED_TOOLS: &[&str] = &[
     "Agent",             // Workers can't spawn sub-workers
     "AskUserQuestion",   // Workers don't interact with user
@@ -240,6 +240,7 @@ Never write "based on your findings" — these phrases delegate understanding to
 /// Parse a `<task-notification>` XML block from a message string.
 ///
 /// Returns `None` if the message doesn't contain a task notification.
+#[must_use]
 pub fn parse_task_notification(message: &str) -> Option<TaskNotificationParsed> {
     let start = message.find("<task-notification>")?;
     let end = message.find("</task-notification>")?;
@@ -260,6 +261,7 @@ pub fn parse_task_notification(message: &str) -> Option<TaskNotificationParsed> 
 }
 
 /// Check if a message contains a task notification (quick test without full parse).
+#[must_use]
 pub fn is_task_notification(message: &str) -> bool {
     message.contains("<task-notification>")
 }
@@ -290,6 +292,7 @@ pub fn ensure_scratchpad_dir() -> io::Result<PathBuf> {
 }
 
 /// Check if a path is within the scratchpad directory.
+#[must_use]
 pub fn is_scratchpad_path(path: &Path) -> bool {
     let normalized = path.to_string_lossy();
     normalized.contains(".ember/scratchpad") || normalized.contains(".claw/scratchpad")

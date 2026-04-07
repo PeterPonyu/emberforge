@@ -17,13 +17,9 @@ const MICRO_COMPACT_TOOL_RESULT_LIMIT: usize = 8_000;
 const MICRO_COMPACT_KEEP_RECENT: usize = 8;
 /// Aggressive keep-recent count when time-based trigger fires.
 const MICRO_COMPACT_KEEP_RECENT_AGGRESSIVE: usize = 2;
-/// Minutes of inactivity (since last assistant message) before aggressive micro-compaction.
-const TIME_BASED_GAP_MINUTES: u64 = 30;
 /// Token estimation padding factor (numerator / denominator = 4/3).
 const TOKEN_ESTIMATION_PADDING_NUM: usize = 4;
 const TOKEN_ESTIMATION_PADDING_DEN: usize = 3;
-/// Flat token estimate for images/documents in content blocks.
-const IMAGE_DOC_TOKEN_ESTIMATE: usize = 2_000;
 
 /// Tools whose results are safe to content-clear during micro-compaction.
 const COMPACTABLE_TOOLS: &[&str] = &[
@@ -98,7 +94,7 @@ pub struct TokenWarningState {
 }
 
 /// Tracks auto-compaction state across turns.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AutoCompactState {
     /// Consecutive auto-compaction failures (circuit breaker).
     pub consecutive_failures: u32,
@@ -106,16 +102,6 @@ pub struct AutoCompactState {
     pub total_compactions: u32,
     /// Whether the circuit breaker has tripped.
     pub circuit_broken: bool,
-}
-
-impl Default for AutoCompactState {
-    fn default() -> Self {
-        Self {
-            consecutive_failures: 0,
-            total_compactions: 0,
-            circuit_broken: false,
-        }
-    }
 }
 
 impl AutoCompactState {
@@ -337,7 +323,7 @@ pub fn should_auto_compact(
 /// Attempt micro-compaction using content-clearing strategy (CC pattern).
 ///
 /// Instead of just truncating large results, this:
-/// 1. Identifies tool results from compactable tools (bash, read_file, grep, etc.)
+/// 1. Identifies tool results from compactable tools (bash, `read_file`, grep, etc.)
 /// 2. Keeps the N most recent results intact
 /// 3. Content-clears older ones with `[Old tool result content cleared]`
 /// 4. Falls back to truncation for non-compactable tools with oversized results
@@ -442,7 +428,7 @@ pub fn micro_compact_session(session: &Session, preserve_recent: usize) -> Micro
 
 /// Check if a tool's results are safe to content-clear during micro-compaction.
 fn is_compactable_tool(tool_name: &str) -> bool {
-    COMPACTABLE_TOOLS.iter().any(|&t| t == tool_name)
+    COMPACTABLE_TOOLS.contains(&tool_name)
 }
 
 /// Check if enough time has passed since the last assistant message to trigger
@@ -470,6 +456,7 @@ fn check_time_based_trigger(messages: &[ConversationMessage]) -> bool {
 
     // Without proper timestamps, we can't do time-based triggering.
     // This will be enhanced when we add message timestamps.
+    // Threshold when implemented: TIME_BASED_GAP_MINUTES minutes of inactivity.
     false
 }
 
@@ -893,7 +880,7 @@ fn estimate_text_tokens(text: &str) -> usize {
     if text.is_empty() {
         return 0;
     }
-    (text.len() + 3) / 4
+    text.len().div_ceil(4)
 }
 
 fn extract_tag_block(content: &str, tag: &str) -> Option<String> {

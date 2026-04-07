@@ -60,6 +60,7 @@ pub enum SecurityVerdict {
 ///
 /// `cwd` is the current working directory used to resolve relative paths.
 /// `permission_mode` gates read-only enforcement (check 0) which runs first.
+#[must_use]
 pub fn validate_bash_command(
     command: &str,
     cwd: &Path,
@@ -118,6 +119,7 @@ pub fn validate_bash_command(
 ///
 /// Splits on `|`, `||`, `&&`, `;` and returns the trimmed first segment,
 /// then strips any leading env assignments (e.g. `FOO=bar cmd`).
+#[must_use]
 pub fn extract_base_command(command: &str) -> &str {
     let seg = split_pipeline(command)
         .into_iter()
@@ -144,11 +146,13 @@ pub fn split_pipeline(command: &str) -> Vec<&str> {
 }
 
 /// Check whether `flag` (e.g. `--force` or `-rf`) appears in `args`.
+#[must_use]
 pub fn has_flag(args: &str, flag: &str) -> bool {
     args.split_whitespace().any(|w| w == flag)
 }
 
 /// Resolve a potentially relative `path` against `cwd`.
+#[must_use]
 pub fn normalize_path(path: &str, cwd: &Path) -> PathBuf {
     let p = Path::new(path);
     if p.is_absolute() {
@@ -159,6 +163,7 @@ pub fn normalize_path(path: &str, cwd: &Path) -> PathBuf {
 }
 
 /// Return `true` when `path` is contained within (or equal to) `workspace`.
+#[must_use]
 pub fn is_within_workspace(path: &Path, workspace: &Path) -> bool {
     // Attempt lexical normalization so `..` components are collapsed.
     let norm = normalize_lexical(path);
@@ -343,10 +348,10 @@ fn check_03_dangerous_rm(command: &str, _cwd: &Path) -> Option<SecurityVerdict> 
             return Some(deny(3, "rm targeting root filesystem"));
         }
         // rm -rf ~ or rm -rf $HOME
-        if lower.contains(" ~") || lower.contains("$home") || lower.contains("${home}") {
-            if lower.contains("-r") || lower.contains("--recursive") {
-                return Some(deny(3, "recursive rm targeting home directory"));
-            }
+        if (lower.contains(" ~") || lower.contains("$home") || lower.contains("${home}"))
+            && (lower.contains("-r") || lower.contains("--recursive"))
+        {
+            return Some(deny(3, "recursive rm targeting home directory"));
         }
         // rm -rf * (wildcard without explicit path)
         if (lower.contains("-r") || lower.contains("--recursive"))
@@ -459,13 +464,13 @@ fn check_08_ifs_injection(command: &str, _cwd: &Path) -> Option<SecurityVerdict>
 // ---------------------------------------------------------------------------
 
 fn check_09_env_manipulation(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    static RE_PRELOAD: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"LD_PRELOAD\s*=").unwrap());
     // Unsetting PATH
     if command.contains("unset PATH") || command.contains("PATH=''") || command.contains("PATH=\"\"") {
         return Some(deny(9, "unsetting or emptying PATH"));
     }
     // LD_PRELOAD injection
-    static RE_PRELOAD: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"LD_PRELOAD\s*=").unwrap());
     if RE_PRELOAD.is_match(command) {
         return Some(deny(9, "LD_PRELOAD injection"));
     }
@@ -542,13 +547,13 @@ fn check_13_network_exfiltration(command: &str, _cwd: &Path) -> Option<SecurityV
             \|\s*bash\s*-s\s*--                     # | bash -s --
         ").unwrap()
     });
-    if RE.is_match(command) {
-        return Some(deny(13, "piping remote content into a shell"));
-    }
     // Detect data exfil: cat sensitive | curl -d@- (POST stdin)
     static RE_EXFIL: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"(cat|tar|zip).*\|\s*(curl|wget|nc|ncat)\b").unwrap()
     });
+    if RE.is_match(command) {
+        return Some(deny(13, "piping remote content into a shell"));
+    }
     if RE_EXFIL.is_match(command) {
         return Some(warn(13, "possible data exfiltration via pipe to network tool"));
     }
@@ -564,13 +569,13 @@ fn check_14_obfuscated_commands(command: &str, _cwd: &Path) -> Option<SecurityVe
     static RE_B64: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"base64\s+(-d|--decode)\s*\|\s*(ba)?sh").unwrap()
     });
-    if RE_B64.is_match(command) {
-        return Some(deny(14, "base64-decoded payload piped to shell"));
-    }
     // echo -e with hex/octal piped to shell
     static RE_HEX: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r#"echo\s+-[neE]+\s+["']?\\(x[0-9a-fA-F]|[0-7]{3})"#).unwrap()
     });
+    if RE_B64.is_match(command) {
+        return Some(deny(14, "base64-decoded payload piped to shell"));
+    }
     if RE_HEX.is_match(command) && (command.contains("| sh") || command.contains("| bash")) {
         return Some(deny(14, "hex/octal-encoded command piped to shell"));
     }
@@ -737,10 +742,7 @@ fn check_20_path_traversal(command: &str, cwd: &Path) -> Option<SecurityVerdict>
                     }
                     return Some(warn(
                         20,
-                        format!(
-                            "path traversal `{}` resolves outside workspace",
-                            word
-                        ),
+                        format!("path traversal `{word}` resolves outside workspace"),
                     ));
                 }
             }

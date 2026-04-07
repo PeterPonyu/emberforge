@@ -23,6 +23,7 @@ pub enum IdeKind {
 }
 
 impl IdeKind {
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::VsCode => "vscode",
@@ -38,6 +39,7 @@ impl IdeKind {
     }
 
     /// Parse from a name string (case-insensitive).
+    #[must_use]
     pub fn from_name(name: &str) -> Self {
         match name.to_ascii_lowercase().as_str() {
             "vscode" | "vs code" | "visual studio code" | "code" => Self::VsCode,
@@ -53,6 +55,7 @@ impl IdeKind {
     }
 
     /// Whether this IDE supports MCP bridge communication.
+    #[must_use]
     pub fn supports_mcp(self) -> bool {
         !matches!(self, Self::Unknown)
     }
@@ -77,7 +80,7 @@ pub enum IdeTransport {
 pub struct DetectedIde {
     /// IDE type.
     pub kind: IdeKind,
-    /// Display name (e.g., "VS Code", "IntelliJ IDEA").
+    /// Display name (e.g., "VS Code", "`IntelliJ IDEA`"). Populated from the lockfile.
     pub name: String,
     /// Communication port.
     pub port: u16,
@@ -133,6 +136,7 @@ pub struct IdeSelection {
 ///   1. `<cwd>/.ide-lockfiles/`
 ///   2. `~/.ember/ide-locks/`
 ///   3. `<tmp>/ember-ide-locks/`
+#[must_use]
 pub fn lockfile_search_dirs(cwd: &Path) -> Vec<PathBuf> {
     let mut dirs = Vec::with_capacity(3);
 
@@ -155,6 +159,7 @@ pub fn lockfile_search_dirs(cwd: &Path) -> Vec<PathBuf> {
 /// Searches in: `cwd/.ide-lockfiles/`, `~/.ember/ide-locks/`, and temp dir
 /// patterns.  Each `*.lock.json` file found is parsed; invalid files are
 /// silently skipped.
+#[must_use]
 pub fn detect_ides(cwd: &Path) -> Vec<DetectedIde> {
     let mut found: Vec<DetectedIde> = Vec::new();
 
@@ -162,10 +167,7 @@ pub fn detect_ides(cwd: &Path) -> Vec<DetectedIde> {
         if !dir.is_dir() {
             continue;
         }
-        let entries = match std::fs::read_dir(&dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
             let path = entry.path();
             let name = path
@@ -203,10 +205,7 @@ pub fn parse_lockfile(path: &Path) -> io::Result<Option<DetectedIde>> {
     };
 
     // Port is required.
-    let port = match lockfile.port {
-        Some(p) => p,
-        None => return Ok(None),
-    };
+    let Some(port) = lockfile.port else { return Ok(None) };
 
     let ide_name = lockfile.ide_name.unwrap_or_default();
     let kind = IdeKind::from_name(&ide_name);
@@ -248,11 +247,13 @@ pub fn parse_lockfile(path: &Path) -> io::Result<Option<DetectedIde>> {
 }
 
 /// Check if a specific IDE kind is running (based on lockfile detection).
+#[must_use]
 pub fn is_ide_running(cwd: &Path, kind: IdeKind) -> bool {
     detect_ides(cwd).iter().any(|ide| ide.kind == kind)
 }
 
 /// Get the primary detected IDE (first found, preferring VS Code).
+#[must_use]
 pub fn primary_ide(cwd: &Path) -> Option<DetectedIde> {
     detect_ides(cwd).into_iter().next()
 }
@@ -262,6 +263,7 @@ pub fn primary_ide(cwd: &Path) -> Option<DetectedIde> {
 // ---------------------------------------------------------------------------
 
 /// Build a connection URL for an IDE instance.
+#[must_use]
 pub fn build_connection_url(ide: &DetectedIde) -> String {
     let base = match ide.transport {
         IdeTransport::WebSocket => format!("ws://localhost:{}", ide.port),
@@ -287,6 +289,7 @@ pub fn build_connection_url(ide: &DetectedIde) -> String {
 /// ```
 ///
 /// Uses a simple line-by-line comparison (not a full Myers diff).
+#[must_use]
 pub fn format_diff_for_ide(
     file_path: &str,
     old_content: &str,
@@ -344,6 +347,7 @@ pub fn format_diff_for_ide(
 /// Detect if running inside WSL.
 ///
 /// Checks `/proc/version` for the strings "microsoft" or "WSL".
+#[must_use]
 pub fn is_wsl() -> bool {
     match std::fs::read_to_string("/proc/version") {
         Ok(contents) => {
@@ -357,17 +361,18 @@ pub fn is_wsl() -> bool {
 /// Convert a Unix path to a Windows path (for WSL scenarios).
 ///
 /// `/mnt/c/Users/foo` -> `C:\Users\foo`
+#[must_use]
 pub fn unix_to_windows_path(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("/mnt/") {
         if let Some((drive, remainder)) = rest.split_once('/') {
-            if drive.len() == 1 && drive.chars().next().map_or(false, |c| c.is_ascii_alphabetic())
+            if drive.len() == 1 && drive.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
             {
                 let win_remainder = remainder.replace('/', "\\");
                 return format!("{}:\\{}", drive.to_ascii_uppercase(), win_remainder);
             }
         }
         // Single drive letter with no further path.
-        if rest.len() == 1 && rest.chars().next().map_or(false, |c| c.is_ascii_alphabetic()) {
+        if rest.len() == 1 && rest.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
             return format!("{}:\\", rest.to_ascii_uppercase());
         }
     }
@@ -378,6 +383,7 @@ pub fn unix_to_windows_path(path: &str) -> String {
 /// Convert a Windows path to a Unix path (for WSL scenarios).
 ///
 /// `C:\Users\foo` -> `/mnt/c/Users/foo`
+#[must_use]
 pub fn windows_to_unix_path(path: &str) -> String {
     // Handle `C:\...` or `C:/...`
     let bytes = path.as_bytes();
@@ -402,6 +408,7 @@ pub fn windows_to_unix_path(path: &str) -> String {
 /// Returns a human-readable string such as
 /// `"IDE: VS Code (port 3000, ws://localhost:3000)"`, or `None` when no IDE is
 /// detected.
+#[must_use]
 pub fn build_ide_context(cwd: &Path) -> Option<String> {
     let ide = primary_ide(cwd)?;
     let proto = match ide.transport {

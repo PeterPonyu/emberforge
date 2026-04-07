@@ -181,6 +181,7 @@ impl<W: Write> OutputWriter<W> {
 // ── Conversion helpers ─────────────────────────────────────────────────
 
 /// Convert a conversation message to structured output events.
+#[must_use]
 pub fn message_to_output_events(message: &ConversationMessage) -> Vec<OutputEvent> {
     let mut events = Vec::new();
     for block in &message.blocks {
@@ -226,6 +227,7 @@ pub fn message_to_output_events(message: &ConversationMessage) -> Vec<OutputEven
 }
 
 /// Build a complete JSON response from a turn's messages.
+#[must_use]
 pub fn build_json_response(
     assistant_messages: &[ConversationMessage],
     tool_results: &[ConversationMessage],
@@ -249,7 +251,7 @@ pub fn build_json_response(
                         "input": input_val,
                     }));
                 }
-                _ => {}
+                ContentBlock::ToolResult { .. } => {}
             }
         }
     }

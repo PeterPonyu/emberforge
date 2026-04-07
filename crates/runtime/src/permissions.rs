@@ -78,7 +78,7 @@ pub enum RuleBehavior {
 /// A permission rule that matches tool calls by name and optional content pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermissionRule {
-    /// The tool name this rule applies to (e.g., "bash", "write_file").
+    /// The tool name this rule applies to (e.g., `"bash"`, `"write_file"`).
     pub tool_name: String,
     /// Optional content pattern to match against the input.
     /// Supports simple glob: "git *" matches any input containing "git ".
@@ -114,7 +114,7 @@ impl PermissionRule {
 /// Tracks denied tool calls for pattern detection.
 #[derive(Debug, Clone, Default)]
 pub struct DenialTracker {
-    /// History of denied (tool_name, reason) pairs.
+    /// History of denied (`tool_name`, reason) pairs.
     denials: Vec<(String, String)>,
 }
 
@@ -173,14 +173,15 @@ impl DenialTracker {
 
 // ── Rule parsing from string format ───────────────────────────────────
 
-/// Parse a rule string like `Bash(npm install)` → (tool_name, content_pattern).
+/// Parse a rule string like `Bash(npm install)` → (`tool_name`, `content_pattern`).
 ///
 /// Supported formats:
-/// - `"Bash"` → tool_name=Bash, content_pattern=None
-/// - `"Bash(*)"` → tool_name=Bash, content_pattern=None (wildcard = all)
-/// - `"Bash()"` → tool_name=Bash, content_pattern=None (empty = all)
-/// - `"Bash(npm install)"` → tool_name=Bash, content_pattern=Some("npm install")
-/// - `"Bash(git push --force)"` → tool_name=Bash, content_pattern=Some("git push --force")
+/// - `"Bash"` → `tool_name`=Bash, `content_pattern`=None
+/// - `"Bash(*)"` → `tool_name`=Bash, `content_pattern`=None (wildcard = all)
+/// - `"Bash()"` → `tool_name`=Bash, `content_pattern`=None (empty = all)
+/// - `"Bash(npm install)"` → `tool_name`=Bash, `content_pattern`=Some("npm install")
+/// - `"Bash(git push --force)"` → `tool_name`=Bash, `content_pattern`=Some("git push --force")
+#[must_use]
 pub fn parse_rule_value(input: &str) -> (String, Option<String>) {
     let trimmed = input.trim();
 
@@ -206,6 +207,7 @@ pub fn parse_rule_value(input: &str) -> (String, Option<String>) {
 }
 
 /// Format a rule back to string: `Bash(npm install)`.
+#[must_use]
 pub fn format_rule_value(tool_name: &str, content_pattern: Option<&str>) -> String {
     match content_pattern {
         Some(pattern) => {
@@ -230,6 +232,7 @@ fn normalize_tool_name_for_rule(name: &str) -> String {
 }
 
 /// Parse multiple rules from a settings list (e.g., `permissions.allow` array).
+#[must_use]
 pub fn parse_rules_from_settings(
     entries: &[String],
     behavior: RuleBehavior,
@@ -288,6 +291,7 @@ const INTERNAL_WRITABLE_PREFIXES: &[&str] = &[
 ///
 /// Returns `true` if the path resolves to a location within `workspace_root`
 /// or any additional allowed directory.
+#[must_use]
 pub fn is_path_within_workspace(path: &Path, workspace_root: &Path) -> bool {
     // Resolve symlinks for both paths
     let resolved_root = fs::canonicalize(workspace_root).unwrap_or_else(|_| workspace_root.to_path_buf());
@@ -297,6 +301,7 @@ pub fn is_path_within_workspace(path: &Path, workspace_root: &Path) -> bool {
 }
 
 /// Check if a path targets a sensitive location (credentials, keys, etc.).
+#[must_use]
 pub fn is_sensitive_path(path: &Path) -> bool {
     let path_str = path.to_string_lossy();
 
@@ -319,14 +324,15 @@ pub fn is_sensitive_path(path: &Path) -> bool {
 
     // Check for common sensitive file patterns
     let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let ext_is = |e: &str| path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case(e));
     if filename == ".env"
         || filename.starts_with(".env.")
         || filename == "credentials.json"
         || filename == "secrets.json"
         || filename == "id_rsa"
         || filename == "id_ed25519"
-        || filename.ends_with(".pem")
-        || filename.ends_with(".key")
+        || ext_is("pem")
+        || ext_is("key")
     {
         return true;
     }
@@ -342,6 +348,7 @@ pub fn is_sensitive_path(path: &Path) -> bool {
 }
 
 /// Check if a path is an internal writable path (always allowed within workspace).
+#[must_use]
 pub fn is_internal_writable_path(path: &Path, workspace_root: &Path) -> bool {
     let relative = path.strip_prefix(workspace_root).unwrap_or(path);
     let rel_str = relative.to_string_lossy();
@@ -366,6 +373,7 @@ pub enum ToolPermissionResult {
 /// Check tool-specific permissions based on tool type and input.
 ///
 /// This is the equivalent of CC's per-tool `checkPermissions()` method.
+#[must_use]
 pub fn check_tool_permissions(
     tool_name: &str,
     input: &str,
@@ -482,16 +490,15 @@ fn resolve_path_safely(path: &Path, workspace_root: &Path) -> PathBuf {
 }
 
 /// Extract a field from a JSON string (simple, no full parser dependency).
-fn extract_json_field<'a>(json: &'a str, field: &str) -> Option<String> {
+fn extract_json_field(json: &str, field: &str) -> Option<String> {
     let pattern = format!("\"{field}\"");
     let idx = json.find(&pattern)?;
     let after_key = &json[idx + pattern.len()..];
     // Skip whitespace and colon
     let after_colon = after_key.trim_start().strip_prefix(':')?;
     let value_start = after_colon.trim_start();
-    if value_start.starts_with('"') {
+    if let Some(inner) = value_start.strip_prefix('"') {
         // String value: find closing quote (handle escaped quotes)
-        let inner = &value_start[1..];
         let mut end = 0;
         let mut escaped = false;
         for ch in inner.chars() {
@@ -507,7 +514,7 @@ fn extract_json_field<'a>(json: &'a str, field: &str) -> Option<String> {
         None
     } else {
         // Non-string value (number, bool, etc.)
-        let end = value_start.find(|c: char| c == ',' || c == '}' || c == ']')?;
+        let end = value_start.find([',', '}', ']'])?;
         Some(value_start[..end].trim().to_string())
     }
 }
@@ -636,25 +643,17 @@ impl PermissionPolicy {
         // ── Step 2: Check ask rules ──
         for rule in self.rules.iter().filter(|r| r.behavior == RuleBehavior::Ask) {
             if rule.matches(tool_name, input) {
-                let request = PermissionRequest {
-                    tool_name: tool_name.to_string(),
-                    input: input.to_string(),
-                    current_mode: self.active_mode,
-                    required_mode: self.required_mode_for(tool_name),
-                };
+                let request = self.make_request(tool_name, input);
+                let fallback = format!(
+                    "tool '{tool_name}' requires confirmation (ask rule from {})",
+                    format_rule_source(rule.source)
+                );
                 return match prompter.as_mut() {
-                    Some(prompter) => match prompter.decide(&request) {
+                    Some(p) => match p.decide(&request) {
                         PermissionPromptDecision::Allow => PermissionOutcome::Allow,
-                        PermissionPromptDecision::Deny { reason } => {
-                            PermissionOutcome::Deny { reason }
-                        }
+                        PermissionPromptDecision::Deny { reason } => PermissionOutcome::Deny { reason },
                     },
-                    None => PermissionOutcome::Deny {
-                        reason: format!(
-                            "tool '{tool_name}' requires confirmation (ask rule from {})",
-                            format_rule_source(rule.source)
-                        ),
-                    },
+                    None => PermissionOutcome::Deny { reason: fallback },
                 };
             }
         }
@@ -669,29 +668,19 @@ impl PermissionPolicy {
         // ── Step 4: Tool-specific permission checks ──
         let cwd = std::env::current_dir().unwrap_or_default();
         match check_tool_permissions(tool_name, input, &cwd) {
-            ToolPermissionResult::Deny { reason } => {
-                return PermissionOutcome::Deny { reason };
-            }
+            ToolPermissionResult::Deny { reason } => return PermissionOutcome::Deny { reason },
             ToolPermissionResult::Ask { reason } => {
-                // Safety checks are bypass-immune — always ask even in DangerFullAccess
-                let request = PermissionRequest {
-                    tool_name: tool_name.to_string(),
-                    input: input.to_string(),
-                    current_mode: self.active_mode,
-                    required_mode: self.required_mode_for(tool_name),
-                };
+                let request = self.make_request(tool_name, input);
                 return match prompter.as_mut() {
-                    Some(prompter) => match prompter.decide(&request) {
+                    Some(p) => match p.decide(&request) {
                         PermissionPromptDecision::Allow => PermissionOutcome::Allow,
-                        PermissionPromptDecision::Deny { reason: user_reason } => {
-                            PermissionOutcome::Deny { reason: user_reason }
-                        }
+                        PermissionPromptDecision::Deny { reason: r } => PermissionOutcome::Deny { reason: r },
                     },
                     None => PermissionOutcome::Deny { reason },
                 };
             }
             ToolPermissionResult::Allow => return PermissionOutcome::Allow,
-            ToolPermissionResult::Passthrough => {} // Continue to mode-based check
+            ToolPermissionResult::Passthrough => {}
         }
 
         // ── Step 5: Mode-based permission check ──
@@ -702,19 +691,13 @@ impl PermissionPolicy {
         }
 
         // ── Step 6: Prompt user for escalation ──
-        let request = PermissionRequest {
-            tool_name: tool_name.to_string(),
-            input: input.to_string(),
-            current_mode,
-            required_mode,
-        };
-
         if current_mode == PermissionMode::Prompt
             || (current_mode == PermissionMode::WorkspaceWrite
                 && required_mode == PermissionMode::DangerFullAccess)
         {
+            let request = self.make_request(tool_name, input);
             return match prompter.as_mut() {
-                Some(prompter) => match prompter.decide(&request) {
+                Some(p) => match p.decide(&request) {
                     PermissionPromptDecision::Allow => PermissionOutcome::Allow,
                     PermissionPromptDecision::Deny { reason } => PermissionOutcome::Deny { reason },
                 },
@@ -737,7 +720,17 @@ impl PermissionPolicy {
             ),
         }
     }
+
+    fn make_request(&self, tool_name: &str, input: &str) -> PermissionRequest {
+        PermissionRequest {
+            tool_name: tool_name.to_string(),
+            input: input.to_string(),
+            current_mode: self.active_mode,
+            required_mode: self.required_mode_for(tool_name),
+        }
+    }
 }
+
 
 fn format_rule_source(source: RuleSource) -> &'static str {
     match source {

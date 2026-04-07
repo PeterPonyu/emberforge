@@ -101,7 +101,7 @@ pub enum AgentMcpServerSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentDefinition {
-    /// Unique identifier for this agent type (used as subagent_type).
+    /// Unique identifier for this agent type (used as `subagent_type`).
     #[serde(rename = "agentType")]
     pub agent_type: String,
 
@@ -256,9 +256,9 @@ pub fn load_agents_from_dir(dir: &Path) -> io::Result<Vec<AgentDefinition>> {
     let mut agents = Vec::new();
 
     let mut entries: Vec<_> = std::fs::read_dir(dir)?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .collect();
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let path = entry.path();
@@ -333,6 +333,7 @@ pub fn find_agent(agent_type: &str) -> io::Result<Option<AgentDefinition>> {
 /// * If `disallowed_tools` is specified, start from the default set and remove
 ///   those entries.
 /// * If neither is set, return the full default tool set.
+#[must_use]
 pub fn resolve_agent_tools(def: &AgentDefinition) -> BTreeSet<String> {
     if let Some(ref allow) = def.tools {
         return allow.iter().cloned().collect();
@@ -358,6 +359,7 @@ pub fn resolve_agent_tools(def: &AgentDefinition) -> BTreeSet<String> {
 /// Returns a `Vec<String>` of prompt sections.  The first section is always
 /// the agent role preamble; the second (if present) is the user-supplied
 /// `instructions` field.
+#[must_use]
 pub fn build_agent_prompt(def: &AgentDefinition) -> Vec<String> {
     let mut sections = Vec::new();
 

@@ -175,7 +175,7 @@ fn parse_atom(token: &str, lo: u8, hi: u8, name: &str) -> Result<Vec<u8>, CronPa
         }
         if let Some(step_str) = token.strip_prefix("*/") {
             let step = parse_u8(step_str)
-                .map_err(|_| make_err(format!("invalid step in '{token}'")))?;
+                .map_err(|()| make_err(format!("invalid step in '{token}'")))?;
             if step == 0 {
                 return Err(make_err(format!("step must be > 0 in '{token}'")));
             }
@@ -189,7 +189,7 @@ fn parse_atom(token: &str, lo: u8, hi: u8, name: &str) -> Result<Vec<u8>, CronPa
         let (range_part, step) = if token.contains('/') {
             let parts: Vec<&str> = token.splitn(2, '/').collect();
             let s = parse_u8(parts[1])
-                .map_err(|_| make_err(format!("invalid step in '{token}'")))?;
+                .map_err(|()| make_err(format!("invalid step in '{token}'")))?;
             if s == 0 {
                 return Err(make_err(format!("step must be > 0 in '{token}'")));
             }
@@ -203,9 +203,9 @@ fn parse_atom(token: &str, lo: u8, hi: u8, name: &str) -> Result<Vec<u8>, CronPa
             return Err(make_err(format!("invalid range '{token}'")));
         }
         let start = parse_u8(bounds[0])
-            .map_err(|_| make_err(format!("invalid range start in '{token}'")))?;
+            .map_err(|()| make_err(format!("invalid range start in '{token}'")))?;
         let end = parse_u8(bounds[1])
-            .map_err(|_| make_err(format!("invalid range end in '{token}'")))?;
+            .map_err(|()| make_err(format!("invalid range end in '{token}'")))?;
 
         validate_bound(start, lo, hi, name, token)?;
         validate_bound(end, lo, hi, name, token)?;
@@ -221,7 +221,7 @@ fn parse_atom(token: &str, lo: u8, hi: u8, name: &str) -> Result<Vec<u8>, CronPa
 
     // Exact value.
     let val =
-        parse_u8(token).map_err(|_| make_err(format!("invalid value '{token}'")))?;
+        parse_u8(token).map_err(|()| make_err(format!("invalid value '{token}'")))?;
     validate_bound(val, lo, hi, name, token)?;
     Ok(vec![val])
 }
@@ -247,6 +247,7 @@ fn validate_bound(val: u8, lo: u8, hi: u8, name: &str, token: &str) -> Result<()
 /// Check if a `CronSchedule` matches the given time components.
 ///
 /// All five fields must match simultaneously (AND logic).
+#[must_use]
 pub fn schedule_matches(
     schedule: &CronSchedule,
     minute: u8,
@@ -429,22 +430,23 @@ fn parse_iso8601_to_epoch(s: &str) -> Option<u64> {
     if total_secs < 0 {
         return None;
     }
-    Some(total_secs as u64)
+    u64::try_from(total_secs).ok()
 }
 
 /// Days from 1970-01-01 for a given civil date (Howard Hinnant's algorithm).
 fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     let y = if month <= 2 { year - 1 } else { year };
     let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as u64;
-    let m = month as u64;
-    let doy = if m > 2 {
-        (153 * (m - 3) + 2) / 5 + day as u64 - 1
+    let yoe = u64::try_from(y - era * 400).unwrap_or(0);
+    let m = u64::try_from(month).unwrap_or(0);
+    let day_u64 = u64::try_from(day).unwrap_or(0);
+    let day_of_year = if m > 2 {
+        (153 * (m - 3) + 2) / 5 + day_u64 - 1
     } else {
-        (153 * (m + 9) + 2) / 5 + day as u64 - 1
+        (153 * (m + 9) + 2) / 5 + day_u64 - 1
     };
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe as i64 - 719_468
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + day_of_year;
+    era * 146_097 + i64::try_from(doe).unwrap_or(0) - 719_468
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +459,7 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 /// Uses UTC because accessing the system timezone without `libc` unsafe calls
 /// or the `chrono` crate is not portable. For scheduling purposes UTC is
 /// deterministic and consistent.
+#[must_use]
 pub fn current_local_time() -> (u8, u8, u8, u8, u8) {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -467,26 +470,27 @@ pub fn current_local_time() -> (u8, u8, u8, u8, u8) {
 
 /// Break a Unix timestamp (seconds since epoch) into UTC components.
 fn utc_components(secs: u64) -> (u8, u8, u8, u8, u8) {
-    let days = (secs / 86_400) as i64;
+    let days = i64::try_from(secs / 86_400).unwrap_or(i64::MAX);
     let day_secs = secs % 86_400;
 
-    let hour = (day_secs / 3600) as u8;
-    let minute = ((day_secs % 3600) / 60) as u8;
+    let hour = u8::try_from(day_secs / 3600).unwrap_or(0);
+    let minute = u8::try_from((day_secs % 3600) / 60).unwrap_or(0);
 
     // Day of week: 1970-01-01 was a Thursday (4).
-    let weekday = ((days + 4).rem_euclid(7)) as u8;
+    let weekday = u8::try_from((days + 4).rem_euclid(7)).unwrap_or(0);
 
     // Civil date from day count (Howard Hinnant).
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = (z - era * 146_097) as u64;
+    let doe = u64::try_from(z - era * 146_097).unwrap_or(0);
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u8;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u8;
-    let _y = if m <= 2 { y + 1 } else { y };
+    let yoe_i64 = i64::try_from(yoe).unwrap_or(0);
+    let day_of_year = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * day_of_year + 2) / 153;
+    let d = u8::try_from(day_of_year - (153 * mp + 2) / 5 + 1).unwrap_or(1);
+    let m_u64 = if mp < 10 { mp + 3 } else { mp - 9 };
+    let m = u8::try_from(m_u64).unwrap_or(1);
+    let _y = if m <= 2 { yoe_i64 + era * 400 + 1 } else { yoe_i64 + era * 400 };
 
     (minute, hour, d, m, weekday)
 }
@@ -496,20 +500,21 @@ fn utc_components(secs: u64) -> (u8, u8, u8, u8, u8) {
 // ---------------------------------------------------------------------------
 
 /// Human-readable description of a cron schedule.
+#[must_use]
 pub fn describe_schedule(schedule: &CronSchedule) -> String {
-    let all_min = schedule.minutes.len() == 60;
+    let all_minutes = schedule.minutes.len() == 60;
     let all_hr = schedule.hours.len() == 24;
     let all_dom = schedule.days_of_month.len() == 31;
-    let all_mon = schedule.months.len() == 12;
-    let all_dow = schedule.days_of_week.len() == 7;
+    let all_months = schedule.months.len() == 12;
+    let all_weekdays = schedule.days_of_week.len() == 7;
 
     // "every minute"
-    if all_min && all_hr && all_dom && all_mon && all_dow {
+    if all_minutes && all_hr && all_dom && all_months && all_weekdays {
         return "every minute".to_string();
     }
 
     // "every N minutes" — check for regular step from 0.
-    if all_hr && all_dom && all_mon && all_dow && schedule.minutes.len() > 1 {
+    if all_hr && all_dom && all_months && all_weekdays && schedule.minutes.len() > 1 {
         if let Some(step) = detect_step(&schedule.minutes) {
             return format!("every {step} minutes");
         }
@@ -518,8 +523,8 @@ pub fn describe_schedule(schedule: &CronSchedule) -> String {
     // "every N hours"
     if schedule.minutes.len() == 1
         && all_dom
-        && all_mon
-        && all_dow
+        && all_months
+        && all_weekdays
         && schedule.hours.len() > 1
     {
         if let Some(step) = detect_step(&schedule.hours) {
@@ -534,8 +539,8 @@ pub fn describe_schedule(schedule: &CronSchedule) -> String {
     if schedule.minutes.len() == 1
         && schedule.hours.len() == 1
         && all_dom
-        && all_mon
-        && all_dow
+        && all_months
+        && all_weekdays
     {
         return format!(
             "daily at {:02}:{:02}",
@@ -547,7 +552,7 @@ pub fn describe_schedule(schedule: &CronSchedule) -> String {
     if schedule.minutes.len() == 1
         && schedule.hours.len() == 1
         && all_dom
-        && all_mon
+        && all_months
         && schedule.days_of_week.len() == 1
     {
         let day_name = weekday_name(schedule.days_of_week[0]);
@@ -611,12 +616,13 @@ fn field_to_string(values: &[u8], lo: u8, hi: u8) -> String {
     }
     values
         .iter()
-        .map(|v| v.to_string())
+        .map(u8::to_string)
         .collect::<Vec<_>>()
         .join(",")
 }
 
 /// Format a task for display in a list.
+#[must_use]
 pub fn format_task_summary(task: &ScheduledTask) -> String {
     let sched_desc = match parse_cron(&task.schedule) {
         Ok(s) => describe_schedule(&s),
@@ -693,7 +699,7 @@ where
         .spawn(move || {
             scheduler_loop(&project_dir, &flag_clone, &on_trigger);
         })
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        .map_err(io::Error::other)?;
 
     Ok(SchedulerHandle {
         stop_flag,
@@ -824,19 +830,20 @@ fn iso8601_now() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let (minute, hour, day, month, weekday) = utc_components(secs);
+    let (minute, hour, day, month, _weekday) = utc_components(secs);
     // We need year as well; re-derive it.
-    let days = (secs / 86_400) as i64;
-    let z = days + 719_468;
+    let elapsed_days = i64::try_from(secs / 86_400).unwrap_or(0);
+    let z = elapsed_days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = (z - era * 146_097) as u64;
+    let doe = u64::try_from(z - era * 146_097).unwrap_or(0);
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u8;
+    let yoe_i64 = i64::try_from(yoe).unwrap_or(0);
+    let y = yoe_i64 + era * 400;
+    let day_of_year = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * day_of_year + 2) / 153;
+    let m_u64 = if mp < 10 { mp + 3 } else { mp - 9 };
+    let m = u8::try_from(m_u64).unwrap_or(1);
     let year = if m <= 2 { y + 1 } else { y };
-    let _ = weekday; // unused here
 
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",

@@ -256,7 +256,7 @@ impl EffortLevel {
     }
 
     #[must_use]
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value.to_ascii_lowercase().as_str() {
             "relaxed" | "low" | "quick" => Some(Self::Relaxed),
             "balanced" | "medium" | "normal" => Some(Self::Balanced),
@@ -295,7 +295,7 @@ impl ThemeMode {
     }
 
     #[must_use]
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value.to_ascii_lowercase().as_str() {
             "dark" => Some(Self::Dark),
             "light" => Some(Self::Light),
@@ -819,7 +819,7 @@ impl RuntimeHookConfig {
     }
 
     /// Get commands registered for a specific hook event.
-    /// Falls back to pre_tool_use/post_tool_use for those events.
+    /// Falls back to `pre_tool_use`/`post_tool_use` for those events.
     #[must_use]
     pub fn commands_for_event(&self, event: crate::hooks::HookEvent) -> Vec<String> {
         match event {
@@ -1115,7 +1115,7 @@ fn parse_optional_ui_config(root: &JsonValue) -> Result<RuntimeUiConfig, ConfigE
     };
 
     let theme = match ui.get("theme").and_then(JsonValue::as_str) {
-        Some(value) => ThemeMode::from_str(value).unwrap_or_default(),
+        Some(value) => ThemeMode::parse(value).unwrap_or_default(),
         None => ThemeMode::default(),
     };
 

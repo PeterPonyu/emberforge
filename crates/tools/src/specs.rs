@@ -676,5 +676,66 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
             }),
             required_permission: PermissionMode::WorkspaceWrite,
         },
+        ToolSpec {
+            name: "Brief",
+            description: "Send a message to the user (alias for SendUserMessage). \
+                          Supports markdown, optional file attachments, and a status \
+                          label ('normal' or 'proactive') for routing.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "message": { "type": "string" },
+                    "attachments": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["normal", "proactive"]
+                    }
+                },
+                "required": ["message", "status"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "DiscoverSkills",
+            description: "Discover available skills (slash commands) for the current session. \
+                          Currently a structured stub; full skill enumeration is deferred.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "filter": {
+                        "type": "string",
+                        "description": "Optional keyword to filter skills by name or description"
+                    }
+                },
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "VerifyPlanExecution",
+            description: "Verify that a plan has been executed correctly against acceptance criteria. \
+                          Currently a structured stub; full verification logic is deferred.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "plan_id": {
+                        "type": "string",
+                        "description": "Identifier of the plan to verify"
+                    },
+                    "criteria": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Acceptance criteria to check"
+                    }
+                },
+                "required": ["plan_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
     ]
 }

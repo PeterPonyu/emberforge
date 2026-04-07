@@ -653,6 +653,35 @@ pub(crate) struct TeamDeleteOutput {
     pub(crate) team_name: Option<String>,
 }
 
+// ── US-A3: Brief / DiscoverSkills / VerifyPlanExecution tool types ──
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct DiscoverSkillsInput {
+    pub(crate) filter: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DiscoverSkillsOutput {
+    pub(crate) skills: Vec<String>,
+    pub(crate) count: usize,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct VerifyPlanExecutionInput {
+    pub(crate) plan_id: String,
+    pub(crate) criteria: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct VerifyPlanExecutionOutput {
+    pub(crate) plan_id: String,
+    pub(crate) verified: bool,
+    pub(crate) message: String,
+}
+
 // ── Phase 4: Workflow tool types ──
 
 #[derive(Debug, Deserialize)]

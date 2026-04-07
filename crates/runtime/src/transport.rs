@@ -272,7 +272,7 @@ impl<R: io::Read, W: io::Write> SessionTransport for NdjsonTransport<R, W> {
             return Ok(None);
         }
         let buf = self.reader.buffer();
-        if buf.iter().any(|&b| b == b'\n') {
+        if buf.contains(&b'\n') {
             self.recv_event().map(Some)
         } else {
             Ok(None)
@@ -385,11 +385,12 @@ impl SessionTransport for MemoryTransport {
 // ---------------------------------------------------------------------------
 
 /// Convert a `ConversationMessage` into transport events.
+#[must_use]
 pub fn message_to_events(message: &ConversationMessage) -> Vec<TransportEvent> {
     let mut events = Vec::new();
 
     match message.role {
-        MessageRole::User => {
+        MessageRole::User | MessageRole::System => {
             for block in &message.blocks {
                 if let ContentBlock::Text { text } = block {
                     events.push(TransportEvent::UserMessage {
@@ -435,15 +436,6 @@ pub fn message_to_events(message: &ConversationMessage) -> Vec<TransportEvent> {
                 }
             }
         }
-        MessageRole::System => {
-            for block in &message.blocks {
-                if let ContentBlock::Text { text } = block {
-                    events.push(TransportEvent::UserMessage {
-                        content: text.clone(),
-                    });
-                }
-            }
-        }
     }
 
     if let Some(usage) = &message.usage {
@@ -460,6 +452,7 @@ pub fn message_to_events(message: &ConversationMessage) -> Vec<TransportEvent> {
 ///
 /// Returns `None` if the slice is empty or contains only control events
 /// (stream start/end, pings, etc.) with no substantive content.
+#[must_use]
 pub fn events_to_message(events: &[TransportEvent]) -> Option<ConversationMessage> {
     if events.is_empty() {
         return None;

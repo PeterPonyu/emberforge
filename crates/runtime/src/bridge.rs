@@ -191,7 +191,7 @@ impl BridgeState {
         let mut handlers: BTreeMap<String, ControlHandler> = BTreeMap::new();
         handlers.insert("initialize".to_string(), handle_initialize);
         handlers.insert("set_model".to_string(), handle_set_model);
-        handlers.insert("interrupt".to_string(), handle_interrupt);
+        handlers.insert("interrupt".to_string(), |r| Ok(handle_interrupt(r)));
         handlers.insert("set_permission_mode".to_string(), handle_set_permission_mode);
         handlers.insert("set_max_thinking_tokens".to_string(), handle_set_max_thinking_tokens);
 
@@ -215,6 +215,7 @@ impl BridgeState {
     }
 
     /// Create a new bridge session.
+    #[must_use]
     pub fn create_session(&self, ide_name: Option<String>, ide_version: Option<String>) -> String {
         let session_id = format!(
             "bridge-{}",
@@ -257,6 +258,7 @@ impl BridgeState {
     }
 
     /// Close a session.
+    #[must_use]
     pub fn close_session(&self, session_id: &str) -> bool {
         self.sessions
             .lock()
@@ -268,6 +270,7 @@ impl BridgeState {
     ///
     /// Returns `None` if the message is a duplicate (echo or re-delivery).
     /// Returns `Some(action)` describing what to do with the message.
+    #[must_use]
     pub fn process_inbound(&self, raw: &str) -> Option<InboundAction> {
         let msg: BridgeMessage = serde_json::from_str(raw).ok()?;
 
@@ -307,6 +310,7 @@ impl BridgeState {
     }
 
     /// Handle a control request and produce a response.
+    #[must_use]
     pub fn handle_control_request(
         &self,
         request_id: &str,
@@ -348,6 +352,7 @@ impl BridgeState {
     }
 
     /// Build an outbound assistant message, tracking its UUID for echo dedup.
+    #[must_use]
     pub fn build_assistant_message(&self, content: &str) -> BridgeMessage {
         let uuid = generate_uuid();
         if let Ok(mut outbound) = self.outbound_uuids.lock() {
@@ -404,10 +409,10 @@ fn handle_set_model(request: &ControlRequestBody) -> Result<serde_json::Value, S
     }
 }
 
-fn handle_interrupt(_request: &ControlRequestBody) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({
+fn handle_interrupt(_request: &ControlRequestBody) -> serde_json::Value {
+    serde_json::json!({
         "interrupted": true,
-    }))
+    })
 }
 
 fn handle_set_permission_mode(
@@ -450,7 +455,7 @@ fn generate_uuid() -> String {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let pid = std::process::id() as u128;
+    let pid = u128::from(std::process::id());
     format!("{:016x}-{:08x}", nanos.wrapping_mul(pid.wrapping_add(7)), pid)
 }
 

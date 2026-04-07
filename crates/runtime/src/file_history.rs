@@ -98,22 +98,18 @@ impl FileHistoryStore {
     /// Restore a file to its most recent snapshot content.
     pub fn restore_latest(&self, path: &Path) -> io::Result<bool> {
         if let Some(snapshot) = self.latest_snapshot(path) {
-            match &snapshot.content {
-                Some(content) => {
-                    if let Some(parent) = snapshot.path.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-                    fs::write(&snapshot.path, content)?;
-                    Ok(true)
+            if let Some(content) = &snapshot.content {
+                if let Some(parent) = snapshot.path.parent() {
+                    fs::create_dir_all(parent)?;
                 }
-                None => {
-                    // File did not exist before — remove it
-                    if snapshot.path.exists() {
-                        fs::remove_file(&snapshot.path)?;
-                    }
-                    Ok(true)
+                fs::write(&snapshot.path, content)?;
+            } else {
+                // File did not exist before — remove it
+                if snapshot.path.exists() {
+                    fs::remove_file(&snapshot.path)?;
                 }
             }
+            Ok(true)
         } else {
             Ok(false)
         }

@@ -188,7 +188,7 @@ impl CostTracker {
                 parts.push(format!("{} {} modified", cm.files_modified, label));
             }
             if cm.files_created > 0 {
-                let label = if cm.files_created == 1 { "created" } else { "created" };
+                let label = "created";
                 parts.push(format!("{} {}", cm.files_created, label));
             }
             lines.push(format!("Code: {}", parts.join(", ")));
@@ -280,7 +280,7 @@ pub fn format_tokens(count: u64) -> String {
 
     let mut result = String::with_capacity(len + (len - 1) / 3);
     for (i, &b) in bytes.iter().enumerate() {
-        if i > 0 && (len - i) % 3 == 0 {
+        if i > 0 && (len - i).is_multiple_of(3) {
             result.push(',');
         }
         result.push(b as char);

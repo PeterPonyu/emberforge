@@ -84,6 +84,10 @@ pub fn execute_tool(name: &str, input: &Value) -> Result<String, ToolExecError> 
             .and_then(|i| run_team_delete(i, None)),
         // ── Phase 4: Workflow ──
         "Workflow" => from_value::<WorkflowInput>(input).and_then(run_workflow),
+        "DiscoverSkills" => from_value::<DiscoverSkillsInput>(input).and_then(run_discover_skills),
+        "VerifyPlanExecution" => {
+            from_value::<VerifyPlanExecutionInput>(input).and_then(run_verify_plan_execution)
+        }
         _ => Err(ToolExecError::UnsupportedTool(name.to_string())),
     }
 }
@@ -296,4 +300,14 @@ pub(crate) fn run_team_delete(
 
 pub(crate) fn run_workflow(input: WorkflowInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_workflow(input)?)
+}
+
+pub(crate) fn run_discover_skills(input: DiscoverSkillsInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_discover_skills(input)?)
+}
+
+pub(crate) fn run_verify_plan_execution(
+    input: VerifyPlanExecutionInput,
+) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_verify_plan_execution(input)?)
 }

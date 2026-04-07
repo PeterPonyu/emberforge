@@ -6,7 +6,7 @@
 //!
 //! 2. **API-backed mode** (when `ANTHROPIC_API_KEY` is set): sends the command
 //!    + conversation context to Claude for classification. Responses are cached
-//!    with a TTL to avoid redundant API calls.
+//!      with a TTL to avoid redundant API calls.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -57,7 +57,7 @@ pub fn classify_command(command: &str) -> ClassificationResult {
     for (pattern, penalty, reason) in DESTRUCTIVE_PATTERNS {
         if lower.contains(pattern) {
             score -= penalty;
-            reasons.push(reason.to_string());
+            reasons.push((*reason).to_string());
         }
     }
 
@@ -170,7 +170,7 @@ fn extract_first_command(input: &str) -> Option<&str> {
     let trimmed = input.trim();
     // Split on pipe or semicolon to get first command
     trimmed
-        .split(|c: char| c == '|' || c == ';' || c == '&')
+        .split(['|', ';', '&'])
         .next()
         .map(str::trim)
 }
@@ -326,22 +326,28 @@ pub fn classify_command_api(command: &str) -> ApiClassificationResult {
     };
 
     // Build API request
-    let client = match reqwest::blocking::Client::builder()
+    let Ok(client) = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(10))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => {
-            let heuristic = classify_command(command);
-            return ApiClassificationResult {
-                should_block: heuristic.label == SafetyLabel::Dangerous,
-                reason: "API client build failed; heuristic fallback".to_string(),
-                model: "heuristic".to_string(),
-                unavailable: true,
-            };
-        }
+        .build() else {
+        let heuristic = classify_command(command);
+        return ApiClassificationResult {
+            should_block: heuristic.label == SafetyLabel::Dangerous,
+            reason: "API client build failed; heuristic fallback".to_string(),
+            model: "heuristic".to_string(),
+            unavailable: true,
+        };
     };
 
+    call_classifier_api(command, &api_key, &client, cache_key)
+}
+
+/// Make the HTTP call to the Anthropic API and parse the result.
+fn call_classifier_api(
+    command: &str,
+    api_key: &str,
+    client: &reqwest::blocking::Client,
+    cache_key: u64,
+) -> ApiClassificationResult {
     let body = serde_json::json!({
         "model": "claude-haiku-4-5-20251001",
         "max_tokens": 256,
@@ -355,7 +361,7 @@ pub fn classify_command_api(command: &str) -> ApiClassificationResult {
 
     let response = client
         .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
+        .header("x-api-key", api_key)
         .header("anthropic-version", "2023-06-01")
         .header("content-type", "application/json")
         .json(&body)
@@ -371,9 +377,7 @@ pub fn classify_command_api(command: &str) -> ApiClassificationResult {
                     .and_then(|b| b.get("text"))
                     .and_then(|t| t.as_str())
                 {
-                    // Try to parse the classifier response
                     if let Some(parsed) = parse_classifier_response(text) {
-                        // Cache the result
                         let label = if parsed.should_block {
                             SafetyLabel::Dangerous
                         } else {
@@ -401,7 +405,6 @@ pub fn classify_command_api(command: &str) -> ApiClassificationResult {
                     }
                 }
             }
-            // Parse failure — fall back
             let heuristic = classify_command(command);
             ApiClassificationResult {
                 should_block: heuristic.label == SafetyLabel::Dangerous,

@@ -21,7 +21,7 @@ pub struct ContextSegment {
     pub estimated_tokens: usize,
     /// Importance score (0.0 to 1.0).
     pub importance: f64,
-    /// Source of the segment (system, user, assistant, tool_result).
+    /// Source of the segment (system, user, assistant, `tool_result`).
     pub source: String,
     /// Whether this segment is pinned (never collapsed).
     pub pinned: bool,
@@ -83,6 +83,7 @@ impl Default for CollapseConfig {
 }
 
 /// Collapse context segments according to the given config.
+#[must_use]
 pub fn collapse_context(
     segments: &[ContextSegment],
     config: &CollapseConfig,
@@ -99,10 +100,11 @@ pub fn collapse_context(
     }
 
     match config.strategy {
-        CollapseStrategy::ImportanceBased => collapse_by_importance(segments, config),
+        CollapseStrategy::ImportanceBased | CollapseStrategy::Summarize => {
+            collapse_by_importance(segments, config)
+        }
         CollapseStrategy::RecencyBased => collapse_by_recency(segments, config),
         CollapseStrategy::TruncateToolResults => truncate_tool_results(segments, config),
-        CollapseStrategy::Summarize => collapse_by_importance(segments, config), // fallback
     }
 }
 
@@ -111,11 +113,7 @@ fn collapse_by_importance(
     config: &CollapseConfig,
 ) -> CollapseResult {
     let total = segments.len();
-    let preserve_start = if total > config.preserve_recent {
-        total - config.preserve_recent
-    } else {
-        0
-    };
+    let preserve_start = total.saturating_sub(config.preserve_recent);
 
     // Score and sort older segments by importance
     let mut candidates: Vec<(usize, &ContextSegment)> = segments[..preserve_start]
@@ -161,11 +159,7 @@ fn collapse_by_recency(
     config: &CollapseConfig,
 ) -> CollapseResult {
     let total = segments.len();
-    let preserve_start = if total > config.preserve_recent {
-        total - config.preserve_recent
-    } else {
-        0
-    };
+    let preserve_start = total.saturating_sub(config.preserve_recent);
 
     let mut retained = Vec::new();
     let mut removed_count = 0;
@@ -225,7 +219,7 @@ fn truncate_tool_results(
 /// Simple token estimation (~4 chars per token).
 #[must_use]
 pub fn estimate_tokens(text: &str) -> usize {
-    (text.len() + 3) / 4
+    text.len().div_ceil(4)
 }
 
 /// Compute importance score for a segment based on heuristics.

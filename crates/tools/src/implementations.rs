@@ -2916,6 +2916,35 @@ pub(crate) fn execute_team_delete(
     })
 }
 
+/// Discover available skills. TS source is a 3-line stub (only exports the tool name constant).
+/// Faithful stub: returns an empty skill list with a placeholder message.
+pub(crate) fn execute_discover_skills(
+    _input: DiscoverSkillsInput,
+) -> Result<DiscoverSkillsOutput, String> {
+    // Deferred: real implementation would enumerate skill directories and
+    // filter by input.filter. Stub returns an empty list to match TS behaviour.
+    Ok(DiscoverSkillsOutput {
+        skills: vec![],
+        count: 0,
+        message: "DiscoverSkills stub — skill enumeration deferred.".to_string(),
+    })
+}
+
+/// Verify plan execution. TS source is a 3-line stub (only exports the tool name constant).
+/// Faithful stub: accepts the input and returns an unverified receipt.
+pub(crate) fn execute_verify_plan_execution(
+    input: VerifyPlanExecutionInput,
+) -> Result<VerifyPlanExecutionOutput, String> {
+    // Deferred: real implementation would load the plan, run each criterion
+    // check, and aggregate results. Stub records the plan_id and returns
+    // verified=false to match the TS stub's no-op semantics.
+    Ok(VerifyPlanExecutionOutput {
+        plan_id: input.plan_id,
+        verified: false,
+        message: "VerifyPlanExecution stub — verification logic deferred.".to_string(),
+    })
+}
+
 /// Execute a named workflow. Currently a structured stub: it validates the
 /// input, records the workflow name and parameters, and returns a receipt.
 /// Real workflow dispatch (loading workflow definitions, running steps) is

@@ -842,7 +842,36 @@ When ports do align, the changes will be:
 
 ---
 
-## 9. Conformance Checklist
+## 9. Port Divergence Log
+
+The 4 implementations (Rust, C++, Go, TS) are independent projects. Each makes language-native architectural choices rather than mechanically matching the others. This section records intentional divergences so future reviewers do not flag them as drift.
+
+### 9.1 Divergence Table
+
+| Area | Rust | C++ | Go | TS | Rationale |
+| --- | --- | --- | --- | --- | --- |
+| **HTTP client** | `reqwest` | `libcurl` (via FFI) | `net/http` stdlib | `fetch` (built-in) | Language-native HTTP libraries; reqwest (async Rust), libcurl (C compatibility), net/http (Go stdlib), fetch (browser/Node.js native) |
+| **Bash timeout mechanism** | `tokio::process` timeout | `GNU timeout(1)` binary | `context.WithTimeout` | `AbortController` + `setTimeout` | In-language portable mechanisms (Rust/Go/TS) except C++ which leverages coreutils binary for simplicity |
+| **write_file input format** | JSON (structured via `serde`) | `\n`-delimited (`path\ncontent`) | `:`-delimited on first colon (`path:content`) | `\n`-delimited (`path\ncontent`) | M2-baseline contract choices; iter4 may standardize on one format |
+| **Default model name** | No hardcoded default | `qwen3:8b` (env: `EMBER_MODEL`) | `claude-sonnet-4-6` (const `DefaultModel`) | `llama3.2` (constructor default) | Language + ecosystem context; iter4 may align to canonical `qwen3:8b` per §8 |
+| **REPL implementation** | Custom TUI (vim-mode, crossterm) | `termios` raw mode (`repl.cpp`) | No REPL; HTTP server focus | No REPL; future ink-based UI | Rust/C++ build interactive terminals; Go plays to cloud-native strength; TS TBD |
+| **JSON parser** | `serde_json` | `nlohmann/json` | stdlib `encoding/json` | Built-in `JSON.parse` | Language-native JSON libraries for idiomatic integration |
+| **Session ID format** | UUID v4 (via `uuid` crate) | UUID v4 (via libossp-uuid) | 32-char hex (`crypto/rand` + `hex.EncodeToString`, 16 random bytes) | UUID v4 (stdlib `crypto.randomUUID`) | Rust/C++/TS converge on UUID v4; Go intentionally uses raw hex to avoid a `github.com/google/uuid` runtime dep. Both formats are 128 bits of entropy but collide on different wire representations — iter4 may standardize |
+| **Streaming implementation** | `tokio::io::AsyncWrite` | `std::ostringstream` buffering | `io.WriteCloser` interface | Node.js `Readable` streams | Language async primitives; TS uses Node.js stream API |
+| **Workspace safety check** | `std::fs::canonicalize` + relative path | `std::filesystem::relative` + ".." prefix check | `filepath.Abs` + `strings.HasPrefix` | `path.resolve` + `startsWith` check | Each uses native path APIs; all enforce cwd boundary |
+
+### 9.2 Reconciliation Policy
+
+Future reviewers should **NOT** flag these divergences as bugs or drift. Each port is an independent project. If a divergence is identified that is not listed in this log, the reviewer should:
+
+1. **If intentional**: Add a row to this table documenting the rationale.
+2. **If an oversight**: Open a reconciliation story (e.g., US-000d-write-file-format-align) to decide whether to align or document further.
+
+Do not create drift without explicit review of all four implementations.
+
+---
+
+## 10. Conformance Checklist
 
 For each port to be considered compliant, it must:
 

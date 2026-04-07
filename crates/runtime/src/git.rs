@@ -24,7 +24,7 @@ fn git_output(cwd: &Path, args: &[&str]) -> io::Result<String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(io::Error::new(io::ErrorKind::Other, stderr));
+        return Err(io::Error::other(stderr));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -39,7 +39,7 @@ fn git_ok(cwd: &Path, args: &[&str]) -> io::Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(io::Error::new(io::ErrorKind::Other, stderr));
+        return Err(io::Error::other(stderr));
     }
 
     Ok(())
@@ -61,6 +61,7 @@ fn git_succeeds(cwd: &Path, args: &[&str]) -> bool {
 
 /// Find the git root directory from the given path, walking up ancestors.
 /// Returns `None` if not in a git repository.
+#[must_use]
 pub fn find_git_root(from: &Path) -> Option<PathBuf> {
     // Prefer rev-parse when git is available – it handles all edge cases
     // (worktrees, bare repos, etc.).
@@ -89,6 +90,7 @@ pub fn find_git_root(from: &Path) -> Option<PathBuf> {
 }
 
 /// Check if a directory is at the root of a git repository.
+#[must_use]
 pub fn is_at_git_root(dir: &Path) -> bool {
     match find_git_root(dir) {
         Some(root) => root == dir,
@@ -97,11 +99,13 @@ pub fn is_at_git_root(dir: &Path) -> bool {
 }
 
 /// Check if a path is inside a git repository.
+#[must_use]
 pub fn is_in_git_repo(path: &Path) -> bool {
     find_git_root(path).is_some()
 }
 
 /// Check if the git root is a bare repository.
+#[must_use]
 pub fn is_bare_repo(git_root: &Path) -> bool {
     git_output(git_root, &["rev-parse", "--is-bare-repository"])
         .map(|s| s == "true")
@@ -184,6 +188,7 @@ pub enum FileChangeType {
 
 impl FileChangeType {
     /// Parse a single-character status code from porcelain v1 output.
+    #[must_use]
     pub fn from_status_code(code: char) -> Self {
         match code {
             'A' => Self::Added,
@@ -392,6 +397,7 @@ pub fn find_merge_base(cwd: &Path, remote_branch: &str) -> io::Result<Option<Str
 /// - `ssh://git@github.com/owner/repo.git`
 ///
 /// Returns `None` for non-GitHub URLs.
+#[must_use]
 pub fn parse_github_remote(url: &str) -> Option<(String, String)> {
     let url = url.trim();
 
@@ -433,10 +439,7 @@ fn parse_owner_repo(s: &str) -> Option<(String, String)> {
 
 /// Get the GitHub owner/repo for the current repository.
 pub fn get_github_repo(cwd: &Path) -> io::Result<Option<(String, String)>> {
-    let url = match get_remote_url(cwd)? {
-        Some(u) => u,
-        None => return Ok(None),
-    };
+    let Some(url) = get_remote_url(cwd)? else { return Ok(None) };
     Ok(parse_github_remote(&url))
 }
 

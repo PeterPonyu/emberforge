@@ -42,10 +42,10 @@ impl ModelProfile {
         }
     }
 
-    /// Recommended max_tokens based on context window (25% of context).
+    /// Recommended `max_tokens` based on context window (25% of context).
     #[must_use]
     pub fn recommended_max_tokens(&self) -> u32 {
-        (self.context_window / 4).max(1024).min(32_000)
+        (self.context_window / 4).clamp(1024, 32_000)
     }
 
     /// How many tokens to reserve for system prompt + tools + history.
@@ -69,6 +69,7 @@ const NON_TOOL_FAMILIES: &[&str] = &[
 /// Query Ollama's `/api/show` endpoint for model metadata.
 ///
 /// Returns `None` if Ollama is unreachable or the model doesn't exist.
+#[must_use]
 pub fn query_ollama_model_info(model: &str) -> Option<ModelProfile> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(5))
@@ -94,7 +95,9 @@ pub fn query_ollama_model_info(model: &str) -> Option<ModelProfile> {
         .iter()
         .find(|(k, _)| k.contains("context_length"))
         .and_then(|(_, v)| v.as_u64())
-        .unwrap_or(8192) as u32;
+        .unwrap_or(8192)
+        .try_into()
+        .unwrap_or(8192u32);
 
     let family = details
         .get("family")
@@ -114,7 +117,7 @@ pub fn query_ollama_model_info(model: &str) -> Option<ModelProfile> {
 
     let is_thinking = THINKING_FAMILIES.iter().any(|f| family.starts_with(f));
     let supports_tools = !NON_TOOL_FAMILIES.iter().any(|f| family.starts_with(f));
-    let max_tokens = (context_window / 4).max(1024).min(32_000);
+    let max_tokens = (context_window / 4).clamp(1024, 32_000);
 
     Some(ModelProfile {
         model: model.to_string(),

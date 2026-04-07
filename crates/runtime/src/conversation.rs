@@ -136,7 +136,7 @@ where
             tool_executor,
             permission_policy,
             system_prompt,
-            RuntimeFeatureConfig::default(),
+            &RuntimeFeatureConfig::default(),
         )
     }
 
@@ -147,7 +147,7 @@ where
         tool_executor: T,
         permission_policy: PermissionPolicy,
         system_prompt: Vec<String>,
-        feature_config: RuntimeFeatureConfig,
+        feature_config: &RuntimeFeatureConfig,
     ) -> Self {
         let usage_tracker = UsageTracker::from_session(&session);
         Self {
@@ -158,7 +158,7 @@ where
             system_prompt,
             max_iterations: usize::MAX,
             usage_tracker,
-            hook_runner: HookRunner::from_feature_config(&feature_config),
+            hook_runner: HookRunner::from_feature_config(feature_config),
             auto_compact_config: None,
             auto_compact_state: AutoCompactState::new(),
         }
@@ -232,68 +232,16 @@ where
             }
 
             for (tool_use_id, tool_name, input) in pending_tool_uses {
-                let permission_outcome = if let Some(prompt) = prompter.as_mut() {
-                    self.permission_policy
-                        .authorize(&tool_name, &input, Some(*prompt))
-                } else {
-                    self.permission_policy.authorize(&tool_name, &input, None)
-                };
-
-                let result_message = match permission_outcome {
-                    PermissionOutcome::Allow => {
-                        let pre_hook_result = self.hook_runner.run_pre_tool_use(&tool_name, &input);
-                        if pre_hook_result.is_denied() {
-                            let deny_message = format!("PreToolUse hook denied tool `{tool_name}`");
-                            ConversationMessage::tool_result(
-                                tool_use_id,
-                                tool_name,
-                                format_hook_message(&pre_hook_result, &deny_message),
-                                true,
-                            )
-                        } else {
-                            let mut halt_after_tool_result = false;
-                            let (mut output, mut is_error) =
-                                match self.tool_executor.execute(&tool_name, &input) {
-                                    Ok(output) => (output, false),
-                                    Err(error) => {
-                                        halt_after_tool_result = error.is_fatal();
-                                        (error.to_string(), true)
-                                    }
-                                };
-                            output = merge_hook_feedback(pre_hook_result.messages(), output, false);
-
-                            let post_hook_result = self
-                                .hook_runner
-                                .run_post_tool_use(&tool_name, &input, &output, is_error);
-                            if post_hook_result.is_denied() {
-                                is_error = true;
-                            }
-                            output = merge_hook_feedback(
-                                post_hook_result.messages(),
-                                output,
-                                post_hook_result.is_denied(),
-                            );
-
-                            let result_message = ConversationMessage::tool_result(
-                                tool_use_id,
-                                tool_name,
-                                output,
-                                is_error,
-                            );
-                            if halt_after_tool_result {
-                                self.session.messages.push(result_message.clone());
-                                tool_results.push(result_message);
-                                break 'conversation;
-                            }
-                            result_message
-                        }
-                    }
-                    PermissionOutcome::Deny { reason } => {
-                        ConversationMessage::tool_result(tool_use_id, tool_name, reason, true)
-                    }
+                let (result_message, halt) = {
+                    let p: Option<&mut dyn PermissionPrompter> =
+                        prompter.as_mut().map(|x| &mut **x as &mut dyn PermissionPrompter);
+                    self.execute_tool(tool_use_id, &tool_name, &input, p)
                 };
                 self.session.messages.push(result_message.clone());
                 tool_results.push(result_message);
+                if halt {
+                    break 'conversation;
+                }
             }
         }
 
@@ -315,6 +263,75 @@ where
             iterations,
             usage: self.usage_tracker.cumulative_usage(),
         })
+    }
+
+    /// Execute a single tool call and return `(result_message, should_halt)`.
+    fn execute_tool(
+        &mut self,
+        tool_use_id: String,
+        tool_name: &str,
+        input: &str,
+        prompter: Option<&mut dyn PermissionPrompter>,
+    ) -> (ConversationMessage, bool) {
+        let permission_outcome = if let Some(prompt) = prompter {
+            self.permission_policy.authorize(tool_name, input, Some(prompt))
+        } else {
+            self.permission_policy.authorize(tool_name, input, None)
+        };
+
+        match permission_outcome {
+            PermissionOutcome::Allow => {
+                let pre_hook_result = self.hook_runner.run_pre_tool_use(tool_name, input);
+                if pre_hook_result.is_denied() {
+                    let deny_message = format!("PreToolUse hook denied tool `{tool_name}`");
+                    let msg = ConversationMessage::tool_result(
+                        tool_use_id,
+                        tool_name.to_string(),
+                        format_hook_message(&pre_hook_result, &deny_message),
+                        true,
+                    );
+                    (msg, false)
+                } else {
+                    let mut halt = false;
+                    let (mut output, mut is_error) = match self.tool_executor.execute(tool_name, input) {
+                        Ok(out) => (out, false),
+                        Err(error) => {
+                            halt = error.is_fatal();
+                            (error.to_string(), true)
+                        }
+                    };
+                    output = merge_hook_feedback(pre_hook_result.messages(), output, false);
+
+                    let post_hook_result =
+                        self.hook_runner.run_post_tool_use(tool_name, input, &output, is_error);
+                    if post_hook_result.is_denied() {
+                        is_error = true;
+                    }
+                    output = merge_hook_feedback(
+                        post_hook_result.messages(),
+                        output,
+                        post_hook_result.is_denied(),
+                    );
+
+                    let msg = ConversationMessage::tool_result(
+                        tool_use_id,
+                        tool_name.to_string(),
+                        output,
+                        is_error,
+                    );
+                    (msg, halt)
+                }
+            }
+            PermissionOutcome::Deny { reason } => {
+                let msg = ConversationMessage::tool_result(
+                    tool_use_id,
+                    tool_name.to_string(),
+                    reason,
+                    true,
+                );
+                (msg, false)
+            }
+        }
     }
 
     #[must_use]
@@ -716,7 +733,7 @@ mod tests {
             }),
             PermissionPolicy::new(PermissionMode::DangerFullAccess),
             vec!["system".to_string()],
-            RuntimeFeatureConfig::default().with_hooks(RuntimeHookConfig::new(
+            &RuntimeFeatureConfig::default().with_hooks(RuntimeHookConfig::new(
                 vec![shell_snippet("printf 'blocked by hook'; exit 2")],
                 Vec::new(),
             )),
@@ -782,7 +799,7 @@ mod tests {
             StaticToolExecutor::new().register("add", |_input| Ok("4".to_string())),
             PermissionPolicy::new(PermissionMode::DangerFullAccess),
             vec!["system".to_string()],
-            RuntimeFeatureConfig::default().with_hooks(RuntimeHookConfig::new(
+            &RuntimeFeatureConfig::default().with_hooks(RuntimeHookConfig::new(
                 vec![shell_snippet("printf 'pre hook ran'")],
                 vec![shell_snippet("printf 'post hook ran'")],
             )),
