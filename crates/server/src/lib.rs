@@ -13,7 +13,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use runtime::{
-    BridgeMessage, BridgeState, ControlRequestBody, ConversationMessage, InboundAction,
+    BridgeState, ConversationMessage, InboundAction,
     Session as RuntimeSession,
 };
 use serde::{Deserialize, Serialize};
@@ -166,7 +166,6 @@ pub struct TeleportImportResponse {
     pub source_host: String,
 }
 
-#[must_use]
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_check))
@@ -285,7 +284,7 @@ async fn stream_session_events(
                         yield Ok::<Event, Infallible>(sse_event);
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Lagged(_)) => {},
                 Err(broadcast::error::RecvError::Closed) => break,
             }
         }
@@ -385,7 +384,7 @@ async fn handle_bridge_socket(mut socket: WebSocket, state: AppState) {
                     _ => {}
                 }
             }
-            _ = tokio::time::sleep(Duration::from_secs(15)) => {
+            () = tokio::time::sleep(Duration::from_secs(15)) => {
                 // Send keepalive ping
                 let _ = socket.send(WsMessage::Ping(vec![].into())).await;
             }
@@ -467,10 +466,13 @@ async fn teleport_import(
 }
 
 fn unix_timestamp_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time should be after epoch")
-        .as_millis() as u64
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after epoch")
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX)
 }
 
 fn not_found(message: String) -> ApiError {

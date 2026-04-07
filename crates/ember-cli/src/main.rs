@@ -1993,7 +1993,7 @@ impl LiveCli {
         // Detect magic keywords and apply mode activations.
         let keyword_matches = keywords::detect_keywords(input);
         for mode in keywords::extract_mode_activations(&keyword_matches) {
-            if let Some(level) = runtime::EffortLevel::from_str(mode) {
+            if let Some(level) = runtime::EffortLevel::parse(mode) {
                 if level != self.effort {
                     self.effort = level;
                     eprintln!(
@@ -2416,7 +2416,7 @@ impl LiveCli {
             // ── Effort level ──
             SlashCommand::Effort { level } => {
                 if let Some(level_str) = level.as_deref() {
-                    if let Some(new_level) = runtime::EffortLevel::from_str(level_str) {
+                    if let Some(new_level) = runtime::EffortLevel::parse(level_str) {
                         self.effort = new_level;
                         println!(
                             "\x1b[2mEffort level: \x1b[33m{}\x1b[0m",
@@ -2439,7 +2439,7 @@ impl LiveCli {
             // ── Theme ──
             SlashCommand::Theme { mode } => {
                 if let Some(mode_str) = mode.as_deref() {
-                    if let Some(new_theme) = runtime::ThemeMode::from_str(mode_str) {
+                    if let Some(new_theme) = runtime::ThemeMode::parse(mode_str) {
                         self.ui_config = self.ui_config.clone().with_theme(new_theme);
                         println!(
                             "\x1b[2mTheme: \x1b[33m{}\x1b[0m",
@@ -4727,7 +4727,7 @@ pub(crate) fn build_runtime(
         CliToolExecutor::new(allowed_tools.clone(), emit_output, tool_registry.clone()),
         permission_policy(permission_mode, &tool_registry),
         system_prompt,
-        feature_config,
+        &feature_config,
     )
     .with_max_iterations(32))
 }
