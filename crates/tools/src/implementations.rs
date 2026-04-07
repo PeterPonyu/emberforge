@@ -26,7 +26,7 @@ use crate::team_helpers::{
     now_millis, read_team_file, register_team_for_session_cleanup, unregister_team_for_session_cleanup,
     write_team_file, TeamFile, TeamMember, TEAM_LEAD_NAME,
 };
-use crate::types::*;
+use crate::types::{WebFetchInput, WebFetchOutput, WebSearchInput, WebSearchOutput, WebSearchResultItem, SearchHit, TodoWriteInput, TodoWriteOutput, TodoItem, TodoStatus, SkillInput, SkillOutput, AgentActivityEntry, AgentOutput, AgentInput, AgentJob, ToolSearchInput, ToolSearchOutput, NotebookEditInput, NotebookEditOutput, NotebookEditMode, NotebookCellType, SleepInput, SleepOutput, BriefInput, BriefOutput, BriefStatus, ResolvedAttachment, ConfigInput, ConfigOutput, StructuredOutputInput, StructuredOutputResult, ReplInput, ReplOutput, ConfigValue, PowerShellInput, TeamCreateInput, TeamCreateOutput, TeamDeleteInput, TeamDeleteOutput, DiscoverSkillsInput, DiscoverSkillsOutput, VerifyPlanExecutionInput, VerifyPlanExecutionOutput, WorkflowInput, WorkflowOutput};
 
 pub(crate) fn execute_web_fetch(input: &WebFetchInput) -> Result<WebFetchOutput, String> {
     let started = Instant::now();
@@ -706,7 +706,7 @@ where
     };
     if let Err(error) = spawn_fn(job) {
         let error = format!("failed to spawn sub-agent: {error}");
-        persist_agent_terminal_state(&manifest, "failed", None, Some(error.clone()))?;
+        persist_agent_terminal_state(&manifest, "failed", None, Some(error.as_str()))?;
         return Err(error);
     }
 
@@ -727,14 +727,14 @@ pub(crate) fn spawn_agent_job(job: AgentJob) -> Result<(), String> {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
                     let _ =
-                        persist_agent_terminal_state(&job.manifest, "failed", None, Some(error));
+                        persist_agent_terminal_state(&job.manifest, "failed", None, Some(error.as_str()));
                 }
                 Err(_) => {
                     let _ = persist_agent_terminal_state(
                         &job.manifest,
                         "failed",
                         None,
-                        Some(String::from("sub-agent thread panicked")),
+                        Some("sub-agent thread panicked"),
                     );
                 }
             }
@@ -787,24 +787,26 @@ pub(crate) fn run_agent_job(job: &AgentJob) -> Result<(), String> {
                 &job.manifest,
                 if stop_requested { "cancelled" } else { "failed" },
                 None,
-                if stop_requested { None } else { Some(error_msg) },
+                if stop_requested { None } else { Some(error_msg.as_str()) },
             )
         }
     }
 }
 
 fn persist_agent_progress(manifest: &AgentOutput, status: &str, message: &str) -> Result<(), String> {
+    use std::fmt::Write as _;
     // Append progress to the output markdown file
     let mut content = std::fs::read_to_string(&manifest.output_file).unwrap_or_default();
     let updated_at = iso8601_now();
-    content.push_str(&format!(
+    let _ = write!(
+        content,
         "\n## Progress: {status}\n{message}\n_Updated: {updated_at}_\n"
-    ));
+    );
     std::fs::write(&manifest.output_file, content).map_err(|e| e.to_string())
         ?;
     update_agent_manifest(&manifest.manifest_file, |next_manifest| {
         next_manifest.status = status.to_string();
-        next_manifest.updated_at = updated_at.clone();
+        next_manifest.updated_at.clone_from(&updated_at);
         next_manifest.last_heartbeat_at = Some(updated_at.clone());
         next_manifest.status_detail = Some(truncate_agent_status_detail(message));
         append_agent_activity_entry(next_manifest, &updated_at, "status", status, message);
@@ -824,7 +826,7 @@ fn build_agent_runtime(
         .clone()
         .unwrap_or_else(|| DEFAULT_AGENT_MODEL.to_string());
     let allowed_tools = job.allowed_tools.clone();
-    let api_client = ProviderRuntimeClient::new(model, allowed_tools.clone())?;
+    let api_client = ProviderRuntimeClient::new(&model, allowed_tools.clone())?;
     let tool_executor = SubagentToolExecutor::new(allowed_tools)
         .with_manifest_file(job.manifest.manifest_file.clone());
     Ok(ConversationRuntime::new(
@@ -1057,7 +1059,7 @@ fn persist_agent_heartbeat(manifest: &AgentOutput) -> Result<(), String> {
         if is_terminal_agent_status(&next_manifest.status) {
             return;
         }
-        next_manifest.updated_at = heartbeat_at.clone();
+        next_manifest.updated_at.clone_from(&heartbeat_at);
         next_manifest.last_heartbeat_at = Some(heartbeat_at.clone());
         if next_manifest.stop_requested_at.is_some()
             && is_active_agent_status(&next_manifest.status)
@@ -1098,15 +1100,15 @@ pub(crate) fn persist_agent_terminal_state(
     manifest: &AgentOutput,
     status: &str,
     result: Option<&str>,
-    error: Option<String>,
+    error: Option<&str>,
 ) -> Result<(), String> {
     append_agent_output(
         &manifest.output_file,
-        &format_agent_terminal_output(status, result, error.as_deref()),
+        &format_agent_terminal_output(status, result, error),
     )?;
     let completed_at = iso8601_now();
     update_agent_manifest(&manifest.manifest_file, |next_manifest| {
-        let activity_message = match error.as_deref() {
+        let activity_message = match error {
             Some(message) => truncate_agent_status_detail(message),
             None => result
                 .map(truncate_agent_status_detail)
@@ -1115,9 +1117,9 @@ pub(crate) fn persist_agent_terminal_state(
         };
         next_manifest.status = status.to_string();
         next_manifest.completed_at = Some(completed_at.clone());
-        next_manifest.updated_at = completed_at.clone();
+        next_manifest.updated_at.clone_from(&completed_at);
         next_manifest.last_heartbeat_at = Some(completed_at.clone());
-        next_manifest.error = error.clone();
+        next_manifest.error = error.map(str::to_owned);
         next_manifest.status_detail = Some(activity_message.clone());
         append_agent_activity_entry(
             next_manifest,
@@ -1160,8 +1162,8 @@ struct ProviderRuntimeClient {
 }
 
 impl ProviderRuntimeClient {
-    fn new(model: String, allowed_tools: BTreeSet<String>) -> Result<Self, String> {
-        let model = resolve_model_alias(&model).to_string();
+    fn new(model: &str, allowed_tools: BTreeSet<String>) -> Result<Self, String> {
+        let model = resolve_model_alias(model).to_string();
         let client = ProviderClient::from_model(&model).map_err(|error| error.to_string())?;
         Ok(Self {
             runtime: tokio::runtime::Runtime::new().map_err(|error| error.to_string())?,
@@ -1191,98 +1193,101 @@ impl ApiClient for ProviderRuntimeClient {
             tool_choice: (!self.allowed_tools.is_empty()).then_some(ToolChoice::Auto),
             stream: true,
         };
+        self.runtime
+            .block_on(stream_message_request(&self.client, message_request))
+    }
+}
 
-        self.runtime.block_on(async {
-            let mut stream = self
-                .client
-                .stream_message(&message_request)
-                .await
-                .map_err(|error| RuntimeError::new(error.to_string()))?;
-            let mut events = Vec::new();
-            let mut pending_tools: BTreeMap<u32, (String, String, String)> = BTreeMap::new();
-            let mut saw_stop = false;
+async fn stream_message_request(
+    client: &ProviderClient,
+    message_request: MessageRequest,
+) -> Result<Vec<AssistantEvent>, RuntimeError> {
+    let mut stream = client
+        .stream_message(&message_request)
+        .await
+        .map_err(|error| RuntimeError::new(error.to_string()))?;
+    let mut events = Vec::new();
+    let mut pending_tools: BTreeMap<u32, (String, String, String)> = BTreeMap::new();
+    let mut saw_stop = false;
 
-            while let Some(event) = stream
-                .next_event()
-                .await
-                .map_err(|error| RuntimeError::new(error.to_string()))?
-            {
-                match event {
-                    ApiStreamEvent::MessageStart(start) => {
-                        for block in start.message.content {
-                            push_output_block(block, 0, &mut events, &mut pending_tools, true);
-                        }
-                    }
-                    ApiStreamEvent::ContentBlockStart(start) => {
-                        push_output_block(
-                            start.content_block,
-                            start.index,
-                            &mut events,
-                            &mut pending_tools,
-                            true,
-                        );
-                    }
-                    ApiStreamEvent::ContentBlockDelta(delta) => match delta.delta {
-                        ContentBlockDelta::TextDelta { text } => {
-                            if !text.is_empty() {
-                                events.push(AssistantEvent::TextDelta(text));
-                            }
-                        }
-                        ContentBlockDelta::InputJsonDelta { partial_json } => {
-                            if let Some((_, _, input)) = pending_tools.get_mut(&delta.index) {
-                                input.push_str(&partial_json);
-                            }
-                        }
-                        ContentBlockDelta::ThinkingDelta { .. }
-                        | ContentBlockDelta::SignatureDelta { .. } => {}
-                    },
-                    ApiStreamEvent::ContentBlockStop(stop) => {
-                        if let Some((id, name, input)) = pending_tools.remove(&stop.index) {
-                            events.push(AssistantEvent::ToolUse { id, name, input });
-                        }
-                    }
-                    ApiStreamEvent::MessageDelta(delta) => {
-                        events.push(AssistantEvent::Usage(TokenUsage {
-                            input_tokens: delta.usage.input_tokens,
-                            output_tokens: delta.usage.output_tokens,
-                            cache_creation_input_tokens: 0,
-                            cache_read_input_tokens: 0,
-                        }));
-                    }
-                    ApiStreamEvent::MessageStop(_) => {
-                        saw_stop = true;
-                        events.push(AssistantEvent::MessageStop);
-                    }
+    while let Some(event) = stream
+        .next_event()
+        .await
+        .map_err(|error| RuntimeError::new(error.to_string()))?
+    {
+        match event {
+            ApiStreamEvent::MessageStart(start) => {
+                for block in start.message.content {
+                    push_output_block(block, 0, &mut events, &mut pending_tools, true);
                 }
             }
-
-            if !saw_stop
-                && events.iter().any(|event| {
-                    matches!(event, AssistantEvent::TextDelta(text) if !text.is_empty())
-                        || matches!(event, AssistantEvent::ToolUse { .. })
-                })
-            {
+            ApiStreamEvent::ContentBlockStart(start) => {
+                push_output_block(
+                    start.content_block,
+                    start.index,
+                    &mut events,
+                    &mut pending_tools,
+                    true,
+                );
+            }
+            ApiStreamEvent::ContentBlockDelta(delta) => match delta.delta {
+                ContentBlockDelta::TextDelta { text } => {
+                    if !text.is_empty() {
+                        events.push(AssistantEvent::TextDelta(text));
+                    }
+                }
+                ContentBlockDelta::InputJsonDelta { partial_json } => {
+                    if let Some((_, _, input)) = pending_tools.get_mut(&delta.index) {
+                        input.push_str(&partial_json);
+                    }
+                }
+                ContentBlockDelta::ThinkingDelta { .. }
+                | ContentBlockDelta::SignatureDelta { .. } => {}
+            },
+            ApiStreamEvent::ContentBlockStop(stop) => {
+                if let Some((id, name, input)) = pending_tools.remove(&stop.index) {
+                    events.push(AssistantEvent::ToolUse { id, name, input });
+                }
+            }
+            ApiStreamEvent::MessageDelta(delta) => {
+                events.push(AssistantEvent::Usage(TokenUsage {
+                    input_tokens: delta.usage.input_tokens,
+                    output_tokens: delta.usage.output_tokens,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                }));
+            }
+            ApiStreamEvent::MessageStop(_) => {
+                saw_stop = true;
                 events.push(AssistantEvent::MessageStop);
             }
-
-            if events
-                .iter()
-                .any(|event| matches!(event, AssistantEvent::MessageStop))
-            {
-                return Ok(events);
-            }
-
-            let response = self
-                .client
-                .send_message(&MessageRequest {
-                    stream: false,
-                    ..message_request.clone()
-                })
-                .await
-                .map_err(|error| RuntimeError::new(error.to_string()))?;
-            Ok(response_to_events(response))
-        })
+        }
     }
+
+    if !saw_stop
+        && events.iter().any(|event| {
+            matches!(event, AssistantEvent::TextDelta(text) if !text.is_empty())
+                || matches!(event, AssistantEvent::ToolUse { .. })
+        })
+    {
+        events.push(AssistantEvent::MessageStop);
+    }
+
+    if events
+        .iter()
+        .any(|event| matches!(event, AssistantEvent::MessageStop))
+    {
+        return Ok(events);
+    }
+
+    let response = client
+        .send_message(&MessageRequest {
+            stream: false,
+            ..message_request.clone()
+        })
+        .await
+        .map_err(|error| RuntimeError::new(error.to_string()))?;
+    Ok(response_to_events(response))
 }
 
 pub(crate) struct SubagentToolExecutor {
@@ -1625,7 +1630,7 @@ fn uuid_v4() -> String {
         .unwrap_or_default()
         .as_nanos();
     let pid = std::process::id();
-    format!("{:016x}-{:08x}", nanos, pid)
+    format!("{nanos:016x}-{pid:08x}")
 }
 
 fn slugify_agent_name(description: &str) -> String {
@@ -2464,71 +2469,66 @@ fn parse_skill_description(contents: &str) -> Option<String> {
     None
 }
 
-
-// ── New tool implementations for TS parity ───────────────────────
-
-pub(crate) fn execute_ask_user_question(input: crate::types::AskUserQuestionInput) -> Result<crate::types::AskUserQuestionOutput, String> {
+pub(crate) fn execute_ask_user_question(input: &crate::types::AskUserQuestionInput) -> crate::types::AskUserQuestionOutput {
     // In non-interactive mode, return a placeholder.
     // The real implementation requires a callback channel to the CLI input loop,
     // which will be wired in the claw-cli main.rs ToolExecutor impl.
-    Ok(crate::types::AskUserQuestionOutput {
+    crate::types::AskUserQuestionOutput {
         response: format!("[AskUserQuestion] {}", input.question),
-    })
+    }
 }
 
-pub(crate) fn execute_enter_plan_mode(_input: crate::types::EnterPlanModeInput) -> Result<crate::types::PlanModeOutput, String> {
-    Ok(crate::types::PlanModeOutput {
+pub(crate) fn execute_enter_plan_mode(_input: crate::types::EnterPlanModeInput) -> crate::types::PlanModeOutput {
+    crate::types::PlanModeOutput {
         mode: "plan".to_string(),
         message: "Entered plan mode. Tools are now disabled. Focus on designing the approach.".to_string(),
-    })
+    }
 }
 
-pub(crate) fn execute_exit_plan_mode(_input: crate::types::ExitPlanModeInput) -> Result<crate::types::PlanModeOutput, String> {
-    Ok(crate::types::PlanModeOutput {
+pub(crate) fn execute_exit_plan_mode(_input: crate::types::ExitPlanModeInput) -> crate::types::PlanModeOutput {
+    crate::types::PlanModeOutput {
         mode: "execute".to_string(),
         message: "Exited plan mode. Tools are now available.".to_string(),
-    })
+    }
 }
 
-pub(crate) fn execute_mcp_tool(input: crate::types::McpToolInput) -> Result<crate::types::McpToolOutput, String> {
+pub(crate) fn execute_mcp_tool(input: &crate::types::McpToolInput) -> crate::types::McpToolOutput {
     // Fallback: the CLI intercepts MCPTool calls in CliToolExecutor and routes
     // them through McpServerManager. This path only executes if the tool is
     // invoked outside the CLI (e.g. in tests or embedded usage).
-    Ok(crate::types::McpToolOutput {
+    crate::types::McpToolOutput {
         result: serde_json::json!({
             "server": input.server_name,
             "tool": input.tool_name,
             "message": "Configure MCP servers in .claw.json to enable"
         }),
-    })
+    }
 }
 
-pub(crate) fn execute_lsp_tool(input: crate::types::LspToolInput) -> Result<crate::types::LspToolOutput, String> {
+pub(crate) fn execute_lsp_tool(input: &crate::types::LspToolInput) -> crate::types::LspToolOutput {
     // Fallback: the CLI intercepts LSPTool calls in CliToolExecutor.
-    Ok(crate::types::LspToolOutput {
+    crate::types::LspToolOutput {
         data: serde_json::json!({
             "action": input.action,
             "message": "Configure LSP servers in .claw.json to enable"
         }),
+    }
+}
+
+pub(crate) fn execute_list_mcp_resources(input: &crate::types::ListMcpResourcesInput) -> serde_json::Value {
+    serde_json::json!({
+        "server": input.server_name,
+        "message": "Configure MCP servers in .claw.json to list resources"
     })
 }
 
-pub(crate) fn execute_list_mcp_resources(input: crate::types::ListMcpResourcesInput) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({
-        "server": input.server_name,
-        "message": "Configure MCP servers in .claw.json to list resources"
-    }))
-}
-
-pub(crate) fn execute_read_mcp_resource(input: crate::types::ReadMcpResourceInput) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({
+pub(crate) fn execute_read_mcp_resource(input: &crate::types::ReadMcpResourceInput) -> serde_json::Value {
+    serde_json::json!({
         "server": input.server_name,
         "uri": input.resource_uri,
         "message": "Configure MCP servers in .claw.json to read resources"
-    }))
+    })
 }
-
-// ── Phase 1: Cron tool implementations ─────────────────────────
 
 pub(crate) fn execute_cron_create(input: crate::types::CronCreateInput) -> Result<crate::types::CronCreateOutput, String> {
     use runtime::{create_task, load_durable_tasks, save_durable_tasks};
@@ -2592,9 +2592,8 @@ pub(crate) fn execute_cron_list(_input: crate::types::CronListInput) -> Result<c
     })
 }
 
-// ── Phase 1: Worktree tool implementations ─────────────────────
 
-pub(crate) fn execute_enter_worktree(input: crate::types::EnterWorktreeInput) -> Result<crate::types::EnterWorktreeOutput, String> {
+pub(crate) fn execute_enter_worktree(input: &crate::types::EnterWorktreeInput) -> Result<crate::types::EnterWorktreeOutput, String> {
     use runtime::{find_git_root, create_worktree};
 
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
@@ -2613,7 +2612,7 @@ pub(crate) fn execute_enter_worktree(input: crate::types::EnterWorktreeInput) ->
     })
 }
 
-pub(crate) fn execute_exit_worktree(input: crate::types::ExitWorktreeInput) -> Result<crate::types::ExitWorktreeOutput, String> {
+pub(crate) fn execute_exit_worktree(input: &crate::types::ExitWorktreeInput) -> Result<crate::types::ExitWorktreeOutput, String> {
     use runtime::{find_git_root, remove_worktree};
 
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
@@ -2636,8 +2635,6 @@ pub(crate) fn execute_exit_worktree(input: crate::types::ExitWorktreeInput) -> R
         },
     })
 }
-
-// ── Phase 2: Task management — disk-backed via runtime::task_store ──
 
 pub(crate) fn execute_task_create(input: crate::types::TaskCreateInput) -> Result<crate::types::TaskCreateOutput, String> {
     use runtime::task_store;
@@ -2714,7 +2711,7 @@ pub(crate) fn execute_task_update(input: crate::types::TaskUpdateInput) -> Resul
     }
 }
 
-pub(crate) fn execute_task_get(input: crate::types::TaskGetInput) -> Result<crate::types::TaskGetOutput, String> {
+pub(crate) fn execute_task_get(input: &crate::types::TaskGetInput) -> Result<crate::types::TaskGetOutput, String> {
     use runtime::task_store;
 
     let manifest = task_store::load_manifest(&input.task_id).map_err(|e| e.to_string())?;
@@ -2731,7 +2728,7 @@ pub(crate) fn execute_task_get(input: crate::types::TaskGetInput) -> Result<crat
     })
 }
 
-pub(crate) fn execute_task_list(input: crate::types::TaskListInput) -> Result<crate::types::TaskListOutput, String> {
+pub(crate) fn execute_task_list(input: &crate::types::TaskListInput) -> Result<crate::types::TaskListOutput, String> {
     use runtime::task_store;
 
     let manifests = task_store::list_manifests(input.status_filter.as_deref())
@@ -2780,8 +2777,6 @@ pub(crate) fn execute_task_output(input: crate::types::TaskOutputInput) -> Resul
     })
 }
 
-// ── Phase 2: Inter-agent messaging ─────────────────────────────
-
 static MESSAGE_LOG: LazyLock<Mutex<Vec<(String, String, String)>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 
@@ -2798,7 +2793,6 @@ pub(crate) fn execute_send_message(input: crate::types::SendMessageInput) -> Res
     })
 }
 
-// ── Phase 3: Team orchestration ──────────────────────────────────
 
 pub(crate) fn execute_team_create(
     input: TeamCreateInput,
@@ -2920,39 +2914,39 @@ pub(crate) fn execute_team_delete(
 /// Faithful stub: returns an empty skill list with a placeholder message.
 pub(crate) fn execute_discover_skills(
     _input: DiscoverSkillsInput,
-) -> Result<DiscoverSkillsOutput, String> {
+) -> DiscoverSkillsOutput {
     // Deferred: real implementation would enumerate skill directories and
     // filter by input.filter. Stub returns an empty list to match TS behaviour.
-    Ok(DiscoverSkillsOutput {
+    DiscoverSkillsOutput {
         skills: vec![],
         count: 0,
         message: "DiscoverSkills stub — skill enumeration deferred.".to_string(),
-    })
+    }
 }
 
 /// Verify plan execution. TS source is a 3-line stub (only exports the tool name constant).
 /// Faithful stub: accepts the input and returns an unverified receipt.
 pub(crate) fn execute_verify_plan_execution(
     input: VerifyPlanExecutionInput,
-) -> Result<VerifyPlanExecutionOutput, String> {
+) -> VerifyPlanExecutionOutput {
     // Deferred: real implementation would load the plan, run each criterion
     // check, and aggregate results. Stub records the plan_id and returns
     // verified=false to match the TS stub's no-op semantics.
-    Ok(VerifyPlanExecutionOutput {
+    VerifyPlanExecutionOutput {
         plan_id: input.plan_id,
         verified: false,
         message: "VerifyPlanExecution stub — verification logic deferred.".to_string(),
-    })
+    }
 }
 
 /// Execute a named workflow. Currently a structured stub: it validates the
 /// input, records the workflow name and parameters, and returns a receipt.
 /// Real workflow dispatch (loading workflow definitions, running steps) is
 /// deferred and will replace this stub in a future story.
-pub(crate) fn execute_workflow(input: WorkflowInput) -> Result<WorkflowOutput, String> {
-    Ok(WorkflowOutput {
+pub(crate) fn execute_workflow(input: WorkflowInput) -> WorkflowOutput {
+    WorkflowOutput {
         workflow_name: input.workflow_name,
         status: "accepted".to_string(),
         message: "Workflow accepted for execution (stub implementation).".to_string(),
-    })
+    }
 }

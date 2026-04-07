@@ -10,13 +10,13 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::error::ToolExecError;
-use crate::types::*;
-use crate::implementations::*;
+use crate::types::{TeamCreateInput, TeamDeleteInput, ReadFileInput, WriteFileInput, EditFileInput, GlobSearchInputValue, WebFetchInput, WebSearchInput, TodoWriteInput, SkillInput, AgentInput, ToolSearchInput, NotebookEditInput, SleepInput, BriefInput, ConfigInput, StructuredOutputInput, ReplInput, PowerShellInput, AskUserQuestionInput, EnterPlanModeInput, ExitPlanModeInput, McpToolInput, LspToolInput, ListMcpResourcesInput, ReadMcpResourceInput, CronCreateInput, CronDeleteInput, CronListInput, EnterWorktreeInput, ExitWorktreeInput, TaskCreateInput, TaskUpdateInput, TaskGetInput, TaskListInput, TaskStopInput, TaskOutputInput, SendMessageInput, WorkflowInput, DiscoverSkillsInput, VerifyPlanExecutionInput};
+use crate::implementations::{execute_web_fetch, execute_web_search, execute_todo_write, execute_skill, execute_agent, execute_tool_search, execute_notebook_edit, execute_sleep, execute_brief, execute_config, execute_structured_output, execute_repl, execute_powershell, execute_ask_user_question, execute_enter_plan_mode, execute_exit_plan_mode, execute_mcp_tool, execute_lsp_tool, execute_list_mcp_resources, execute_read_mcp_resource, execute_cron_create, execute_cron_delete, execute_cron_list, execute_enter_worktree, execute_exit_worktree, execute_task_create, execute_task_update, execute_task_get, execute_task_list, execute_task_stop, execute_task_output, execute_send_message, execute_team_create, execute_team_delete, execute_workflow, execute_discover_skills, execute_verify_plan_execution};
 
 /// Execute a tool by name with an optional session-scoped [`AppState`].
 ///
-/// Most tools ignore `app_state`. The team orchestration tools (TeamCreate,
-/// TeamDelete) read/write the team context stored in `AppState`.
+/// Most tools ignore `app_state`. The team orchestration tools (`TeamCreate`,
+/// `TeamDelete`) read/write the team context stored in `AppState`.
 pub fn execute_tool_with_context(
     name: &str,
     input: &Value,
@@ -55,34 +55,29 @@ pub fn execute_tool(name: &str, input: &Value) -> Result<String, ToolExecError> 
         }
         "REPL" => from_value::<ReplInput>(input).and_then(run_repl),
         "PowerShell" => from_value::<PowerShellInput>(input).and_then(run_powershell),
-        // ── New tools for TS parity ──
-        "AskUserQuestion" => from_value::<AskUserQuestionInput>(input).and_then(run_ask_user_question),
+        "AskUserQuestion" => from_value::<AskUserQuestionInput>(input).and_then(|i| run_ask_user_question(&i)),
         "EnterPlanMode" => from_value::<EnterPlanModeInput>(input).and_then(run_enter_plan_mode),
         "ExitPlanMode" => from_value::<ExitPlanModeInput>(input).and_then(run_exit_plan_mode),
-        "MCPTool" => from_value::<McpToolInput>(input).and_then(run_mcp_tool),
-        "LSPTool" => from_value::<LspToolInput>(input).and_then(run_lsp_tool),
-        "ListMcpResources" => from_value::<ListMcpResourcesInput>(input).and_then(run_list_mcp_resources),
-        "ReadMcpResource" => from_value::<ReadMcpResourceInput>(input).and_then(run_read_mcp_resource),
-        // ── Phase 1: Cron & Worktree tools ──
+        "MCPTool" => from_value::<McpToolInput>(input).and_then(|i| run_mcp_tool(&i)),
+        "LSPTool" => from_value::<LspToolInput>(input).and_then(|i| run_lsp_tool(&i)),
+        "ListMcpResources" => from_value::<ListMcpResourcesInput>(input).and_then(|i| run_list_mcp_resources(&i)),
+        "ReadMcpResource" => from_value::<ReadMcpResourceInput>(input).and_then(|i| run_read_mcp_resource(&i)),
         "CronCreate" => from_value::<CronCreateInput>(input).and_then(run_cron_create),
         "CronDelete" => from_value::<CronDeleteInput>(input).and_then(run_cron_delete),
         "CronList" => from_value::<CronListInput>(input).and_then(run_cron_list),
-        "EnterWorktree" => from_value::<EnterWorktreeInput>(input).and_then(run_enter_worktree),
-        "ExitWorktree" => from_value::<ExitWorktreeInput>(input).and_then(run_exit_worktree),
-        // ── Phase 2: Task management & messaging ──
+        "EnterWorktree" => from_value::<EnterWorktreeInput>(input).and_then(|i| run_enter_worktree(&i)),
+        "ExitWorktree" => from_value::<ExitWorktreeInput>(input).and_then(|i| run_exit_worktree(&i)),
         "TaskCreate" => from_value::<TaskCreateInput>(input).and_then(run_task_create),
         "TaskUpdate" => from_value::<TaskUpdateInput>(input).and_then(run_task_update),
-        "TaskGet" => from_value::<TaskGetInput>(input).and_then(run_task_get),
-        "TaskList" => from_value::<TaskListInput>(input).and_then(run_task_list),
+        "TaskGet" => from_value::<TaskGetInput>(input).and_then(|i| run_task_get(&i)),
+        "TaskList" => from_value::<TaskListInput>(input).and_then(|i| run_task_list(&i)),
         "TaskStop" => from_value::<TaskStopInput>(input).and_then(run_task_stop),
         "TaskOutput" => from_value::<TaskOutputInput>(input).and_then(run_task_output),
         "SendMessage" => from_value::<SendMessageInput>(input).and_then(run_send_message),
-        // ── Phase 3: Team orchestration ──
         "TeamCreate" => from_value::<TeamCreateInput>(input)
             .and_then(|i| run_team_create(i, None)),
         "TeamDelete" => from_value::<TeamDeleteInput>(input)
             .and_then(|i| run_team_delete(i, None)),
-        // ── Phase 4: Workflow ──
         "Workflow" => from_value::<WorkflowInput>(input).and_then(run_workflow),
         "DiscoverSkills" => from_value::<DiscoverSkillsInput>(input).and_then(run_discover_skills),
         "VerifyPlanExecution" => {
@@ -97,7 +92,6 @@ pub(crate) fn from_value<T: for<'de> Deserialize<'de>>(input: &Value) -> Result<
 }
 
 pub(crate) fn run_bash(input: BashCommandInput) -> Result<String, ToolExecError> {
-    // Security validation before execution.
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let permission_mode = if input.dangerously_disable_sandbox.unwrap_or(false) {
         PermissionMode::DangerFullAccess
@@ -208,32 +202,32 @@ pub(crate) fn to_pretty_json<T: serde::Serialize>(value: T) -> Result<String, To
     serde_json::to_string_pretty(&value).map_err(ToolExecError::Serialize)
 }
 
-pub(crate) fn run_ask_user_question(input: AskUserQuestionInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_ask_user_question(input)?)
+pub(crate) fn run_ask_user_question(input: &AskUserQuestionInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_ask_user_question(input))
 }
 
 pub(crate) fn run_enter_plan_mode(input: EnterPlanModeInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_enter_plan_mode(input)?)
+    to_pretty_json(execute_enter_plan_mode(input))
 }
 
 pub(crate) fn run_exit_plan_mode(input: ExitPlanModeInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_exit_plan_mode(input)?)
+    to_pretty_json(execute_exit_plan_mode(input))
 }
 
-pub(crate) fn run_mcp_tool(input: McpToolInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_mcp_tool(input)?)
+pub(crate) fn run_mcp_tool(input: &McpToolInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_mcp_tool(input))
 }
 
-pub(crate) fn run_lsp_tool(input: LspToolInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_lsp_tool(input)?)
+pub(crate) fn run_lsp_tool(input: &LspToolInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_lsp_tool(input))
 }
 
-pub(crate) fn run_list_mcp_resources(input: ListMcpResourcesInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_list_mcp_resources(input)?)
+pub(crate) fn run_list_mcp_resources(input: &ListMcpResourcesInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_list_mcp_resources(input))
 }
 
-pub(crate) fn run_read_mcp_resource(input: ReadMcpResourceInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_read_mcp_resource(input)?)
+pub(crate) fn run_read_mcp_resource(input: &ReadMcpResourceInput) -> Result<String, ToolExecError> {
+    to_pretty_json(execute_read_mcp_resource(input))
 }
 
 pub(crate) fn run_cron_create(input: CronCreateInput) -> Result<String, ToolExecError> {
@@ -248,11 +242,11 @@ pub(crate) fn run_cron_list(input: CronListInput) -> Result<String, ToolExecErro
     to_pretty_json(execute_cron_list(input)?)
 }
 
-pub(crate) fn run_enter_worktree(input: EnterWorktreeInput) -> Result<String, ToolExecError> {
+pub(crate) fn run_enter_worktree(input: &EnterWorktreeInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_enter_worktree(input)?)
 }
 
-pub(crate) fn run_exit_worktree(input: ExitWorktreeInput) -> Result<String, ToolExecError> {
+pub(crate) fn run_exit_worktree(input: &ExitWorktreeInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_exit_worktree(input)?)
 }
 
@@ -264,11 +258,11 @@ pub(crate) fn run_task_update(input: TaskUpdateInput) -> Result<String, ToolExec
     to_pretty_json(execute_task_update(input)?)
 }
 
-pub(crate) fn run_task_get(input: TaskGetInput) -> Result<String, ToolExecError> {
+pub(crate) fn run_task_get(input: &TaskGetInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_task_get(input)?)
 }
 
-pub(crate) fn run_task_list(input: TaskListInput) -> Result<String, ToolExecError> {
+pub(crate) fn run_task_list(input: &TaskListInput) -> Result<String, ToolExecError> {
     to_pretty_json(execute_task_list(input)?)
 }
 
@@ -299,15 +293,15 @@ pub(crate) fn run_team_delete(
 }
 
 pub(crate) fn run_workflow(input: WorkflowInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_workflow(input)?)
+    to_pretty_json(execute_workflow(input))
 }
 
 pub(crate) fn run_discover_skills(input: DiscoverSkillsInput) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_discover_skills(input)?)
+    to_pretty_json(execute_discover_skills(input))
 }
 
 pub(crate) fn run_verify_plan_execution(
     input: VerifyPlanExecutionInput,
 ) -> Result<String, ToolExecError> {
-    to_pretty_json(execute_verify_plan_execution(input)?)
+    to_pretty_json(execute_verify_plan_execution(input))
 }

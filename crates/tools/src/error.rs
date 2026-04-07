@@ -9,7 +9,7 @@ pub enum ToolExecError {
     Serialize(serde_json::Error),
     /// File I/O error during tool execution.
     Io(std::io::Error),
-    /// HTTP request error (WebFetch, WebSearch).
+    /// HTTP request error (`WebFetch`, `WebSearch`).
     Http(String),
     /// The requested tool name is not registered.
     UnsupportedTool(String),
@@ -23,9 +23,8 @@ impl fmt::Display for ToolExecError {
             Self::Deserialize(err) => write!(f, "tool input error: {err}"),
             Self::Serialize(err) => write!(f, "tool output error: {err}"),
             Self::Io(err) => write!(f, "{err}"),
-            Self::Http(msg) => write!(f, "{msg}"),
+            Self::Http(msg) | Self::Runtime(msg) => write!(f, "{msg}"),
             Self::UnsupportedTool(name) => write!(f, "unsupported tool: {name}"),
-            Self::Runtime(msg) => write!(f, "{msg}"),
         }
     }
 }

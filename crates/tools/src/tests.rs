@@ -652,7 +652,7 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
                 &job.manifest,
                 "failed",
                 None,
-                Some(String::from("simulated failure")),
+                Some("simulated failure"),
             )
         },
     )
@@ -1562,8 +1562,6 @@ impl HttpResponse {
     }
 }
 
-// ── team_helpers unit tests ──────────────────────────────────────
-
 #[test]
 fn team_file_round_trip() {
     let dir = tempfile::tempdir().unwrap();
@@ -1618,8 +1616,6 @@ fn team_delete_cleans_files() {
     crate::team_helpers::cleanup_team_directories("doomed", dir.path()).unwrap();
     assert!(!crate::team_helpers::get_team_file_path("doomed", dir.path()).exists());
 }
-
-// ── Phase 4: AppState bridge + Workflow tests ──
 
 #[test]
 fn team_context_flows_through_app_state() {
