@@ -2,9 +2,9 @@
 
 ![Emberforge](assets/badge.svg)
 
-**A local-first coding forge for serious developers.**
+**Local-first terminal tooling for language-model workflows.**
 
-Emberforge is an interactive coding assistant that runs in your terminal, powered by local LLMs via Ollama. It provides a rich REPL with tool execution, session management, plugins, and multi-provider support.
+Emberforge is a terminal coding tool that works with local models through Ollama and can use hosted providers when configured. It includes a REPL, tool execution, session management, plugins, and multiple provider backends.
 
 ## Quick Start
 
@@ -28,13 +28,13 @@ cargo build --release
 ## Features
 
 - **Local-first**: Runs with Ollama — no API keys needed for local models
-- **51 local models**: Supports all Ollama model families (qwen, llama, gemma, mistral, deepseek, phi, and more)
-- **Cloud fallback**: Anthropic Claude, xAI Grok when API keys are configured
-- **Smart routing**: `/model auto` selects models by task complexity
-- **Built-in diagnostics**: `ember doctor` runs real setup checks and caches slower family audits
-- **Rich slash commands**: `/help`, `/status`, `/doctor`, `/model`, `/compact`, `/review`, `/commit`, `/pr`, and more
-- **Built-in tools**: bash, file ops, search, web, notebooks, agents, skills, and more
-- **Session persistence**: Save, resume, export conversations
+- **Broad local model support**: Supports Ollama model families including qwen, llama, gemma, mistral, deepseek, phi, and more
+- **Hosted providers**: Anthropic Claude and xAI Grok when API keys are configured
+- **Task-based model selection**: `/model auto` picks a model based on task complexity
+- **Diagnostics**: `ember doctor` runs real setup checks and caches slower family audits
+- **Slash commands**: `/help`, `/status`, `/doctor`, `/model`, `/compact`, `/review`, `/commit`, `/pr`, and more
+- **Tools**: bash, file ops, search, web, notebooks, agents, skills, and more
+- **Sessions**: Save, resume, export conversations
 - **Plugin system**: Extend with custom tools and hooks
 - **MCP integration**: Connect to Model Context Protocol servers
 - **Telemetry**: Session tracing and usage analytics

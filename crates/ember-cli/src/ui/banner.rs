@@ -132,7 +132,7 @@ fn render_pixel_banner(
                 format!(
                     "{}{}{}",
                     colors.dim_prefix,
-                    "  Forged for local-first coding work",
+                    "  Built for local coding workflows",
                     colors.reset
                 ),
             );
@@ -154,7 +154,7 @@ fn render_pixel_banner(
             lines.push(format!(
                 "{}{}{}",
                 colors.dim_prefix,
-                "local LLM coding assistant",
+                "terminal coding tool",
                 colors.reset
             ));
             lines.extend(build_metadata_rows_only(context, &colors, &bar));
@@ -187,7 +187,7 @@ fn build_metadata_lines(
             context.version,
             colors.reset,
             colors.dim_prefix,
-            "local LLM coding assistant",
+            "terminal coding tool",
             colors.reset,
         ),
         format!("{}{}{}", colors.dim_prefix, bar, colors.reset),

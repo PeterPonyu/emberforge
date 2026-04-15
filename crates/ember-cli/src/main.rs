@@ -6355,7 +6355,7 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
     writeln!(out, "Emberforge CLI v{VERSION}")?;
     writeln!(
         out,
-        "  Interactive coding assistant for the current workspace."
+        "  Interactive coding tool for the current workspace."
     )?;
     writeln!(out)?;
     writeln!(out, "Quick start")?;
