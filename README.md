@@ -2,9 +2,9 @@
 
 ![Emberforge](assets/badge.svg)
 
-**Local-first terminal tooling for language-model workflows.**
+**A local-first terminal coding tool for language-model workflows.**
 
-Emberforge is a terminal coding tool that works with local models through Ollama and can use hosted providers when configured. It includes a REPL, tool execution, session management, plugins, and multiple provider backends.
+Emberforge is a terminal coding tool for local models through Ollama. When you need hosted models, it can use those too. The project includes an interactive REPL, one-shot prompt mode, built-in tools, session management, plugins, and support for multiple model backends.
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ Emberforge is a terminal coding tool that works with local models through Ollama
 # Build from source
 cargo build --release
 
-# Start the REPL (auto-detects Ollama)
+# Start the REPL
 ./target/release/ember
 
 # Or with a specific model
@@ -25,20 +25,17 @@ cargo build --release
 ./target/release/ember prompt "explain this codebase"
 ```
 
-## Features
+## What You Get
 
-- **Local-first**: Runs with Ollama — no API keys needed for local models
-- **Broad local model support**: Supports Ollama model families including qwen, llama, gemma, mistral, deepseek, phi, and more
-- **Hosted providers**: Anthropic Claude and xAI Grok when API keys are configured
-- **Task-based model selection**: `/model auto` picks a model based on task complexity
-- **Diagnostics**: `ember doctor` runs real setup checks and caches slower family audits
-- **Slash commands**: `/help`, `/status`, `/doctor`, `/model`, `/compact`, `/review`, `/commit`, `/pr`, and more
-- **Tools**: bash, file ops, search, web, notebooks, agents, skills, and more
-- **Sessions**: Save, resume, export conversations
-- **Plugin system**: Extend with custom tools and hooks
-- **MCP integration**: Connect to Model Context Protocol servers
-- **Telemetry**: Session tracing and usage analytics
-- **Prompt caching**: FNV-1a request fingerprinting with TTL
+- Runs against local Ollama models, so you can work without API keys for local-only setups
+- Supports a wide range of Ollama model families, including qwen, llama, gemma, mistral, deepseek, and phi
+- Connects to Anthropic and xAI when credentials are configured
+- Includes `/model auto` for task-based model selection
+- Ships with `ember doctor` for setup checks, including cached family audits for slower scans
+- Supports slash commands such as `/help`, `/status`, `/doctor`, `/model`, `/compact`, `/review`, `/commit`, and `/pr`
+- Includes built-in tools for shell work, file operations, search, web access, notebooks, agents, and skills
+- Lets you save, resume, and export sessions
+- Supports plugins, MCP servers, telemetry, and prompt caching
 
 ## Architecture
 
@@ -66,7 +63,7 @@ crates/
 
 ## Configuration
 
-Emberforge reads configuration from (in order of priority):
+Emberforge reads configuration in this order:
 
 1. `.ember.json` (project config)
 2. `.ember/settings.json` (project settings)
@@ -82,15 +79,15 @@ Environment variables:
 
 ## Project Instructions
 
-Create an `EMBER.md` file in your project root to provide persistent guidance:
+If you want project-specific instructions to persist across sessions, add an `EMBER.md` file at the project root. From inside the REPL, run:
 
 ```bash
-ember /init    # Scaffolds EMBER.md, .ember.json, and .gitignore entries
+/init    # Scaffolds EMBER.md, .ember.json, and .gitignore entries
 ```
 
 ## Diagnostics
 
-Use the built-in diagnostics command for real, user-selectable health checks:
+Use the built-in diagnostics command to check your setup:
 
 ```bash
 # Quick check for the current model and local Ollama setup
@@ -106,9 +103,9 @@ Use the built-in diagnostics command for real, user-selectable health checks:
 
 Inside the REPL, the same flow is available through `/doctor`.
 
-For terminal rendering regressions, there is also an optional live smoke pass that
-uses small local Ollama models for tool output, code blocks, and thinking-preview
-behavior, then caches the result after the first successful run:
+For terminal rendering regressions, there is also an optional live smoke test. It
+uses small local Ollama models to exercise tool output, code blocks, and
+thinking-preview behavior, then caches the result after the first successful run:
 
 ```bash
 # Verify tool output, code blocks, and thinking preview behavior
