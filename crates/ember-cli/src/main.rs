@@ -33,9 +33,9 @@ use api::{
 };
 
 use commands::{
-    handle_agents_slash_command, handle_plugins_slash_command, handle_skills_slash_command,
-    render_slash_command_help, resume_supported_slash_commands, slash_command_specs,
-    suggest_slash_commands, SlashCommand,
+    execute_buddy_command, handle_agents_slash_command, handle_plugins_slash_command,
+    handle_skills_slash_command, render_slash_command_help, resume_supported_slash_commands,
+    slash_command_specs, suggest_slash_commands, SlashCommand, StarterBuddyState,
 };
 use compat_harness::{extract_manifest, UpstreamPaths};
 use init::initialize_repo;
@@ -2816,10 +2816,9 @@ impl LiveCli {
                 false
             }
             SlashCommand::Buddy { task } => {
-                if let Some(t) = task {
-                    println!("Buddy agent would work on: {}", &t[..t.len().min(80)]);
-                }
-                println!("Buddy mode is planned for a future release.");
+                let payload = task.as_deref().unwrap_or("");
+                let mut state = StarterBuddyState::new(None);
+                println!("{}", execute_buddy_command(&mut state, payload));
                 false
             }
             SlashCommand::Peers { action } => {
