@@ -353,7 +353,7 @@ Tool permissions are ordered from least to most restrictive:
 | WorkspaceWrite | `workspace_write` | Read/write files in the project workspace |
 | DangerFullAccess | `danger_full_access` | Execute arbitrary commands, modify system state |
 
-**Serialization:** Use kebab-case (lower-case with hyphens). Rust source uses `#[serde(rename_all = "kebab-case")]`.
+**Serialization:** Use snake_case (lower-case with underscores). Rust/plugin permission surfaces serialize these values as `read_only`, `workspace_write`, and `danger_full_access`.
 
 ### 3.3 Input/Output Content Block Variants
 
@@ -929,9 +929,10 @@ For each port to be considered compliant, it must:
 - [ ] **Content Blocks**: Serialize ContentBlock variants (text, tool_use, tool_result) with `type` discriminator
 - [ ] **Tool Specs**: Define tools with name, description, input_schema, required_permission
 - [ ] **Permissions**: Serialize permissions as: `read_only`, `workspace_write`, `danger_full_access`
-- [ ] **Hook Events**: Support all 17 event types listed in § 4.2
-- [ ] **Hook Backends**: Support both command and HTTP backends with proper exit code semantics
-- [ ] **Plugin Manifest**: Load and validate `plugin.json` matching schema in § 5.1
+- [ ] **Hook Events (reference port)**: Rust keeps the full `HookEvent` enum on-wire compatible and documents which events are actually dispatched in production today
+- [ ] **Hook Backends (reference port)**: Rust keeps command/HTTP backend behavior and exit-code semantics aligned with § 4
+- [ ] **Plugin Manifest (reference port)**: Rust loads and validates `plugin.json` matching schema in § 5.1
+- [ ] **Translation-port hook gap**: TS/Go/C++ either implement the documented hook/plugin lifecycle surface or explicitly document the omission in § 9.3 / `CROSS_PORT_AUDIT.md`
 - [ ] **Agent Definitions**: Load agent JSON files with camelCase field names (agentType, displayName, etc.)
 - [ ] **Skill Frontmatter**: Parse YAML frontmatter (name, description, triggers, source) and preserve body
 - [ ] **Wire Format**: All persisted JSON uses snake_case field names (session_mode, tool_use_id, etc.) unless explicitly otherwise (e.g., agentType in agent definitions)

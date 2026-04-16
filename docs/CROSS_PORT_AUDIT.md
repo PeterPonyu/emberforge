@@ -39,7 +39,7 @@ It also defines plugin lifecycle (`Init` / `Shutdown`) in §5.
 | Lifecycle dispatch (`fire_event`, `fire_event_with_context`) | Present | **Missing** | **Missing** | **Missing** |
 | `PluginLifecycle { init, shutdown }` manifest fields | Present (`manager.rs:544..648`) | **Missing** — `Plugin` is `{metadata, validate}` only | **Missing** — same skeletal interface | **Missing** — same skeletal interface |
 | `PluginToolManifest` / `PluginCommandManifest` | Present | **Missing** | **Missing** | **Missing** |
-| Conformance checklist items §11 (hook events, hook backends, plugin manifest) | Satisfied | Unsatisfied | Unsatisfied | Unsatisfied |
+| Conformance checklist items §11 (hook events, hook backends, plugin manifest) | Partially satisfied — live runtime dispatch is narrower than the full declared contract | Unsatisfied | Unsatisfied | Unsatisfied |
 
 ### Evidence pointers
 
@@ -56,11 +56,13 @@ It also defines plugin lifecycle (`Init` / `Shutdown`) in §5.
 
 ## 3. Observations about the existing contract
 
-1. **Conformance checklist is aspirational.** §11 marks hook backends and
-   plugin manifests as required; the three ports today would all fail
-   these checks. The checklist should either be scoped per port or a
-   status column added so reviewers can distinguish "not yet done" from
-   "divergent on purpose".
+1. **Conformance checklist is aspirational and partially ahead of Rust
+   runtime wiring.** §11 marks hook backends and plugin manifests as
+   required; the three translation ports would all fail those checks,
+   and even the Rust reference currently dispatches only the pre/post
+   tool subset in production flow. The checklist should either be scoped
+   per port or a status column added so reviewers can distinguish "not
+   yet done" from "divergent on purpose".
 2. **Port Divergence Log (§9) does not record the hook gap.** Every row
    explains a difference in *how* each port satisfies a feature; none
    explain that three ports simply do not implement hooks or
@@ -74,10 +76,10 @@ It also defines plugin lifecycle (`Init` / `Shutdown`) in §5.
    declared on the wire but not yet wired into the dispatcher.
 4. **`UserPromptSubmit`, `Notification`, `PluginLoad`/`PluginUnload`,
    `CwdChanged`, `FileChanged`** are listed as first-class events but
-   have no in-tree callers in `crates/runtime/src/hooks.rs`. The enum
-   variant existing is necessary for wire compatibility, but the
-   absence of dispatchers is a gap future ports will need to mirror or
-   deliberately skip.
+   do not currently have production dispatch call sites in the Rust
+   runtime. The enum variants are still useful for wire compatibility,
+   but the absence of dispatchers means the Rust reference does not yet
+   satisfy the full hook contract it declares.
 
 ## 4. Bounded maintainability recommendations
 
