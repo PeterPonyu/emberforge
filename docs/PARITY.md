@@ -12,6 +12,9 @@ Method:
 - weighted real implementation files more heavily than auto-generated TS stubs
 - did **not** copy upstream code; this is an architectural audit only
 
+See also: [`CROSS_PORT_AUDIT.md`](CROSS_PORT_AUDIT.md) — hook / lifecycle /
+plugin-manifest gap matrix across Rust, TS, Go, and C++ ports (2026-04-16).
+
 ## Bottom line
 
 Emberforge is **not** based on the full Claude Code technique stack.

@@ -869,6 +869,18 @@ Future reviewers should **NOT** flag these divergences as bugs or drift. Each po
 
 Do not create drift without explicit review of all four implementations.
 
+### 9.3 Hook / Lifecycle Coverage (iter-2 snapshot)
+
+Only the Rust reference port implements the hook runtime (§4) and the plugin
+lifecycle dispatcher (§5) in this iteration. `emberforge-ts`,
+`emberforge-go`, and `emberforge-cpp` intentionally ship a thin
+`Plugin { metadata(), validate() }` surface in iter-2 and will grow hook
+support later. This is documented (not silent) drift — see
+[`docs/CROSS_PORT_AUDIT.md`](CROSS_PORT_AUDIT.md) for the full per-port gap
+matrix and evidence pointers. Reviewers should not flag the missing
+`HookEvent`, `HookBackend`, or `PluginLifecycle` types in the three
+translation ports as regressions against this contract.
+
 ---
 
 ## 10. Parity Test Fixtures
