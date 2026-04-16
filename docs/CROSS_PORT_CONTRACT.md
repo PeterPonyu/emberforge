@@ -349,9 +349,9 @@ Tool permissions are ordered from least to most restrictive:
 
 | Permission | On-Wire Name | Meaning |
 |-----------|--------------|---------|
-| ReadOnly | `read_only` | Read files, list directories, search (no writes, no execution) |
-| WorkspaceWrite | `workspace_write` | Read/write files in the project workspace |
-| DangerFullAccess | `danger_full_access` | Execute arbitrary commands, modify system state |
+| ReadOnly | `read-only` | Read files, list directories, search (no writes, no execution) |
+| WorkspaceWrite | `workspace-write` | Read/write files in the project workspace |
+| DangerFullAccess | `danger-full-access` | Execute arbitrary commands, modify system state |
 
 **Serialization:** Use kebab-case (lower-case with hyphens). Rust/plugin permission surfaces serialize these values as `read-only`, `workspace-write`, and `danger-full-access`.
 
