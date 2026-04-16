@@ -1502,14 +1502,21 @@ mod tests {
     use crate::json::JsonValue;
     use crate::sandbox::FilesystemIsolationMode;
     use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir() -> std::path::PathBuf {
+        // Per-process atomic counter prevents collisions when parallel tests
+        // call this within the same OS clock tick (notably on macOS, where
+        // SystemTime resolution is microseconds, not nanoseconds).
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time should be after epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("runtime-config-{nanos}"))
+        let pid = std::process::id();
+        let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("runtime-config-{pid}-{nanos}-{seq}"))
     }
 
     #[test]
