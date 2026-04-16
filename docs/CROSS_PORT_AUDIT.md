@@ -32,7 +32,7 @@ It also defines plugin lifecycle (`Init` / `Shutdown`) in §5.
 
 | Capability (contract) | Rust (`crates/runtime/src/hooks.rs`, `crates/plugins/src/manager.rs`) | TS (`emberforge-ts/packages/*`) | Go (`emberforge-go/pkg/*`) | C++ (`emberforge-cpp/include+src/*`) |
 | --- | --- | --- | --- | --- |
-| `HookEvent` enum (17 variants) | Present, snake-case serialization | **Missing** | **Missing** | **Missing** |
+| `HookEvent` enum (17 variants) | Present, with explicit PascalCase wire names such as `PreToolUse` / `SessionStart` | **Missing** | **Missing** | **Missing** |
 | `HookBackend::Command` w/ exit-code semantics (0 allow, 2 deny, other warn) | Present | **Missing** | **Missing** | **Missing** |
 | `HookBackend::Http` (curl POST, JSON payload) | Present (curl shell-out) | **Missing** | **Missing** | **Missing** |
 | `HookMatchRule` (`tool_names`, `commands` globs) | Present | **Missing** | **Missing** | **Missing** |

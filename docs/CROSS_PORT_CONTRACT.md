@@ -349,11 +349,11 @@ Tool permissions are ordered from least to most restrictive:
 
 | Permission | On-Wire Name | Meaning |
 |-----------|--------------|---------|
-| ReadOnly | `read_only` | Read files, list directories, search (no writes, no execution) |
-| WorkspaceWrite | `workspace_write` | Read/write files in the project workspace |
-| DangerFullAccess | `danger_full_access` | Execute arbitrary commands, modify system state |
+| ReadOnly | `read-only` | Read files, list directories, search (no writes, no execution) |
+| WorkspaceWrite | `workspace-write` | Read/write files in the project workspace |
+| DangerFullAccess | `danger-full-access` | Execute arbitrary commands, modify system state |
 
-**Serialization:** Use snake_case (lower-case with underscores). Rust/plugin permission surfaces serialize these values as `read_only`, `workspace_write`, and `danger_full_access`.
+**Serialization:** Use kebab-case (lower-case with hyphens). Rust/plugin permission surfaces serialize these values as `read-only`, `workspace-write`, and `danger-full-access`.
 
 ### 3.3 Input/Output Content Block Variants
 
@@ -928,7 +928,7 @@ For each port to be considered compliant, it must:
 - [ ] **Message Roles**: Support all four message roles (system, user, assistant, tool)
 - [ ] **Content Blocks**: Serialize ContentBlock variants (text, tool_use, tool_result) with `type` discriminator
 - [ ] **Tool Specs**: Define tools with name, description, input_schema, required_permission
-- [ ] **Permissions**: Serialize permissions as: `read_only`, `workspace_write`, `danger_full_access`
+- [ ] **Permissions**: Serialize permissions as: `read-only`, `workspace-write`, `danger-full-access`
 - [ ] **Hook Events (reference port)**: Rust keeps the full `HookEvent` enum on-wire compatible and documents which events are actually dispatched in production today
 - [ ] **Hook Backends (reference port)**: Rust keeps command/HTTP backend behavior and exit-code semantics aligned with § 4
 - [ ] **Plugin Manifest (reference port)**: Rust loads and validates `plugin.json` matching schema in § 5.1
