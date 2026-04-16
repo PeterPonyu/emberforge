@@ -1,3 +1,4 @@
+mod buddy;
 mod handlers;
 mod help;
 mod parse;
@@ -6,6 +7,7 @@ mod spec;
 #[cfg(test)]
 mod tests;
 
+pub use buddy::{execute_buddy_command, StarterBuddyCompanion, StarterBuddyState};
 // Re-export the public API (same surface as before the split).
 pub use handlers::{
     detect_default_branch, handle_agents_slash_command, handle_branch_slash_command,
