@@ -246,6 +246,15 @@ pub fn scan_memory_dir(dir: &Path, config: &MemoryConfig) -> io::Result<Vec<Memo
         });
     }
 
+    sort_memory_files(&mut files);
+
+    // Cap at max_files.
+    files.truncate(config.max_files);
+
+    Ok(files)
+}
+
+fn sort_memory_files(files: &mut [MemoryFile]) {
     // Sort newest first. Use deterministic tie-breakers because some
     // filesystems expose coarse modification timestamps during fast test writes.
     files.sort_by(|a, b| {
@@ -254,11 +263,6 @@ pub fn scan_memory_dir(dir: &Path, config: &MemoryConfig) -> io::Result<Vec<Memo
             .then_with(|| b.frontmatter.name.cmp(&a.frontmatter.name))
             .then_with(|| b.path.cmp(&a.path))
     });
-
-    // Cap at max_files.
-    files.truncate(config.max_files);
-
-    Ok(files)
 }
 
 // ---------------------------------------------------------------------------
@@ -689,6 +693,49 @@ body
         assert_eq!(files[0].frontmatter.name, "file09");
         assert_eq!(files[1].frontmatter.name, "file08");
         assert_eq!(files[2].frontmatter.name, "file07");
+    }
+
+    #[test]
+    fn sort_memory_files_breaks_equal_mtime_ties_deterministically() {
+        let modified = SystemTime::UNIX_EPOCH;
+        let mut files = vec![
+            MemoryFile {
+                path: PathBuf::from("b.md"),
+                frontmatter: MemoryFrontmatter {
+                    name: "beta".to_string(),
+                    description: "beta".to_string(),
+                    memory_type: MemoryType::User,
+                },
+                modified,
+                body: "beta".to_string(),
+            },
+            MemoryFile {
+                path: PathBuf::from("c.md"),
+                frontmatter: MemoryFrontmatter {
+                    name: "gamma".to_string(),
+                    description: "gamma".to_string(),
+                    memory_type: MemoryType::User,
+                },
+                modified,
+                body: "gamma".to_string(),
+            },
+            MemoryFile {
+                path: PathBuf::from("a.md"),
+                frontmatter: MemoryFrontmatter {
+                    name: "alpha".to_string(),
+                    description: "alpha".to_string(),
+                    memory_type: MemoryType::User,
+                },
+                modified,
+                body: "alpha".to_string(),
+            },
+        ];
+
+        sort_memory_files(&mut files);
+
+        assert_eq!(files[0].frontmatter.name, "gamma");
+        assert_eq!(files[1].frontmatter.name, "beta");
+        assert_eq!(files[2].frontmatter.name, "alpha");
     }
 
     #[test]
