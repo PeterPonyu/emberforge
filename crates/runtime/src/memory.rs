@@ -246,8 +246,14 @@ pub fn scan_memory_dir(dir: &Path, config: &MemoryConfig) -> io::Result<Vec<Memo
         });
     }
 
-    // Sort newest first.
-    files.sort_by(|a, b| b.modified.cmp(&a.modified));
+    // Sort newest first. Use deterministic tie-breakers because some
+    // filesystems expose coarse modification timestamps during fast test writes.
+    files.sort_by(|a, b| {
+        b.modified
+            .cmp(&a.modified)
+            .then_with(|| b.frontmatter.name.cmp(&a.frontmatter.name))
+            .then_with(|| b.path.cmp(&a.path))
+    });
 
     // Cap at max_files.
     files.truncate(config.max_files);
