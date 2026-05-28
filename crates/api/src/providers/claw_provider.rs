@@ -712,32 +712,33 @@ mod tests {
         format!("http://{address}/oauth/token")
     }
 
-    // The MissingCredentials assertions rely on POSIX env semantics: `remove_var`
-    // fully detaches the variable, `set_var("", "")` yields an empty string the
-    // helper treats as "absent", and `AuthSource::from_env_or_saved` resolves a
-    // saved-config path under `$HOME` that the test environment leaves untouched.
-    // Windows differs on every one of those points (variables can persist via the
-    // process block, empty strings are sometimes treated as unset, and saved-config
-    // lookup runs through `%APPDATA%`). The test gate matches the platform that
-    // actually exercises the negative path.
-    #[cfg(unix)]
+    // Both tests redirect `CLAW_CONFIG_HOME` to a freshly-created empty temp
+    // directory so `AuthSource::from_env_or_saved` cannot fall back to a
+    // saved auth file under `$HOME` (Unix) or `%APPDATA%` (Windows). Without
+    // that, the Windows CI runner picks up an unrelated cached config and the
+    // negative-path assertion fails. Other tests in this module use the same
+    // `temp_config_home()` helper.
     #[test]
     fn read_api_key_requires_presence() {
         let _guard = env_lock();
+        let config_home = temp_config_home();
+        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
         std::env::remove_var("ANTHROPIC_API_KEY");
-        std::env::remove_var("CLAW_CONFIG_HOME");
         let error = super::read_api_key().expect_err("missing key should error");
         assert!(matches!(
             error,
             crate::error::ApiError::MissingCredentials { .. }
         ));
+        std::env::remove_var("CLAW_CONFIG_HOME");
+        cleanup_temp_config_home(&config_home);
     }
 
-    #[cfg(unix)]
     #[test]
     fn read_api_key_requires_non_empty_value() {
         let _guard = env_lock();
+        let config_home = temp_config_home();
+        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
         std::env::set_var("ANTHROPIC_AUTH_TOKEN", "");
         std::env::remove_var("ANTHROPIC_API_KEY");
         let error = super::read_api_key().expect_err("empty key should error");
@@ -746,6 +747,8 @@ mod tests {
             crate::error::ApiError::MissingCredentials { .. }
         ));
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
+        std::env::remove_var("CLAW_CONFIG_HOME");
+        cleanup_temp_config_home(&config_home);
     }
 
     #[test]

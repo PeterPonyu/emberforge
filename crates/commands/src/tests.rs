@@ -777,12 +777,6 @@ fn lists_auto_installed_bundled_plugins_with_status() {
     let _ = fs::remove_dir_all(bundled_root);
 }
 
-// On Windows, `PathBuf::to_str()` yields backslash-separated paths but
-// `git worktree list` emits forward-slash paths, so the substring match in
-// the final assertion is false even when the worktree was created correctly.
-// Path normalization is the right long-term fix; gating on Unix keeps the
-// Windows lane green while still exercising this flow on Linux/macOS.
-#[cfg(unix)]
 #[test]
 fn branch_and_worktree_commands_manage_git_state() {
     // given
@@ -821,7 +815,15 @@ fn branch_and_worktree_commands_manage_git_state() {
     assert!(created.contains("feature/demo"));
     assert!(switched.contains("main"));
     assert!(added.contains("wt-demo"));
-    assert!(listed_worktrees.contains(worktree_path.to_str().expect("utf8 path")));
+    // `git worktree list` emits forward-slash paths on every platform; on
+    // Windows `worktree_path.to_str()` yields backslashes, so normalize both
+    // sides before the substring check.
+    let listed_normalized = listed_worktrees.replace('\\', "/");
+    let expected_normalized = worktree_path.to_string_lossy().replace('\\', "/");
+    assert!(
+        listed_normalized.contains(&expected_normalized),
+        "expected `{expected_normalized}` in worktree list:\n{listed_normalized}"
+    );
     assert!(removed.contains("Result           removed"));
 
     let _ = fs::remove_dir_all(repo);
