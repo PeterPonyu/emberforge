@@ -877,7 +877,10 @@ fn default_initialize_params() -> McpInitializeParams {
     }
 }
 
-#[cfg(test)]
+// These tests drive POSIX shell scripts and rely on `PermissionsExt::set_mode`,
+// so they are inherently Unix-only. Gating the module keeps the Windows CI lane
+// (added in this PR per refs #13) green without losing coverage where it applies.
+#[cfg(all(test, unix))]
 mod tests {
     use std::collections::BTreeMap;
     use std::fs;

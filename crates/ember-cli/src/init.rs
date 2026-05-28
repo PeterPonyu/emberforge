@@ -83,31 +83,39 @@ struct RepoDetection {
 }
 
 pub(crate) fn initialize_repo(cwd: &Path) -> Result<InitReport, Box<dyn std::error::Error>> {
+    let mut transaction = InitTransaction::default();
+    initialize_repo_inner(cwd, &mut transaction).inspect_err(|_| transaction.rollback())
+}
+
+fn initialize_repo_inner(
+    cwd: &Path,
+    transaction: &mut InitTransaction,
+) -> Result<InitReport, Box<dyn std::error::Error>> {
     let mut artifacts = Vec::new();
 
     let ember_dir = cwd.join(".ember");
     artifacts.push(InitArtifact {
         name: ".ember/",
-        status: ensure_dir(&ember_dir)?,
+        status: ensure_dir(&ember_dir, transaction)?,
     });
 
     let ember_json = cwd.join(".ember.json");
     artifacts.push(InitArtifact {
         name: ".ember.json",
-        status: write_file_if_missing(&ember_json, STARTER_EMBER_JSON)?,
+        status: write_file_if_missing(&ember_json, STARTER_EMBER_JSON, transaction)?,
     });
 
     let gitignore = cwd.join(".gitignore");
     artifacts.push(InitArtifact {
         name: ".gitignore",
-        status: ensure_gitignore_entries(&gitignore)?,
+        status: ensure_gitignore_entries(&gitignore, transaction)?,
     });
 
     let ember_md = cwd.join("EMBER.md");
     let content = render_init_ember_md(cwd);
     artifacts.push(InitArtifact {
         name: "EMBER.md",
-        status: write_file_if_missing(&ember_md, &content)?,
+        status: write_file_if_missing(&ember_md, &content, transaction)?,
     });
 
     Ok(InitReport {
@@ -116,27 +124,61 @@ pub(crate) fn initialize_repo(cwd: &Path) -> Result<InitReport, Box<dyn std::err
     })
 }
 
-fn ensure_dir(path: &Path) -> Result<InitStatus, std::io::Error> {
+#[derive(Default)]
+struct InitTransaction {
+    created_paths: Vec<PathBuf>,
+    replaced_files: Vec<(PathBuf, String)>,
+}
+
+impl InitTransaction {
+    fn rollback(&mut self) {
+        for (path, content) in self.replaced_files.iter().rev() {
+            let _ = fs::write(path, content);
+        }
+        for path in self.created_paths.iter().rev() {
+            if path.is_dir() {
+                let _ = fs::remove_dir_all(path);
+            } else {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+}
+
+fn ensure_dir(
+    path: &Path,
+    transaction: &mut InitTransaction,
+) -> Result<InitStatus, std::io::Error> {
     if path.is_dir() {
         return Ok(InitStatus::Skipped);
     }
     fs::create_dir_all(path)?;
+    transaction.created_paths.push(path.to_path_buf());
     Ok(InitStatus::Created)
 }
 
-fn write_file_if_missing(path: &Path, content: &str) -> Result<InitStatus, std::io::Error> {
+fn write_file_if_missing(
+    path: &Path,
+    content: &str,
+    transaction: &mut InitTransaction,
+) -> Result<InitStatus, std::io::Error> {
     if path.exists() {
         return Ok(InitStatus::Skipped);
     }
     fs::write(path, content)?;
+    transaction.created_paths.push(path.to_path_buf());
     Ok(InitStatus::Created)
 }
 
-fn ensure_gitignore_entries(path: &Path) -> Result<InitStatus, std::io::Error> {
+fn ensure_gitignore_entries(
+    path: &Path,
+    transaction: &mut InitTransaction,
+) -> Result<InitStatus, std::io::Error> {
     if !path.exists() {
         let mut lines = vec![GITIGNORE_COMMENT.to_string()];
         lines.extend(GITIGNORE_ENTRIES.iter().map(|entry| (*entry).to_string()));
         fs::write(path, format!("{}\n", lines.join("\n")))?;
+        transaction.created_paths.push(path.to_path_buf());
         return Ok(InitStatus::Created);
     }
 
@@ -160,6 +202,9 @@ fn ensure_gitignore_entries(path: &Path) -> Result<InitStatus, std::io::Error> {
         return Ok(InitStatus::Skipped);
     }
 
+    transaction
+        .replaced_files
+        .push((path.to_path_buf(), existing));
     fs::write(path, format!("{}\n", lines.join("\n")))?;
     Ok(InitStatus::Updated)
 }
@@ -392,12 +437,11 @@ mod tests {
         let root = temp_dir();
         fs::create_dir_all(&root).expect("create root");
         fs::write(root.join("EMBER.md"), "custom guidance\n").expect("write existing EMBER.md");
-        fs::write(root.join(".gitignore"), ".ember/settings.local.json\n").expect("write gitignore");
+        fs::write(root.join(".gitignore"), ".ember/settings.local.json\n")
+            .expect("write gitignore");
 
         let first = initialize_repo(&root).expect("first init should succeed");
-        assert!(first
-            .render()
-            .contains("EMBER.md") && first.render().contains("skipped"));
+        assert!(first.render().contains("EMBER.md") && first.render().contains("skipped"));
         let second = initialize_repo(&root).expect("second init should succeed");
         let second_rendered = second.render();
         assert!(second_rendered.contains(".ember/") && second_rendered.contains("skipped"));
