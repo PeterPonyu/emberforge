@@ -1002,7 +1002,7 @@ impl ScriptedToolTurnApiClient {
 }
 
 impl ApiClient for ScriptedToolTurnApiClient {
-    fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
+    fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
         self.call_count += 1;
         match self.call_count {
             1 => Ok(vec![
@@ -4904,7 +4904,7 @@ fn resolve_cli_auth_source() -> Result<AuthSource, Box<dyn std::error::Error>> {
 
 impl ApiClient for DefaultRuntimeClient {
     #[allow(clippy::too_many_lines)]
-    fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
+    fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
         if let Some(progress_reporter) = &self.progress_reporter {
             progress_reporter.mark_model_phase();
         }

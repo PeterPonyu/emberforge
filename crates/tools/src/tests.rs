@@ -740,7 +740,7 @@ struct MockSubagentApiClient {
 }
 
 impl runtime::ApiClient for MockSubagentApiClient {
-    fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
+    fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
         self.calls += 1;
         match self.calls {
             1 => {
