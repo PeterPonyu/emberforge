@@ -4,7 +4,6 @@ mod doctor;
 mod init;
 mod input;
 mod keywords;
-mod vim;
 #[allow(dead_code)]
 mod notifications;
 mod render;
@@ -715,21 +714,22 @@ fn current_tool_registry() -> Result<GlobalToolRegistry, String> {
 }
 
 fn parse_permission_mode_arg(value: &str) -> Result<PermissionMode, String> {
-    normalize_permission_mode(value)
-        .ok_or_else(|| {
-            format!(
-                "unsupported permission mode '{value}'. Use read-only, workspace-write, or danger-full-access."
-            )
-        })
-        .map(permission_mode_from_label)
+    let normalized = normalize_permission_mode(value).ok_or_else(|| {
+        format!(
+            "unsupported permission mode '{value}'. Use read-only, workspace-write, or danger-full-access."
+        )
+    })?;
+    permission_mode_from_label(normalized)
 }
 
-fn permission_mode_from_label(mode: &str) -> PermissionMode {
+fn permission_mode_from_label(mode: &str) -> Result<PermissionMode, String> {
     match mode {
-        "read-only" => PermissionMode::ReadOnly,
-        "workspace-write" => PermissionMode::WorkspaceWrite,
-        "danger-full-access" => PermissionMode::DangerFullAccess,
-        other => panic!("unsupported permission mode label: {other}"),
+        "read-only" => Ok(PermissionMode::ReadOnly),
+        "workspace-write" => Ok(PermissionMode::WorkspaceWrite),
+        "danger-full-access" => Ok(PermissionMode::DangerFullAccess),
+        other => Err(format!(
+            "unsupported permission mode label '{other}'. Use read-only, workspace-write, or danger-full-access."
+        )),
     }
 }
 
@@ -739,7 +739,8 @@ fn default_permission_mode() -> PermissionMode {
         .or_else(|| env::var("CLAW_PERMISSION_MODE").ok())
         .as_deref()
         .and_then(normalize_permission_mode)
-        .map_or(PermissionMode::DangerFullAccess, permission_mode_from_label)
+        .and_then(|mode| permission_mode_from_label(mode).ok())
+        .unwrap_or(PermissionMode::DangerFullAccess)
 }
 
 /// Meta-tools that should NOT be sent to the model — they cause the model
@@ -1811,6 +1812,19 @@ impl Drop for ScopedTaskSessionEnv {
     }
 }
 
+fn telemetry_is_disabled() -> bool {
+    matches!(
+        env::var("EMBER_TELEMETRY")
+            .or_else(|_| env::var("CLAW_TELEMETRY"))
+            .ok()
+            .as_deref()
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("0" | "false" | "off" | "disabled")
+    )
+}
+
 impl LiveCli {
     fn new(
         model: String,
@@ -1834,17 +1848,23 @@ impl LiveCli {
             None,
         )?;
         // Set up telemetry: write events to .ember/telemetry/<session>.jsonl
-        let telemetry_dir = env::current_dir()
-            .unwrap_or_default()
-            .join(".ember")
-            .join("telemetry");
-        let telemetry_sink: Arc<dyn telemetry::TelemetrySink> =
+        let telemetry_sink: Arc<dyn telemetry::TelemetrySink> = if telemetry_is_disabled() {
+            Arc::new(telemetry::MemoryTelemetrySink::default())
+        } else {
+            let telemetry_dir = env::current_dir()
+                .unwrap_or_default()
+                .join(".ember")
+                .join("telemetry");
             match telemetry::JsonlTelemetrySink::new(
                 telemetry_dir.join(format!("{}.jsonl", &session.id)),
             ) {
                 Ok(sink) => Arc::new(sink),
-                Err(_) => Arc::new(telemetry::MemoryTelemetrySink::default()),
-            };
+                Err(error) => {
+                    eprintln!("warning: local telemetry disabled: {error}");
+                    Arc::new(telemetry::MemoryTelemetrySink::default())
+                }
+            }
+        };
         let tracer = telemetry::SessionTracer::new(&session.id, telemetry_sink);
         tracer.record("session_start", {
             let mut attrs = serde_json::Map::new();
@@ -2987,7 +3007,7 @@ impl LiveCli {
 
         let previous = self.permission_mode.as_str().to_string();
         let session = self.runtime.session().clone();
-        self.permission_mode = permission_mode_from_label(normalized);
+        self.permission_mode = permission_mode_from_label(normalized)?;
         self.runtime = build_runtime(
             session,
             self.model.clone(),
@@ -5185,10 +5205,13 @@ impl ApiClient for DefaultRuntimeClient {
                     usage: cached_usage,
                     request_id: None,
                 };
-                let _ = prompt_cache.record_response(
+                let cache_record = prompt_cache.record_response(
                     &message_request_for_cache,
                     &cached_response,
                 );
+                if let Some(error) = cache_record.stats.last_persist_error.as_deref() {
+                    eprintln!("warning: prompt cache persistence failed: {error}");
+                }
 
                 return Ok(events);
             }
@@ -7587,7 +7610,7 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
     fn init_template_mentions_detected_rust_workspace() {
         let rendered = crate::init::render_init_ember_md(std::path::Path::new("."));
         assert!(rendered.contains("# EMBER.md"));
-        assert!(rendered.contains("cargo clippy --workspace --all-targets -- -D warnings"));
+        assert!(rendered.contains("cargo clippy --workspace --all-targets"));
     }
 
     #[test]

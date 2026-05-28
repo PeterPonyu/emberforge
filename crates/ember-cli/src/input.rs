@@ -1412,7 +1412,6 @@ fn char_class(ch: char) -> CharClass {
 
 /// Move forward to the start of the next vim word (w).
 fn word_forward(text: &str, cursor: usize) -> usize {
-    let bytes = text.as_bytes();
     let len = text.len();
     if cursor >= len {
         return len;

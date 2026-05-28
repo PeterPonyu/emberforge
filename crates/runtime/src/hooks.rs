@@ -1,6 +1,5 @@
 use std::ffi::OsStr;
 use std::process::Command;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -13,19 +12,7 @@ pub enum HookEvent {
     PostToolUse,
     SessionStart,
     SessionEnd,
-    SubagentStart,
-    SubagentStop,
-    CompactStart,
-    CompactEnd,
     ToolError,
-    PermissionDenied,
-    ConfigChange,
-    UserPromptSubmit,
-    Notification,
-    PluginLoad,
-    PluginUnload,
-    CwdChanged,
-    FileChanged,
 }
 
 impl HookEvent {
@@ -36,29 +23,14 @@ impl HookEvent {
             Self::PostToolUse => "PostToolUse",
             Self::SessionStart => "SessionStart",
             Self::SessionEnd => "SessionEnd",
-            Self::SubagentStart => "SubagentStart",
-            Self::SubagentStop => "SubagentStop",
-            Self::CompactStart => "CompactStart",
-            Self::CompactEnd => "CompactEnd",
             Self::ToolError => "ToolError",
-            Self::PermissionDenied => "PermissionDenied",
-            Self::ConfigChange => "ConfigChange",
-            Self::UserPromptSubmit => "UserPromptSubmit",
-            Self::Notification => "Notification",
-            Self::PluginLoad => "PluginLoad",
-            Self::PluginUnload => "PluginUnload",
-            Self::CwdChanged => "CwdChanged",
-            Self::FileChanged => "FileChanged",
         }
     }
 
     /// Whether this event fires for tool-related hooks (has `tool_name` context).
     #[must_use]
     pub fn is_tool_event(self) -> bool {
-        matches!(
-            self,
-            Self::PreToolUse | Self::PostToolUse | Self::ToolError
-        )
+        matches!(self, Self::PreToolUse | Self::PostToolUse | Self::ToolError)
     }
 }
 
@@ -72,14 +44,6 @@ pub enum HookBackend {
     Command {
         /// The shell command to run.
         run: String,
-    },
-    /// POST a webhook.
-    Http {
-        /// The URL to POST to.
-        url: String,
-        /// Optional custom headers.
-        #[serde(default)]
-        headers: std::collections::BTreeMap<String, String>,
     },
 }
 
@@ -99,9 +63,7 @@ impl HookMatchRule {
     #[must_use]
     pub fn matches(&self, tool_name: &str, tool_input: &str) -> bool {
         // If tool_names is specified, tool must match.
-        if !self.tool_names.is_empty()
-            && !self.tool_names.iter().any(|name| name == tool_name)
-        {
+        if !self.tool_names.is_empty() && !self.tool_names.iter().any(|name| name == tool_name) {
             return false;
         }
         // If commands patterns are specified, input must match one.
@@ -253,51 +215,6 @@ impl HookRunner {
         }
         // Fire-and-forget for lifecycle events: we don't block on the result.
         let _ = Self::run_commands(event, &commands, context_key, context_value, None, false);
-    }
-
-    /// Execute an HTTP hook by posting the payload to the given URL.
-    #[allow(dead_code)]
-    fn run_http_hook(
-        url: &str,
-        headers: &std::collections::BTreeMap<String, String>,
-        payload: &str,
-        timeout: Duration,
-    ) -> HookCommandOutcome {
-        // Use a simple blocking HTTP POST via std::process::Command (curl).
-        let mut args = vec![
-            "-s".to_string(),
-            "-X".to_string(),
-            "POST".to_string(),
-            "-H".to_string(),
-            "Content-Type: application/json".to_string(),
-        ];
-        for (key, value) in headers {
-            args.push("-H".to_string());
-            args.push(format!("{key}: {value}"));
-        }
-        args.push("--max-time".to_string());
-        args.push(timeout.as_secs().to_string());
-        args.push("-d".to_string());
-        args.push(payload.to_string());
-        args.push(url.to_string());
-
-        match Command::new("curl").args(&args).output() {
-            Ok(output) if output.status.success() => {
-                let body = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                HookCommandOutcome::Allow {
-                    message: (!body.is_empty()).then_some(body),
-                }
-            }
-            Ok(output) => HookCommandOutcome::Warn {
-                message: format!(
-                    "HTTP hook to {url} returned status {}",
-                    output.status.code().unwrap_or(-1)
-                ),
-            },
-            Err(e) => HookCommandOutcome::Warn {
-                message: format!("HTTP hook to {url} failed: {e}"),
-            },
-        }
     }
 
     fn run_commands(
@@ -618,20 +535,6 @@ mod tests {
         assert_eq!(parsed.timeout_secs, 10);
     }
 
-    #[test]
-    fn http_backend_serializes() {
-        let backend = HookBackend::Http {
-            url: "https://example.com/hook".to_string(),
-            headers: std::collections::BTreeMap::from([(
-                "Authorization".to_string(),
-                "Bearer tok".to_string(),
-            )]),
-        };
-        let json = serde_json::to_string(&backend).expect("serialize");
-        assert!(json.contains("https://example.com/hook"));
-        assert!(json.contains("Authorization"));
-    }
-
     // ── Lifecycle event dispatch ───────────────────────────────────────
 
     #[test]
@@ -654,23 +557,11 @@ mod tests {
 
     #[test]
     fn event_commands_merge_correctly() {
-        let mut a = RuntimeHookConfig::new(
-            vec!["pre_a".to_string()],
-            Vec::new(),
-        );
-        a.set_event_commands(
-            HookEvent::SessionStart,
-            vec!["start_a".to_string()],
-        );
+        let mut a = RuntimeHookConfig::new(vec!["pre_a".to_string()], Vec::new());
+        a.set_event_commands(HookEvent::SessionStart, vec!["start_a".to_string()]);
 
-        let mut b = RuntimeHookConfig::new(
-            vec!["pre_b".to_string()],
-            Vec::new(),
-        );
-        b.set_event_commands(
-            HookEvent::SessionStart,
-            vec!["start_b".to_string()],
-        );
+        let mut b = RuntimeHookConfig::new(vec!["pre_b".to_string()], Vec::new());
+        b.set_event_commands(HookEvent::SessionStart, vec!["start_b".to_string()]);
 
         let merged = a.merged(&b);
         assert_eq!(merged.pre_tool_use().len(), 2);
@@ -686,6 +577,5 @@ mod tests {
         assert!(HookEvent::PostToolUse.is_tool_event());
         assert!(HookEvent::ToolError.is_tool_event());
         assert!(!HookEvent::SessionStart.is_tool_event());
-        assert!(!HookEvent::CwdChanged.is_tool_event());
     }
 }

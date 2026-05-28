@@ -88,6 +88,7 @@ pub struct PromptCacheStats {
     pub last_completion_cache_key: Option<String>,
     pub last_break_reason: Option<String>,
     pub last_cache_source: Option<String>,
+    pub last_persist_error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -154,7 +155,7 @@ impl PromptCache {
             let mut inner = self.lock();
             inner.stats.completion_cache_misses += 1;
             inner.stats.last_completion_cache_key = Some(request_hash);
-            persist_state(&inner);
+            let _ = persist_state(&inner);
             return None;
         };
 
@@ -163,7 +164,7 @@ impl PromptCache {
             inner.stats.completion_cache_misses += 1;
             inner.stats.last_completion_cache_key = Some(request_hash.clone());
             let _ = fs::remove_file(entry_path);
-            persist_state(&inner);
+            let _ = persist_state(&inner);
             return None;
         }
 
@@ -173,7 +174,7 @@ impl PromptCache {
         if expired {
             inner.stats.completion_cache_misses += 1;
             let _ = fs::remove_file(entry_path);
-            persist_state(&inner);
+            let _ = persist_state(&inner);
             return None;
         }
 
@@ -188,7 +189,7 @@ impl PromptCache {
             request,
             &entry.response.usage,
         ));
-        persist_state(&inner);
+        let _ = persist_state(&inner);
         Some(entry.response)
     }
 
@@ -230,11 +231,22 @@ impl PromptCache {
         }
 
         inner.previous = Some(current);
+        let mut persist_error = None;
         if let Some(response) = response {
-            write_completion_entry(&inner.paths, &request_hash, response);
-            inner.stats.completion_cache_writes += 1;
+            if let Err(error) = write_completion_entry(&inner.paths, &request_hash, response) {
+                persist_error = Some(format!("completion cache entry: {error}"));
+            } else {
+                inner.stats.completion_cache_writes += 1;
+            }
         }
-        persist_state(&inner);
+        inner.stats.last_persist_error.clone_from(&persist_error);
+        if let Err(error) = persist_state(&inner) {
+            persist_error = Some(match persist_error {
+                Some(existing) => format!("{existing}; state: {error}"),
+                None => format!("state: {error}"),
+            });
+            inner.stats.last_persist_error.clone_from(&persist_error);
+        }
 
         PromptCacheRecord {
             cache_break,
@@ -395,26 +407,27 @@ fn apply_usage_to_stats(
     stats.last_cache_source = Some(source.to_string());
 }
 
-fn persist_state(inner: &PromptCacheInner) {
-    let _ = ensure_cache_dirs(&inner.paths);
-    let _ = write_json(&inner.paths.stats_path, &inner.stats);
+fn persist_state(inner: &PromptCacheInner) -> std::io::Result<()> {
+    ensure_cache_dirs(&inner.paths)?;
+    write_json(&inner.paths.stats_path, &inner.stats)?;
     if let Some(previous) = &inner.previous {
-        let _ = write_json(&inner.paths.session_state_path, previous);
+        write_json(&inner.paths.session_state_path, previous)?;
     }
+    Ok(())
 }
 
 fn write_completion_entry(
     paths: &PromptCachePaths,
     request_hash: &str,
     response: &MessageResponse,
-) {
-    let _ = ensure_cache_dirs(paths);
+) -> std::io::Result<()> {
+    ensure_cache_dirs(paths)?;
     let entry = CompletionCacheEntry {
         cached_at_unix_secs: now_unix_secs(),
         fingerprint_version: current_fingerprint_version(),
         response: response.clone(),
     };
-    let _ = write_json(&paths.completion_entry_path(request_hash), &entry);
+    write_json(&paths.completion_entry_path(request_hash), &entry)
 }
 
 fn ensure_cache_dirs(paths: &PromptCachePaths) -> std::io::Result<()> {

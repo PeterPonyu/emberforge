@@ -115,6 +115,15 @@ python3 tests/test_terminal_startup.py --live-render
 python3 tests/test_terminal_startup.py --live-render --refresh-live-render
 ```
 
+
+## Telemetry and local traces
+
+Emberforge writes local JSONL session traces under `.ember/telemetry/` so a run can be debugged without a remote service. These files stay on disk and are covered by the project `.gitignore` defaults. Set `EMBER_TELEMETRY=off` (or `EMBER_TELEMETRY=0`) to disable the JSONL sink and keep telemetry in memory only for the current process.
+
+## Release process
+
+Release notes live in `docs/releases/`. Before cutting a release, run `cargo check --workspace`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`, and `cargo build --release`, then update the next release note with known gaps and verification evidence.
+
 ## Development
 
 ```bash
