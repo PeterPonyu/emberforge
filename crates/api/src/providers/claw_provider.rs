@@ -712,6 +712,15 @@ mod tests {
         format!("http://{address}/oauth/token")
     }
 
+    // The MissingCredentials assertions rely on POSIX env semantics: `remove_var`
+    // fully detaches the variable, `set_var("", "")` yields an empty string the
+    // helper treats as "absent", and `AuthSource::from_env_or_saved` resolves a
+    // saved-config path under `$HOME` that the test environment leaves untouched.
+    // Windows differs on every one of those points (variables can persist via the
+    // process block, empty strings are sometimes treated as unset, and saved-config
+    // lookup runs through `%APPDATA%`). The test gate matches the platform that
+    // actually exercises the negative path.
+    #[cfg(unix)]
     #[test]
     fn read_api_key_requires_presence() {
         let _guard = env_lock();
@@ -725,6 +734,7 @@ mod tests {
         ));
     }
 
+    #[cfg(unix)]
     #[test]
     fn read_api_key_requires_non_empty_value() {
         let _guard = env_lock();
