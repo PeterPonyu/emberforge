@@ -781,10 +781,22 @@ fn lists_auto_installed_bundled_plugins_with_status() {
 fn branch_and_worktree_commands_manage_git_state() {
     // given
     let repo = init_git_repo("branch-worktree");
-    let worktree_path = repo
-        .parent()
-        .expect("repo should have parent")
-        .join("branch-worktree-linked");
+    // Canonicalize the parent so the worktree path is already in its long form
+    // on Windows. Without this, the runner's TEMP resolves to a DOS 8.3 short
+    // name (e.g. `RUNNER~1`) and `git worktree list` emits the long form,
+    // making the substring assertion below false even when the worktree exists.
+    let parent_canonical = std::fs::canonicalize(repo.parent().expect("repo should have parent"))
+        .expect("canonicalize parent");
+    // Rust's canonicalize prefixes paths with `\\?\` (UNC verbatim) on Windows;
+    // git never emits that prefix, so strip it before handing the path to git.
+    let parent_canonical = {
+        let s = parent_canonical.to_string_lossy();
+        match s.strip_prefix(r"\\?\") {
+            Some(stripped) => std::path::PathBuf::from(stripped),
+            None => parent_canonical,
+        }
+    };
+    let worktree_path = parent_canonical.join("branch-worktree-linked");
 
     // when
     let branch_list =
