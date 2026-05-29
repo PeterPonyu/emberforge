@@ -85,6 +85,12 @@ fn upstream_repo_candidates(primary_repo_root: &Path) -> Vec<PathBuf> {
     deduped
 }
 
+/// Read the upstream source files and extract the compatibility manifest.
+///
+/// # Errors
+///
+/// Returns an [`std::io::Error`] if any of the upstream command, tool, or CLI
+/// source files cannot be read from disk.
 pub fn extract_manifest(paths: &UpstreamPaths) -> std::io::Result<ExtractedManifest> {
     let commands_source = fs::read_to_string(paths.commands_path())?;
     let tools_source = fs::read_to_string(paths.tools_path())?;
@@ -295,6 +301,9 @@ fn dedupe_tools(entries: Vec<ToolManifestEntry>) -> ToolRegistry {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     fn fixture_paths() -> UpstreamPaths {

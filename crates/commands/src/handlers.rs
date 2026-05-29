@@ -86,6 +86,14 @@ pub(crate) struct SkillRoot {
     pub(crate) origin: SkillOrigin,
 }
 
+/// Dispatch a `/plugins` slash subcommand against the plugin manager.
+///
+/// # Errors
+///
+/// Returns a [`PluginError`] if the requested plugin operation fails — for
+/// example listing, installing, enabling, or removing a plugin when the
+/// manifest is missing or invalid, the plugin is not found, or the underlying
+/// filesystem operation errors.
 #[allow(clippy::too_many_lines)]
 pub fn handle_plugins_slash_command(
     action: Option<&str>,
@@ -198,6 +206,12 @@ pub fn handle_plugins_slash_command(
     }
 }
 
+/// Render the `/agents` slash command output for the given working directory.
+///
+/// # Errors
+///
+/// Returns an [`std::io::Error`] if discovering or reading agent definitions
+/// from the filesystem under `cwd` fails.
 pub fn handle_agents_slash_command(args: Option<&str>, cwd: &Path) -> std::io::Result<String> {
     match normalize_optional_args(args) {
         None | Some("list") => {
@@ -210,6 +224,12 @@ pub fn handle_agents_slash_command(args: Option<&str>, cwd: &Path) -> std::io::R
     }
 }
 
+/// Render the `/skills` slash command output for the given working directory.
+///
+/// # Errors
+///
+/// Returns an [`std::io::Error`] if discovering or reading skill definitions
+/// from the filesystem under `cwd` fails.
 pub fn handle_skills_slash_command(args: Option<&str>, cwd: &Path) -> std::io::Result<String> {
     match normalize_optional_args(args) {
         None | Some("list") => {
@@ -230,6 +250,13 @@ pub struct CommitPushPrRequest {
     pub branch_name_hint: String,
 }
 
+/// Dispatch a `/branch` slash subcommand against the git repository at `cwd`.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] if invoking `git` fails or the underlying git
+/// command exits unsuccessfully (e.g. not a repository, or an invalid branch
+/// operation).
 pub fn handle_branch_slash_command(
     action: Option<&str>,
     target: Option<&str>,
@@ -269,6 +296,13 @@ pub fn handle_branch_slash_command(
     }
 }
 
+/// Dispatch a `/worktree` slash subcommand against the git repository at `cwd`.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] if invoking `git` fails or the underlying git
+/// worktree command exits unsuccessfully (e.g. not a repository, or an invalid
+/// worktree path or branch).
 pub fn handle_worktree_slash_command(
     action: Option<&str>,
     path: Option<&str>,
@@ -324,6 +358,12 @@ pub fn handle_worktree_slash_command(
     }
 }
 
+/// Stage all changes and create a git commit with `message` at `cwd`.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] if invoking `git` fails or staging/committing
+/// exits unsuccessfully (e.g. not a repository, or nothing to commit).
 pub fn handle_commit_slash_command(message: &str, cwd: &Path) -> io::Result<String> {
     let status = git_stdout(cwd, &["status", "--short"])?;
     if status.trim().is_empty() {
@@ -350,6 +390,13 @@ pub fn handle_commit_slash_command(message: &str, cwd: &Path) -> io::Result<Stri
     ))
 }
 
+/// Commit, push, and open a pull request via `git` and `gh` at `cwd`.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] if the `gh` CLI is unavailable, or if any of the
+/// underlying `git`/`gh` commands fail to spawn or exit unsuccessfully (e.g.
+/// not a repository, push rejected, or PR creation refused).
 pub fn handle_commit_push_pr_slash_command(
     request: &CommitPushPrRequest,
     cwd: &Path,
@@ -457,6 +504,12 @@ pub fn handle_commit_push_pr_slash_command(
     Ok(lines.join("\n"))
 }
 
+/// Detect the repository's default branch name at `cwd`.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] if invoking `git` fails and no default branch can
+/// be resolved from the remote `HEAD` or local fallbacks.
 pub fn detect_default_branch(cwd: &Path) -> io::Result<String> {
     if let Ok(reference) = git_stdout(cwd, &["symbolic-ref", "refs/remotes/origin/HEAD"]) {
         if let Some(branch) = reference

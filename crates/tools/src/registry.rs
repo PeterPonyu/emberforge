@@ -58,6 +58,12 @@ impl GlobalToolRegistry {
         }
     }
 
+    /// Build a registry that augments the built-in tools with plugin tools.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if a plugin tool name collides with a built-in
+    /// tool name or duplicates another plugin tool name.
     pub fn with_plugin_tools(plugin_tools: Vec<PluginTool>) -> Result<Self, String> {
         let builtin_names = mvp_tool_specs()
             .into_iter()
@@ -80,6 +86,12 @@ impl GlobalToolRegistry {
         Ok(Self { plugin_tools })
     }
 
+    /// Normalize a user-supplied allow-list of tool names against the registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if any requested name does not match a known
+    /// built-in or plugin tool.
     pub fn normalize_allowed_tools(
         &self,
         values: &[String],
@@ -183,6 +195,12 @@ impl GlobalToolRegistry {
         builtin.chain(plugin).collect()
     }
 
+    /// Execute a registered built-in or plugin tool by `name`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`crate::ToolExecError`] if `name` is not registered, the input
+    /// fails to deserialize, or the tool handler fails during execution.
     pub fn execute(&self, name: &str, input: &Value) -> Result<String, crate::ToolExecError> {
         if mvp_tool_specs().iter().any(|spec| spec.name == name) {
             return execute_tool(name, input);
