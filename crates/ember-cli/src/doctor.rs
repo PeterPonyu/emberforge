@@ -4,7 +4,9 @@
 
 use std::collections::BTreeMap;
 use std::io;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
+use std::time::Duration;
 use std::{env, fs};
 
 use runtime::model_profiles;
@@ -258,6 +260,8 @@ fn run_quick_doctor(model: &str) -> Result<DoctorReport, Box<dyn std::error::Err
         detail: catalog.ollama_status,
     }];
 
+    checks.extend(provider_connectivity_checks(model));
+
     let generation_prompt = "Say hello in one short sentence.";
     let generation = run_doctor_turn(model, generation_prompt)?;
     let generation_text = final_assistant_text(&generation);
@@ -503,6 +507,198 @@ fn run_family_doctor_check(model: &str) -> Result<DoctorCheck, Box<dyn std::erro
         status,
         detail: format!("{} | family {}", fragments.join("; "), profile.family),
     })
+}
+
+// ---------------------------------------------------------------------------
+//  Provider connectivity
+// ---------------------------------------------------------------------------
+
+/// Short connect timeout for the lightweight reachability probe. Kept small so
+/// `/doctor` never blocks for long when a provider endpoint is offline.
+const PROVIDER_PROBE_TIMEOUT: Duration = Duration::from_millis(1500);
+
+/// Default Ollama endpoint used when `OLLAMA_BASE_URL` is unset. Matches the
+/// runtime's `/api/tags` host (`crates/runtime/src/model_profiles.rs`).
+const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434";
+
+/// A single provider endpoint to probe for connectivity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProviderProbeTarget {
+    /// Human-readable provider label (e.g. `"Ollama"`).
+    label: String,
+    /// Base URL the probe was derived from, surfaced in the readable detail.
+    base_url: String,
+    /// Host extracted from `base_url`.
+    host: String,
+    /// Port extracted from `base_url` (scheme default when absent).
+    port: u16,
+}
+
+/// Outcome of a single TCP connectivity probe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProbeOutcome {
+    Reachable,
+    Unreachable(String),
+}
+
+/// Builds the set of provider endpoints worth probing for the current session.
+///
+/// Always includes the local Ollama endpoint (the primary subject of the
+/// connectivity gap) and additionally probes the active model's own provider
+/// so a misconfigured remote endpoint is surfaced too. Targets are
+/// de-duplicated by host/port so a single endpoint is not probed twice.
+fn provider_probe_targets(model: &str) -> Vec<ProviderProbeTarget> {
+    let mut raw: Vec<(String, String)> = Vec::new();
+
+    // The local Ollama server is the headline case from the issue: a local
+    // server that is offline should be reported rather than silently passing.
+    raw.push((
+        "Ollama".to_string(),
+        env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| DEFAULT_OLLAMA_BASE_URL.to_string()),
+    ));
+
+    // Also probe the provider backing the currently selected model so a
+    // misconfigured remote base URL is caught for cloud-only sessions.
+    match api::detect_provider_kind(model) {
+        api::ProviderKind::ClawApi => {
+            raw.push(("Anthropic".to_string(), api::read_base_url()));
+        }
+        api::ProviderKind::Xai => {
+            raw.push(("xAI".to_string(), api::read_xai_base_url()));
+        }
+        api::ProviderKind::OpenAi => {
+            if let Ok(base_url) = env::var("OPENAI_BASE_URL") {
+                raw.push(("OpenAI".to_string(), base_url));
+            }
+        }
+        api::ProviderKind::Ollama => {}
+    }
+
+    let mut targets: Vec<ProviderProbeTarget> = Vec::new();
+    for (label, base_url) in raw {
+        if let Some((host, port)) = parse_host_port(&base_url) {
+            let already = targets
+                .iter()
+                .any(|target| target.host == host && target.port == port);
+            if !already {
+                targets.push(ProviderProbeTarget {
+                    label,
+                    base_url,
+                    host,
+                    port,
+                });
+            }
+        }
+    }
+    targets
+}
+
+/// Produces one `DoctorCheck` per configured provider endpoint, reporting a
+/// human-readable reachable / unreachable status. An unreachable endpoint is a
+/// `Warn` (not a `Fail`): connectivity may be intentionally offline and should
+/// never crash the diagnostic pass.
+fn provider_connectivity_checks(model: &str) -> Vec<DoctorCheck> {
+    provider_probe_targets(model)
+        .into_iter()
+        .map(|target| {
+            let outcome = probe_provider_endpoint(&target.host, target.port);
+            DoctorCheck {
+                name: format!("{} reachable", target.label.to_ascii_lowercase()),
+                status: match outcome {
+                    ProbeOutcome::Reachable => DoctorCheckStatus::Pass,
+                    ProbeOutcome::Unreachable(_) => DoctorCheckStatus::Warn,
+                },
+                detail: format_probe_detail(&target, &outcome),
+            }
+        })
+        .collect()
+}
+
+/// Renders a readable connectivity detail line for a probe outcome.
+fn format_probe_detail(target: &ProviderProbeTarget, outcome: &ProbeOutcome) -> String {
+    match outcome {
+        ProbeOutcome::Reachable => format!("reachable at {}", target.base_url),
+        ProbeOutcome::Unreachable(reason) => {
+            format!(
+                "unreachable at {} ({})",
+                target.base_url,
+                truncate_for_summary(reason, 60)
+            )
+        }
+    }
+}
+
+/// Performs a single short-timeout TCP connect probe against `host:port`.
+///
+/// Returns [`ProbeOutcome::Reachable`] when a TCP connection succeeds within
+/// [`PROVIDER_PROBE_TIMEOUT`], otherwise [`ProbeOutcome::Unreachable`] with a
+/// readable reason. Never panics and performs no allocation beyond the reason
+/// string, so it degrades gracefully when the endpoint is offline.
+fn probe_provider_endpoint(host: &str, port: u16) -> ProbeOutcome {
+    let addrs = match (host, port).to_socket_addrs() {
+        Ok(addrs) => addrs.collect::<Vec<_>>(),
+        Err(error) => return ProbeOutcome::Unreachable(format!("cannot resolve host: {error}")),
+    };
+    if addrs.is_empty() {
+        return ProbeOutcome::Unreachable("host resolved to no addresses".to_string());
+    }
+
+    let mut last_error = "no address reachable".to_string();
+    for addr in addrs {
+        match TcpStream::connect_timeout(&addr, PROVIDER_PROBE_TIMEOUT) {
+            Ok(_) => return ProbeOutcome::Reachable,
+            Err(error) => last_error = error.to_string(),
+        }
+    }
+    ProbeOutcome::Unreachable(last_error)
+}
+
+/// Extracts a `(host, port)` pair from a provider base URL.
+///
+/// Understands `http`/`https` schemes (defaulting to ports 80/443), an
+/// explicit `:port`, and optional path/query suffixes. Returns `None` when no
+/// host can be determined. Pure and network-free so it can be unit tested.
+fn parse_host_port(base_url: &str) -> Option<(String, u16)> {
+    let trimmed = base_url.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let (scheme, rest) = match trimmed.split_once("://") {
+        Some((scheme, rest)) => (scheme.to_ascii_lowercase(), rest),
+        None => (String::new(), trimmed),
+    };
+
+    // Strip any path, query, or fragment after the authority component.
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(rest)
+        .trim_end_matches('/');
+    if authority.is_empty() {
+        return None;
+    }
+
+    // Drop any userinfo prefix (`user:pass@host`).
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, hp)| hp);
+
+    let default_port = match scheme.as_str() {
+        "https" => 443,
+        _ => 80,
+    };
+
+    if let Some((host, port_str)) = host_port.rsplit_once(':') {
+        if host.is_empty() {
+            return None;
+        }
+        match port_str.parse::<u16>() {
+            Ok(port) => Some((host.to_string(), port)),
+            // A trailing colon with no/invalid port falls back to the scheme default.
+            Err(_) => Some((host.to_string(), default_port)),
+        }
+    } else {
+        Some((host_port.to_string(), default_port))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -752,5 +948,121 @@ fn reset_doctor_cache() -> Result<(), Box<dyn std::error::Error>> {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(Box::new(error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use std::net::TcpListener;
+
+    use super::{
+        format_probe_detail, parse_host_port, probe_provider_endpoint, DoctorCheckStatus,
+        ProbeOutcome, ProviderProbeTarget,
+    };
+
+    #[test]
+    fn parses_host_and_explicit_port() {
+        assert_eq!(
+            parse_host_port("http://localhost:11434"),
+            Some(("localhost".to_string(), 11434))
+        );
+        assert_eq!(
+            parse_host_port("http://localhost:11434/v1"),
+            Some(("localhost".to_string(), 11434))
+        );
+    }
+
+    #[test]
+    fn parses_scheme_default_ports() {
+        assert_eq!(
+            parse_host_port("https://api.anthropic.com"),
+            Some(("api.anthropic.com".to_string(), 443))
+        );
+        assert_eq!(
+            parse_host_port("http://example.com/path"),
+            Some(("example.com".to_string(), 80))
+        );
+    }
+
+    #[test]
+    fn parses_authority_with_userinfo_and_query() {
+        assert_eq!(
+            parse_host_port("https://user:pass@host.example:8443/api?x=1"),
+            Some(("host.example".to_string(), 8443))
+        );
+    }
+
+    #[test]
+    fn rejects_empty_or_hostless_urls() {
+        assert_eq!(parse_host_port(""), None);
+        assert_eq!(parse_host_port("   "), None);
+        assert_eq!(parse_host_port("http://"), None);
+    }
+
+    #[test]
+    fn probe_reports_reachable_for_open_local_listener() {
+        // Bind an ephemeral port and confirm the probe connects to it.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert_eq!(
+            probe_provider_endpoint("127.0.0.1", port),
+            ProbeOutcome::Reachable
+        );
+    }
+
+    #[test]
+    fn probe_reports_unreachable_for_closed_local_port() {
+        // Bind then immediately drop the listener so the port is closed.
+        let port = {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        match probe_provider_endpoint("127.0.0.1", port) {
+            ProbeOutcome::Unreachable(_) => {}
+            ProbeOutcome::Reachable => panic!("closed port should not be reachable"),
+        }
+    }
+
+    #[test]
+    fn probe_reports_unreachable_for_unresolvable_host() {
+        match probe_provider_endpoint("invalid.host.does-not-exist.example", 80) {
+            ProbeOutcome::Unreachable(_) => {}
+            ProbeOutcome::Reachable => panic!("nonexistent host should not be reachable"),
+        }
+    }
+
+    #[test]
+    fn formats_reachable_and_unreachable_details() {
+        let target = ProviderProbeTarget {
+            label: "Ollama".to_string(),
+            base_url: "http://localhost:11434".to_string(),
+            host: "localhost".to_string(),
+            port: 11434,
+        };
+        assert_eq!(
+            format_probe_detail(&target, &ProbeOutcome::Reachable),
+            "reachable at http://localhost:11434"
+        );
+        let detail = format_probe_detail(
+            &target,
+            &ProbeOutcome::Unreachable("connection refused".into()),
+        );
+        assert!(detail.starts_with("unreachable at http://localhost:11434 ("));
+        assert!(detail.contains("connection refused"));
+    }
+
+    #[test]
+    fn unreachable_endpoint_maps_to_warn_not_fail() {
+        // An offline endpoint is a warning, never a hard failure or a crash.
+        let outcome = ProbeOutcome::Unreachable("offline".to_string());
+        let status = match outcome {
+            ProbeOutcome::Reachable => DoctorCheckStatus::Pass,
+            ProbeOutcome::Unreachable(_) => DoctorCheckStatus::Warn,
+        };
+        assert_eq!(status, DoctorCheckStatus::Warn);
     }
 }
