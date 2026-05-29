@@ -480,6 +480,11 @@ async fn teleport_import(
 
 fn unix_timestamp_millis() -> u64 {
     u64::try_from(
+        // SAFETY: `duration_since(UNIX_EPOCH)` only fails when the system clock
+        // is set before the Unix epoch (1970-01-01). That is an infallible
+        // invariant on any sane host, this is not an IO/network/user-input
+        // boundary, and the surrounding helper has no `Result` channel to
+        // propagate into, so an `expect` is the correct choice here.
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system time should be after epoch")
@@ -497,6 +502,8 @@ fn not_found(message: String) -> ApiError {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::{
         app, AppState, CreateSessionResponse, ListSessionsResponse, SessionDetailsResponse,
     };
