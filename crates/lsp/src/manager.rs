@@ -19,6 +19,13 @@ pub struct LspManager {
 }
 
 impl LspManager {
+    /// Builds a manager from the given server configurations, indexing each
+    /// configured file extension to its server.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError::DuplicateExtension`] if two server configurations map
+    /// the same (normalized) file extension to different servers.
     pub fn new(server_configs: Vec<LspServerConfig>) -> Result<Self, LspError> {
         let mut configs_by_name = BTreeMap::new();
         let mut extension_map = BTreeMap::new();
@@ -54,6 +61,14 @@ impl LspManager {
         })
     }
 
+    /// Notifies the LSP server for `path` that the document has been opened with
+    /// the given `text`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError`] if no server is configured for the document's
+    /// extension, if a server connection cannot be established, or if the
+    /// underlying transport fails while sending the notification.
     pub async fn open_document(&self, path: &Path, text: &str) -> Result<(), LspError> {
         self.client_for_path(path)
             .await?
@@ -61,12 +76,28 @@ impl LspManager {
             .await
     }
 
+    /// Reads `path` from disk and pushes its current contents to the LSP server
+    /// via a change notification followed by a save notification.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError::Io`] if the file cannot be read from disk, or any
+    /// [`LspError`] surfaced while changing or saving the document (see
+    /// [`Self::change_document`] and [`Self::save_document`]).
     pub async fn sync_document_from_disk(&self, path: &Path) -> Result<(), LspError> {
         let contents = std::fs::read_to_string(path)?;
         self.change_document(path, &contents).await?;
         self.save_document(path).await
     }
 
+    /// Notifies the LSP server for `path` that the document's contents changed
+    /// to `text`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError`] if no server is configured for the document's
+    /// extension, if a server connection cannot be established, or if the
+    /// underlying transport fails while sending the notification.
     pub async fn change_document(&self, path: &Path, text: &str) -> Result<(), LspError> {
         self.client_for_path(path)
             .await?
@@ -74,14 +105,36 @@ impl LspManager {
             .await
     }
 
+    /// Notifies the LSP server for `path` that the document has been saved.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError`] if no server is configured for the document's
+    /// extension, if a server connection cannot be established, or if the
+    /// underlying transport fails while sending the notification.
     pub async fn save_document(&self, path: &Path) -> Result<(), LspError> {
         self.client_for_path(path).await?.save_document(path).await
     }
 
+    /// Notifies the LSP server for `path` that the document has been closed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError`] if no server is configured for the document's
+    /// extension, if a server connection cannot be established, or if the
+    /// underlying transport fails while sending the notification.
     pub async fn close_document(&self, path: &Path) -> Result<(), LspError> {
         self.client_for_path(path).await?.close_document(path).await
     }
 
+    /// Resolves the definition(s) of the symbol at `position` in `path`,
+    /// returning a de-duplicated list of locations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError`] if no server is configured for the document's
+    /// extension, if a server connection cannot be established, or if the
+    /// underlying request to the server fails.
     pub async fn go_to_definition(
         &self,
         path: &Path,
@@ -96,6 +149,14 @@ impl LspManager {
         Ok(locations)
     }
 
+    /// Finds all references to the symbol at `position` in `path`, optionally
+    /// including the declaration, returning a de-duplicated list of locations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError`] if no server is configured for the document's
+    /// extension, if a server connection cannot be established, or if the
+    /// underlying request to the server fails.
     pub async fn find_references(
         &self,
         path: &Path,
@@ -111,6 +172,14 @@ impl LspManager {
         Ok(locations)
     }
 
+    /// Collects the latest diagnostics from every connected server, skipping
+    /// files with no diagnostics, and returns them sorted by path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError`] if querying a connected server for its diagnostics
+    /// snapshot fails. URIs that cannot be parsed into file paths are skipped
+    /// rather than treated as errors.
     pub async fn collect_workspace_diagnostics(&self) -> Result<WorkspaceDiagnostics, LspError> {
         let clients = self
             .clients
@@ -144,6 +213,15 @@ impl LspManager {
         Ok(WorkspaceDiagnostics { files })
     }
 
+    /// Gathers workspace diagnostics together with the definitions and
+    /// references for the symbol at `position` in `path` into a single
+    /// enrichment payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LspError`] if collecting diagnostics, resolving definitions, or
+    /// finding references fails (see [`Self::collect_workspace_diagnostics`],
+    /// [`Self::go_to_definition`], and [`Self::find_references`]).
     pub async fn context_enrichment(
         &self,
         path: &Path,
@@ -157,6 +235,13 @@ impl LspManager {
         })
     }
 
+    /// Shuts down every connected LSP client and clears the client cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first [`LspError`] encountered while shutting down a client;
+    /// clients are drained from the cache before shutdown is attempted, so a
+    /// failure does not leave a stale client registered.
     pub async fn shutdown(&self) -> Result<(), LspError> {
         let mut clients = self.clients.lock().await;
         let drained = clients.values().cloned().collect::<Vec<_>>();

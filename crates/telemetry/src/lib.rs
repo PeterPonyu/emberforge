@@ -104,6 +104,14 @@ impl AnthropicRequestProfile {
         headers
     }
 
+    /// Renders the request into a JSON body, merging in configured extra body
+    /// fields and beta flags.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`serde_json::Error`] if `request` fails to serialize or does not
+    /// serialize to a JSON object (extra body fields can only be merged into an
+    /// object).
     pub fn render_json_body<T: Serialize>(&self, request: &T) -> Result<Value, serde_json::Error> {
         let mut body = serde_json::to_value(request)?;
         let object = body.as_object_mut().ok_or_else(|| {
@@ -244,6 +252,15 @@ impl Debug for JsonlTelemetrySink {
 }
 
 impl JsonlTelemetrySink {
+    /// Opens (or creates) the JSONL telemetry log at `path`, creating any
+    /// missing parent directories. The file is opened in append mode so existing
+    /// telemetry is preserved.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`std::io::Error`] if the parent directory cannot be created or
+    /// the log file cannot be opened for appending (for example, on permission
+    /// errors or a read-only filesystem).
     pub fn new(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
         let path = path.as_ref().to_path_buf();
         if let Some(parent) = path.parent() {
@@ -429,6 +446,8 @@ fn current_timestamp_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::*;
 
     #[test]
