@@ -142,6 +142,7 @@ pub fn extract_base_command(command: &str) -> &str {
 pub fn split_pipeline(command: &str) -> Vec<&str> {
     // SAFETY: compile-time-constant regex literal; cannot fail at runtime and
     // is exercised by this module's tests. No runtime input reaches this call.
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*(?:\|{1,2}|&&|;)\s*").unwrap());
     RE.split(command).collect()
 }
@@ -408,6 +409,7 @@ fn has_unmatched_delimiters(s: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 fn check_02_fork_bomb(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         // Classic :(){ :|:& };: and common disguises.
         Regex::new(
@@ -460,6 +462,7 @@ fn check_03_dangerous_rm(command: &str, _cwd: &Path) -> Option<SecurityVerdict> 
     None
 }
 
+#[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
 static RE_RM_ROOT: LazyLock<Regex> = LazyLock::new(|| {
     // SAFETY: compile-time-constant regex literal; cannot fail at runtime
     // and is exercised by this module's tests.
@@ -473,7 +476,9 @@ static RE_RM_ROOT: LazyLock<Regex> = LazyLock::new(|| {
 fn check_04_disk_destruction(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
     // SAFETY: compile-time-constant regex literal; cannot fail at runtime
     // and is exercised by this module's tests.
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_DD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"dd\s+.*of\s*=\s*/dev/").unwrap());
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_DISK_TOOLS: LazyLock<Regex> = LazyLock::new(|| {
         // SAFETY: compile-time-constant regex literal; cannot fail at runtime
         // and is exercised by this module's tests.
@@ -525,10 +530,12 @@ fn check_05_permission_escalation(command: &str, _cwd: &Path) -> Option<Security
 // ---------------------------------------------------------------------------
 
 fn check_06_dangerous_redirects(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_DEV_REDIRECT: LazyLock<Regex> =
         // SAFETY: compile-time-constant regex literal; cannot fail at runtime
         // and is exercised by this module's tests.
         LazyLock::new(|| Regex::new(r">\s*/dev/(sd[a-z]|nvme|vd[a-z]|hd[a-z])").unwrap());
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_SYSTEM_REDIRECT: LazyLock<Regex> = LazyLock::new(|| {
         // SAFETY: compile-time-constant regex literal; cannot fail at runtime
         // and is exercised by this module's tests.
@@ -549,6 +556,7 @@ fn check_06_dangerous_redirects(command: &str, _cwd: &Path) -> Option<SecurityVe
 // ---------------------------------------------------------------------------
 
 fn check_07_process_substitution_abuse(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE: LazyLock<Regex> =
         // SAFETY: compile-time-constant regex literal; cannot fail at runtime
         // and is exercised by this module's tests.
@@ -569,6 +577,7 @@ fn check_07_process_substitution_abuse(command: &str, _cwd: &Path) -> Option<Sec
 fn check_08_ifs_injection(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
     // SAFETY: compile-time-constant regex literal; cannot fail at runtime
     // and is exercised by this module's tests.
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bIFS\s*=").unwrap());
     if RE.is_match(command) {
         return Some(warn(
@@ -586,6 +595,7 @@ fn check_08_ifs_injection(command: &str, _cwd: &Path) -> Option<SecurityVerdict>
 fn check_09_env_manipulation(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
     // SAFETY: compile-time-constant regex literal; cannot fail at runtime
     // and is exercised by this module's tests.
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_PRELOAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"LD_PRELOAD\s*=").unwrap());
     // Unsetting PATH
     if command.contains("unset PATH")
@@ -612,6 +622,7 @@ fn check_09_env_manipulation(command: &str, _cwd: &Path) -> Option<SecurityVerdi
 fn check_10_proc_sys_write(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
     // SAFETY: compile-time-constant regex literal; cannot fail at runtime
     // and is exercised by this module's tests.
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r">\s*/(proc|sys)/").unwrap());
     if RE.is_match(command) {
         return Some(deny(10, "writing to /proc or /sys filesystem"));
@@ -664,6 +675,7 @@ fn check_12_history_manipulation(command: &str, _cwd: &Path) -> Option<SecurityV
 // ---------------------------------------------------------------------------
 
 fn check_13_network_exfiltration(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
             r"(?x)
@@ -678,6 +690,7 @@ fn check_13_network_exfiltration(command: &str, _cwd: &Path) -> Option<SecurityV
         .unwrap()
     });
     // Detect data exfil: cat sensitive | curl -d@- (POST stdin)
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_EXFIL: LazyLock<Regex> =
         // SAFETY: compile-time-constant regex literal; cannot fail at runtime
         // and is exercised by this module's tests.
@@ -700,11 +713,13 @@ fn check_13_network_exfiltration(command: &str, _cwd: &Path) -> Option<SecurityV
 
 fn check_14_obfuscated_commands(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
     // base64 decode piped to shell
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_B64: LazyLock<Regex> =
         // SAFETY: compile-time-constant regex literal; cannot fail at runtime
         // and is exercised by this module's tests.
         LazyLock::new(|| Regex::new(r"base64\s+(-d|--decode)\s*\|\s*(ba)?sh").unwrap());
     // echo -e with hex/octal piped to shell
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_HEX: LazyLock<Regex> =
         // SAFETY: compile-time-constant regex literal; cannot fail at runtime
         // and is exercised by this module's tests.
@@ -736,6 +751,7 @@ fn check_14_obfuscated_commands(command: &str, _cwd: &Path) -> Option<SecurityVe
 // ---------------------------------------------------------------------------
 
 fn check_15_recursive_root_ops(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
             r"(?x)
@@ -818,6 +834,7 @@ fn check_17_package_manager_global(command: &str, _cwd: &Path) -> Option<Securit
 // ---------------------------------------------------------------------------
 
 fn check_18_kill_system_processes(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_KILL_INIT: LazyLock<Regex> =
         // SAFETY: compile-time-constant regex literal; cannot fail at runtime
         // and is exercised by this module's tests.
@@ -845,6 +862,7 @@ fn check_18_kill_system_processes(command: &str, _cwd: &Path) -> Option<Security
 // ---------------------------------------------------------------------------
 
 fn check_19_sudo_escalation(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_SUDO_DESTRUCTIVE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
             r#"(?x)
@@ -873,9 +891,11 @@ fn check_19_sudo_escalation(command: &str, _cwd: &Path) -> Option<SecurityVerdic
 fn check_20_path_traversal(command: &str, cwd: &Path) -> Option<SecurityVerdict> {
     // SAFETY: compile-time-constant regex literal; cannot fail at runtime
     // and is exercised by this module's tests.
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_TRAVERSAL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.\./\.\./").unwrap());
 
     // Check sensitive targets first (deny takes priority over warn).
+    #[allow(clippy::unwrap_used)] // compile-time-constant regex; see SAFETY note (infallible)
     static RE_SENSITIVE: LazyLock<Regex> = LazyLock::new(|| {
         // SAFETY: compile-time-constant regex literal; cannot fail at runtime
         // and is exercised by this module's tests.

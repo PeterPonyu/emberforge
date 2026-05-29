@@ -182,6 +182,8 @@ impl UpstreamProxyState {
     }
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if `path` exists but cannot be read.
 pub fn read_token(path: &Path) -> io::Result<Option<String>> {
     match fs::read_to_string(path) {
         Ok(contents) => {

@@ -4570,6 +4570,8 @@ impl InternalPromptProgressReporter {
         self.write_line(&line);
     }
 
+    // Internal, never-poisoned mutex (see SAFETY note); expect is infallible.
+    #[allow(clippy::expect_used)]
     fn mark_model_phase(&self) {
         let snapshot = {
             // SAFETY: the mutex is only ever held for brief, panic-free state
@@ -4596,6 +4598,8 @@ impl InternalPromptProgressReporter {
         ));
     }
 
+    // Internal, never-poisoned mutex (see SAFETY note); expect is infallible.
+    #[allow(clippy::expect_used)]
     fn mark_tool_phase(&self, name: &str, input: &str) {
         let detail = describe_tool_progress(name, input);
         let snapshot = {
@@ -4619,6 +4623,8 @@ impl InternalPromptProgressReporter {
         ));
     }
 
+    // Internal, never-poisoned mutex (see SAFETY note); expect is infallible.
+    #[allow(clippy::expect_used)]
     fn mark_text_phase(&self, text: &str) {
         let trimmed = text.trim();
         if trimmed.is_empty() {
@@ -4660,6 +4666,7 @@ impl InternalPromptProgressReporter {
         ));
     }
 
+    #[allow(clippy::expect_used)]
     fn snapshot(&self) -> InternalPromptProgressState {
         // SAFETY: the mutex is only ever held for brief, panic-free state
         // mutations within this module, so it cannot be poisoned in practice.
@@ -4674,6 +4681,7 @@ impl InternalPromptProgressReporter {
         self.shared.started_at.elapsed()
     }
 
+    #[allow(clippy::expect_used)]
     fn write_line(&self, line: &str) {
         // SAFETY: the output lock is only ever held for brief, panic-free writes
         // within this module, so it cannot be poisoned in practice.
@@ -6172,6 +6180,9 @@ struct CliToolExecutor {
 }
 
 impl CliToolExecutor {
+    // The only fallible call is the Tokio runtime build, which fails solely under
+    // catastrophic OS resource exhaustion (see SAFETY note); expect is infallible.
+    #[allow(clippy::expect_used)]
     fn new(
         allowed_tools: Option<AllowedToolSet>,
         emit_output: bool,

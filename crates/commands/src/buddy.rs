@@ -240,6 +240,7 @@ impl StarterBuddyState {
         // SAFETY: `self.companion` was just set to `Some(..)` above and
         // `materialize()` returns `Some` iff `self.companion.is_some()`, so this
         // is an infallible post-assignment invariant, not a failure boundary.
+        #[allow(clippy::expect_used)] // see SAFETY note: infallible post-assignment invariant
         (true, self.materialize().expect("companion just hatched"))
     }
 
@@ -263,6 +264,7 @@ impl StarterBuddyState {
         // SAFETY: `self.companion` was just set to `Some(..)` above and
         // `materialize()` returns `Some` iff `self.companion.is_some()`, so this
         // is an infallible post-assignment invariant, not a failure boundary.
+        #[allow(clippy::expect_used)] // see SAFETY note: infallible post-assignment invariant
         self.materialize().expect("companion just rehatched")
     }
 

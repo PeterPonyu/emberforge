@@ -132,6 +132,8 @@ impl<W: Write> OutputWriter<W> {
 
     /// Write a single event. In NDJSON mode, writes immediately.
     /// In JSON mode, buffers until `flush_json` is called.
+    /// # Errors
+    /// Returns an [`io::Error`] if the event cannot be written to the underlying sink.
     pub fn write_event(&mut self, event: OutputEvent) -> io::Result<()> {
         match self.mode {
             OutputMode::Ndjson => {
@@ -160,6 +162,8 @@ impl<W: Write> OutputWriter<W> {
     }
 
     /// Flush buffered events as a single JSON array (for JSON mode).
+    /// # Errors
+    /// Returns an [`io::Error`] if buffered JSON output cannot be flushed to the underlying sink.
     pub fn flush_json(&mut self) -> io::Result<()> {
         if self.mode != OutputMode::Json {
             return Ok(());

@@ -34,6 +34,8 @@ pub struct TeleportBundle {
 // ---------------------------------------------------------------------------
 
 /// Export a session to a teleport bundle file.
+/// # Errors
+/// Returns an [`io::Error`] if the session cannot be serialized or the bundle cannot be written to `dest`.
 pub fn export_session(
     session: &Session,
     dest: &Path,
@@ -59,6 +61,8 @@ pub fn export_session(
 }
 
 /// Import a session from a teleport bundle file.
+/// # Errors
+/// Returns an [`io::Error`] if `src` cannot be read or does not contain a valid bundle.
 pub fn import_session(src: &Path) -> io::Result<TeleportBundle> {
     let json = fs::read_to_string(src)?;
     let bundle: TeleportBundle =
@@ -67,6 +71,8 @@ pub fn import_session(src: &Path) -> io::Result<TeleportBundle> {
 }
 
 /// Validate a bundle is compatible with this version.
+/// # Errors
+/// Returns `Err` with a message if the bundle fails validation.
 pub fn validate_bundle(bundle: &TeleportBundle) -> Result<(), String> {
     if bundle.version > 1 {
         return Err(format!(

@@ -226,12 +226,16 @@ fn builtin_summaries() -> Vec<AgentSummary> {
 // ---------------------------------------------------------------------------
 
 /// Return the project-level agents directory (`.ember/agents/` relative to cwd).
+/// # Errors
+/// Returns an [`io::Error`] if the current working directory cannot be determined.
 pub fn project_agents_dir() -> io::Result<PathBuf> {
     let cwd = std::env::current_dir()?;
     Ok(cwd.join(".ember").join("agents"))
 }
 
 /// Return the user-level agents directory (`~/.ember/agents/`).
+/// # Errors
+/// Returns an [`io::Error`] if the user's home directory cannot be determined.
 pub fn user_agents_dir() -> io::Result<PathBuf> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
@@ -248,6 +252,8 @@ pub fn user_agents_dir() -> io::Result<PathBuf> {
 /// Reads every `*.json` file, attempts to parse each as an [`AgentDefinition`],
 /// and collects the successful results.  Invalid files are skipped with a
 /// warning written to stderr.
+/// # Errors
+/// Returns an [`io::Error`] if `dir` cannot be read or an entry cannot be parsed.
 pub fn load_agents_from_dir(dir: &Path) -> io::Result<Vec<AgentDefinition>> {
     if !dir.is_dir() {
         return Ok(Vec::new());
@@ -292,6 +298,8 @@ pub fn load_agents_from_dir(dir: &Path) -> io::Result<Vec<AgentDefinition>> {
 ///
 /// Project agents (`.ember/agents/`) take precedence over user agents
 /// (`~/.ember/agents/`) when both define the same `agent_type`.
+/// # Errors
+/// Returns an [`io::Error`] if the project or user agent directories cannot be resolved or read.
 pub fn discover_agents() -> io::Result<Vec<AgentDefinition>> {
     let mut seen = BTreeSet::new();
     let mut result = Vec::new();
@@ -318,6 +326,8 @@ pub fn discover_agents() -> io::Result<Vec<AgentDefinition>> {
 }
 
 /// Find a specific agent definition by `agent_type` name.
+/// # Errors
+/// Returns an [`io::Error`] if agent discovery fails while reading the agent directories.
 pub fn find_agent(agent_type: &str) -> io::Result<Option<AgentDefinition>> {
     let agents = discover_agents()?;
     Ok(agents.into_iter().find(|a| a.agent_type == agent_type))
@@ -397,6 +407,8 @@ pub fn build_agent_prompt(def: &AgentDefinition) -> Vec<String> {
 /// Returns built-in agents followed by any custom agents discovered on disk.
 /// Custom agents that share an `agent_type` with a built-in will shadow the
 /// built-in entry.
+/// # Errors
+/// Returns an [`io::Error`] if agent discovery fails while reading the agent directories.
 pub fn list_agent_summaries() -> io::Result<Vec<AgentSummary>> {
     let custom = discover_agents()?;
     let custom_types: BTreeSet<String> = custom.iter().map(|a| a.agent_type.clone()).collect();

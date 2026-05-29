@@ -33,6 +33,8 @@ pub enum AuthSource {
 }
 
 impl AuthSource {
+    /// # Errors
+    /// Returns an [`ApiError`] if required environment variables are missing or invalid.
     pub fn from_env() -> Result<Self, ApiError> {
         let api_key = read_env_non_empty("ANTHROPIC_API_KEY")?;
         let auth_token = read_env_non_empty("ANTHROPIC_AUTH_TOKEN")?;
@@ -140,6 +142,8 @@ impl ClawApiClient {
         }
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if required environment variables are missing or invalid.
     pub fn from_env() -> Result<Self, ApiError> {
         Ok(Self::from_auth(AuthSource::from_env_or_saved()?).with_base_url(read_base_url()))
     }
@@ -199,6 +203,8 @@ impl ClawApiClient {
         &self.auth
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if the request fails, the response is an HTTP error, or the body cannot be parsed.
     pub async fn send_message(
         &self,
         request: &MessageRequest,
@@ -219,6 +225,8 @@ impl ClawApiClient {
         Ok(response)
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if the request fails or the streaming response cannot be established.
     pub async fn stream_message(
         &self,
         request: &MessageRequest,
@@ -235,6 +243,8 @@ impl ClawApiClient {
         })
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if the OAuth code exchange request fails or the response cannot be parsed.
     pub async fn exchange_oauth_code(
         &self,
         config: &OAuthConfig,
@@ -255,6 +265,8 @@ impl ClawApiClient {
             .map_err(ApiError::from)
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if the OAuth token refresh request fails or the response cannot be parsed.
     pub async fn refresh_oauth_token(
         &self,
         config: &OAuthConfig,
@@ -342,6 +354,8 @@ impl ClawApiClient {
 }
 
 impl AuthSource {
+    /// # Errors
+    /// Returns an [`ApiError`] if neither environment credentials nor saved credentials can be resolved.
     pub fn from_env_or_saved() -> Result<Self, ApiError> {
         if let Some(api_key) = read_env_non_empty("ANTHROPIC_API_KEY")? {
             return match read_env_non_empty("ANTHROPIC_AUTH_TOKEN")? {
@@ -383,6 +397,8 @@ pub fn oauth_token_is_expired(token_set: &OAuthTokenSet) -> bool {
         .is_some_and(|expires_at| expires_at <= now_unix_timestamp())
 }
 
+/// # Errors
+/// Returns an [`ApiError`] if saved credentials exist but cannot be read or refreshed.
 pub fn resolve_saved_oauth_token(config: &OAuthConfig) -> Result<Option<OAuthTokenSet>, ApiError> {
     let Some(token_set) = load_saved_oauth_token()? else {
         return Ok(None);
@@ -396,6 +412,8 @@ pub fn has_auth_from_env_or_saved() -> Result<bool, ApiError> {
         || load_saved_oauth_token()?.is_some())
 }
 
+/// # Errors
+/// Returns an [`ApiError`] if the OAuth config cannot be loaded or no usable auth source is available.
 pub fn resolve_startup_auth_source<F>(load_oauth_config: F) -> Result<AuthSource, ApiError>
 where
     F: FnOnce() -> Result<Option<OAuthConfig>, ApiError>,

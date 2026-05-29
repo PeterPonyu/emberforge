@@ -238,6 +238,8 @@ fn session_cost_path(project_dir: &Path, session_id: &str) -> PathBuf {
 /// Save cost tracker state for a session to a JSON file.
 ///
 /// Creates intermediate directories as needed.
+/// # Errors
+/// Returns an [`io::Error`] if the cost file cannot be written.
 pub fn save_session_costs(
     project_dir: &Path,
     session_id: &str,
@@ -255,6 +257,8 @@ pub fn save_session_costs(
 /// Load cost tracker state for a session from a JSON file.
 ///
 /// Returns `Ok(None)` if the file does not exist.
+/// # Errors
+/// Returns an [`io::Error`] if the cost file exists but cannot be read or deserialized.
 pub fn load_session_costs(project_dir: &Path, session_id: &str) -> io::Result<Option<CostTracker>> {
     let path = session_cost_path(project_dir, session_id);
     if !path.exists() {

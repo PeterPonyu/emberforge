@@ -365,6 +365,8 @@ impl McpServerManager {
         &self.unsupported_servers
     }
 
+    /// # Errors
+    /// Returns a [`McpServerManagerError`] if the MCP server cannot be queried or returns an invalid tool list.
     pub async fn discover_tools(&mut self) -> Result<Vec<ManagedMcpTool>, McpServerManagerError> {
         let server_names = self.servers.keys().cloned().collect::<Vec<_>>();
         let mut discovered_tools = Vec::new();
@@ -439,6 +441,8 @@ impl McpServerManager {
         Ok(discovered_tools)
     }
 
+    /// # Errors
+    /// Returns a [`McpServerManagerError`] if the tool call fails or the server returns an error response.
     pub async fn call_tool(
         &mut self,
         qualified_tool_name: &str,
@@ -479,6 +483,8 @@ impl McpServerManager {
     }
 
     /// List resources available on a specific MCP server.
+    /// # Errors
+    /// Returns a [`McpServerManagerError`] if the resource listing request fails or the response is invalid.
     pub async fn list_resources(
         &mut self,
         server_name: &str,
@@ -502,6 +508,8 @@ impl McpServerManager {
     }
 
     /// Read a specific resource from an MCP server.
+    /// # Errors
+    /// Returns a [`McpServerManagerError`] if the resource cannot be read or the response is invalid.
     pub async fn read_resource(
         &mut self,
         server_name: &str,
@@ -548,6 +556,8 @@ impl McpServerManager {
             .collect()
     }
 
+    /// # Errors
+    /// Returns a [`McpServerManagerError`] if the server fails to shut down cleanly.
     pub async fn shutdown(&mut self) -> Result<(), McpServerManagerError> {
         let server_names = self.servers.keys().cloned().collect::<Vec<_>>();
         for server_name in server_names {
@@ -657,6 +667,8 @@ pub struct McpStdioProcess {
 }
 
 impl McpStdioProcess {
+    /// # Errors
+    /// Returns an [`io::Error`] if the MCP subprocess cannot be spawned or its stdio cannot be captured.
     pub fn spawn(transport: &McpStdioTransport) -> io::Result<Self> {
         let mut command = Command::new(&transport.command);
         command
@@ -683,20 +695,28 @@ impl McpStdioProcess {
         })
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the bytes cannot be written to the subprocess stdin.
     pub async fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.stdin.write_all(bytes).await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the subprocess stdin cannot be flushed.
     pub async fn flush(&mut self) -> io::Result<()> {
         self.stdin.flush().await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the line cannot be written to the subprocess stdin.
     pub async fn write_line(&mut self, line: &str) -> io::Result<()> {
         self.write_all(line.as_bytes()).await?;
         self.write_all(b"\n").await?;
         self.flush().await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if a line cannot be read from the subprocess stdout.
     pub async fn read_line(&mut self) -> io::Result<String> {
         let mut line = String::new();
         let bytes_read = self.stdout.read_line(&mut line).await?;
@@ -709,6 +729,8 @@ impl McpStdioProcess {
         Ok(line)
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if reading from the subprocess stdout fails.
     pub async fn read_available(&mut self) -> io::Result<Vec<u8>> {
         let mut buffer = vec![0_u8; 4096];
         let read = self.stdout.read(&mut buffer).await?;
@@ -716,12 +738,16 @@ impl McpStdioProcess {
         Ok(buffer)
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the framed payload cannot be written to the subprocess stdin.
     pub async fn write_frame(&mut self, payload: &[u8]) -> io::Result<()> {
         let encoded = encode_frame(payload);
         self.write_all(&encoded).await?;
         self.flush().await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if a frame cannot be read or its header is malformed.
     pub async fn read_frame(&mut self) -> io::Result<Vec<u8>> {
         let mut content_length = None;
         loop {
@@ -753,18 +779,24 @@ impl McpStdioProcess {
         Ok(payload)
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if `message` cannot be serialized or written to the subprocess.
     pub async fn write_jsonrpc_message<T: Serialize>(&mut self, message: &T) -> io::Result<()> {
         let body = serde_json::to_vec(message)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         self.write_frame(&body).await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if a message cannot be read from the subprocess or fails to deserialize into `T`.
     pub async fn read_jsonrpc_message<T: DeserializeOwned>(&mut self) -> io::Result<T> {
         let payload = self.read_frame().await?;
         serde_json::from_slice(&payload)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the request cannot be serialized or written to the subprocess.
     pub async fn send_request<T: Serialize>(
         &mut self,
         request: &JsonRpcRequest<T>,
@@ -772,10 +804,14 @@ impl McpStdioProcess {
         self.write_jsonrpc_message(request).await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the response cannot be read or fails to deserialize.
     pub async fn read_response<T: DeserializeOwned>(&mut self) -> io::Result<JsonRpcResponse<T>> {
         self.read_jsonrpc_message().await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the request cannot be sent or the response cannot be read or deserialized.
     pub async fn request<TParams: Serialize, TResult: DeserializeOwned>(
         &mut self,
         id: JsonRpcId,
@@ -787,6 +823,8 @@ impl McpStdioProcess {
         self.read_response().await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the initialize handshake fails or the response cannot be parsed.
     pub async fn initialize(
         &mut self,
         id: JsonRpcId,
@@ -795,6 +833,8 @@ impl McpStdioProcess {
         self.request(id, "initialize", Some(params)).await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the tool listing request fails or the response cannot be parsed.
     pub async fn list_tools(
         &mut self,
         id: JsonRpcId,
@@ -803,6 +843,8 @@ impl McpStdioProcess {
         self.request(id, "tools/list", params).await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the tool call fails or the response cannot be parsed.
     pub async fn call_tool(
         &mut self,
         id: JsonRpcId,
@@ -811,6 +853,8 @@ impl McpStdioProcess {
         self.request(id, "tools/call", Some(params)).await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the resource listing request fails or the response cannot be parsed.
     pub async fn list_resources(
         &mut self,
         id: JsonRpcId,
@@ -819,6 +863,8 @@ impl McpStdioProcess {
         self.request(id, "resources/list", params).await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the resource read request fails or the response cannot be parsed.
     pub async fn read_resource(
         &mut self,
         id: JsonRpcId,
@@ -827,10 +873,14 @@ impl McpStdioProcess {
         self.request(id, "resources/read", Some(params)).await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the subprocess cannot be terminated.
     pub async fn terminate(&mut self) -> io::Result<()> {
         self.child.kill().await
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if waiting on the subprocess fails.
     pub async fn wait(&mut self) -> io::Result<std::process::ExitStatus> {
         self.child.wait().await
     }
@@ -844,6 +894,8 @@ impl McpStdioProcess {
     }
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the MCP subprocess cannot be spawned from `bootstrap`.
 pub fn spawn_mcp_stdio_process(bootstrap: &McpClientBootstrap) -> io::Result<McpStdioProcess> {
     match &bootstrap.transport {
         McpClientTransport::Stdio(transport) => McpStdioProcess::spawn(transport),

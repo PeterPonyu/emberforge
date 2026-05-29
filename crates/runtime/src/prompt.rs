@@ -56,6 +56,8 @@ pub struct ProjectContext {
 }
 
 impl ProjectContext {
+    /// # Errors
+    /// Returns an [`io::Error`] if project files cannot be read while discovering prompt context.
     pub fn discover(
         cwd: impl Into<PathBuf>,
         current_date: impl Into<String>,
@@ -71,6 +73,8 @@ impl ProjectContext {
         })
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if project files or git metadata cannot be read while discovering prompt context.
     pub fn discover_with_git(
         cwd: impl Into<PathBuf>,
         current_date: impl Into<String>,
@@ -417,6 +421,8 @@ fn collapse_blank_lines(content: &str) -> String {
     result
 }
 
+/// # Errors
+/// Returns `Err` if prompt discovery fails or a prompt component cannot be read.
 pub fn load_system_prompt(
     cwd: impl Into<PathBuf>,
     current_date: impl Into<String>,

@@ -280,6 +280,8 @@ fn extract_xml_tag(xml: &str, tag: &str) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 /// Ensure the scratchpad directory exists and return its path.
+/// # Errors
+/// Returns an [`io::Error`] if the scratchpad directory cannot be created.
 pub fn ensure_scratchpad_dir() -> io::Result<PathBuf> {
     let cwd = std::env::current_dir()?;
     let dir = cwd.join(".ember").join("scratchpad");
@@ -322,6 +324,8 @@ impl Coordinator {
     }
 
     /// Activate coordinator mode.
+    /// # Errors
+    /// Returns an [`io::Error`] if the scratchpad directory cannot be created or initialized.
     pub fn activate(&mut self) -> io::Result<()> {
         self.active = true;
         self.scratchpad_dir = Some(ensure_scratchpad_dir()?);
@@ -370,6 +374,8 @@ impl Coordinator {
     }
 
     /// Spawn a new worker agent with restricted tools.
+    /// # Errors
+    /// Returns `Err` with a message if a worker with the same name already exists or cannot be spawned.
     pub fn spawn_worker(
         &self,
         name: &str,
@@ -406,6 +412,8 @@ impl Coordinator {
     }
 
     /// Assign a task to a worker.
+    /// # Errors
+    /// Returns `Err` with a message if the worker id is unknown.
     pub fn assign_task(&self, worker_id: &str, task: &str) -> Result<(), String> {
         let mut workers = self.workers.lock().map_err(|e| e.to_string())?;
         let worker = workers
@@ -417,6 +425,8 @@ impl Coordinator {
     }
 
     /// Mark a worker as completed.
+    /// # Errors
+    /// Returns `Err` with a message if the worker id is unknown.
     pub fn complete_worker(&self, worker_id: &str) -> Result<(), String> {
         let mut workers = self.workers.lock().map_err(|e| e.to_string())?;
         let worker = workers
@@ -427,6 +437,8 @@ impl Coordinator {
     }
 
     /// Add a scratchpad entry for a worker.
+    /// # Errors
+    /// Returns `Err` with a message if the worker id is unknown or the scratchpad cannot be written.
     pub fn append_scratchpad(&self, worker_id: &str, content: &str) -> Result<(), String> {
         let mut workers = self.workers.lock().map_err(|e| e.to_string())?;
         let worker = workers
@@ -440,6 +452,8 @@ impl Coordinator {
     }
 
     /// Broadcast a message to all workers.
+    /// # Errors
+    /// Returns `Err` with a message if the broadcast cannot be delivered.
     pub fn broadcast(&self, from: &str, content: &str) -> Result<usize, String> {
         let workers = self.workers.lock().map_err(|e| e.to_string())?;
         let count = workers.len();
@@ -462,6 +476,8 @@ impl Coordinator {
     }
 
     /// Remove a worker by ID.
+    /// # Errors
+    /// Returns `Err` with a message if the worker id is unknown.
     pub fn remove_worker(&self, worker_id: &str) -> Result<bool, String> {
         let mut workers = self.workers.lock().map_err(|e| e.to_string())?;
         Ok(workers.remove(worker_id).is_some())

@@ -51,6 +51,8 @@ impl FileHistoryStore {
     }
 
     /// Take a snapshot of a file's current content before modifying it.
+    /// # Errors
+    /// Returns an [`io::Error`] if the file cannot be read or the snapshot cannot be stored.
     pub fn snapshot_before_edit(&mut self, path: &Path, trigger: &str) -> io::Result<()> {
         let abs = if path.is_absolute() {
             path.to_path_buf()
@@ -96,6 +98,8 @@ impl FileHistoryStore {
     }
 
     /// Restore a file to its most recent snapshot content.
+    /// # Errors
+    /// Returns an [`io::Error`] if the snapshot cannot be read or the file cannot be restored.
     pub fn restore_latest(&self, path: &Path) -> io::Result<bool> {
         if let Some(snapshot) = self.latest_snapshot(path) {
             if let Some(content) = &snapshot.content {
@@ -128,6 +132,8 @@ impl FileHistoryStore {
     }
 
     /// Save the history store to a JSON file.
+    /// # Errors
+    /// Returns an [`io::Error`] if the history cannot be serialized or written to `path`.
     pub fn save(&self, path: &Path) -> io::Result<()> {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -138,6 +144,8 @@ impl FileHistoryStore {
     }
 
     /// Load the history store from a JSON file.
+    /// # Errors
+    /// Returns an [`io::Error`] if `path` cannot be read or its contents fail to deserialize.
     pub fn load(path: &Path) -> io::Result<Self> {
         let json = fs::read_to_string(path)?;
         serde_json::from_str(&json).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))

@@ -478,6 +478,9 @@ async fn teleport_import(
     ))
 }
 
+// SAFETY rationale documented at the `expect` below: the only `expect` here is
+// the infallible clock-vs-UNIX_EPOCH invariant, so a tight fn-scoped allow is used.
+#[allow(clippy::expect_used)]
 fn unix_timestamp_millis() -> u64 {
     u64::try_from(
         // SAFETY: `duration_since(UNIX_EPOCH)` only fails when the system clock

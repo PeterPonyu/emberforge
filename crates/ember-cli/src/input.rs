@@ -471,6 +471,9 @@ impl LineEditor {
         }
     }
 
+    // Char-boundary slices guarded by `cursor < len` checks are infallible;
+    // see the per-site SAFETY rationales.
+    #[allow(clippy::unwrap_used)]
     fn handle_normal_char(&mut self, session: &mut EditSession, ch: char) {
         // ── Pending find motion: waiting for target char ──
         if let Some(find_type) = session.pending_find.take() {
@@ -1423,6 +1426,8 @@ fn char_class(ch: char) -> CharClass {
 }
 
 /// Move forward to the start of the next vim word (w).
+// Char-boundary slices guarded by `pos < len` are infallible; see SAFETY notes.
+#[allow(clippy::unwrap_used)]
 fn word_forward(text: &str, cursor: usize) -> usize {
     let len = text.len();
     if cursor >= len {
@@ -1495,6 +1500,8 @@ fn word_backward(text: &str, cursor: usize) -> usize {
 }
 
 /// Move to the end of the current/next vim word (e).
+// Char-boundary slices guarded by `pos < len` are infallible; see SAFETY notes.
+#[allow(clippy::unwrap_used)]
 fn word_end(text: &str, cursor: usize) -> usize {
     let len = text.len();
     if cursor >= len {
@@ -1536,6 +1543,8 @@ fn word_end(text: &str, cursor: usize) -> usize {
 }
 
 /// Move forward to the start of the next WORD (W) — whitespace-delimited.
+// Char-boundary slices guarded by `pos < len` are infallible; see SAFETY notes.
+#[allow(clippy::unwrap_used)]
 fn big_word_forward(text: &str, cursor: usize) -> usize {
     let len = text.len();
     let mut pos = cursor;
@@ -1584,6 +1593,8 @@ fn big_word_backward(text: &str, cursor: usize) -> usize {
 }
 
 /// Move to the end of the current/next WORD (E).
+// Char-boundary slices guarded by `pos < len` are infallible; see SAFETY notes.
+#[allow(clippy::unwrap_used)]
 fn big_word_end(text: &str, cursor: usize) -> usize {
     let len = text.len();
     let mut pos = next_boundary(text, cursor);
