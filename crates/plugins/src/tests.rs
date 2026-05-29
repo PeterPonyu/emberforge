@@ -1,8 +1,8 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use crate::error::*;
 use crate::manager::*;
-use crate::registry::*;
 use crate::types::*;
-use crate::*;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;

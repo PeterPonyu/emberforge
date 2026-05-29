@@ -101,6 +101,12 @@ impl PluginManager {
         self.config.config_home.join(SETTINGS_FILE_NAME)
     }
 
+    /// Build a registry containing bundled, installed, external, and built-in plugins.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when plugin discovery, bundled-plugin sync, registry
+    /// loading, or external directory scanning fails.
     pub fn plugin_registry(&self) -> Result<PluginRegistry, PluginError> {
         Ok(PluginRegistry::new(
             self.discover_plugins()?
@@ -113,14 +119,31 @@ impl PluginManager {
         ))
     }
 
+    /// List every discovered plugin and its enabled state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the plugin registry cannot be built.
     pub fn list_plugins(&self) -> Result<Vec<PluginSummary>, PluginError> {
         Ok(self.plugin_registry()?.summaries())
     }
 
+    /// List plugins recorded in the installed-plugin registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the installed registry cannot be read or
+    /// normalized.
     pub fn list_installed_plugins(&self) -> Result<Vec<PluginSummary>, PluginError> {
         Ok(self.installed_plugin_registry()?.summaries())
     }
 
+    /// Discover all plugins visible to this manager.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when bundled plugin sync, installed plugin
+    /// loading, or external plugin scanning fails.
     pub fn discover_plugins(&self) -> Result<Vec<PluginDefinition>, PluginError> {
         self.sync_bundled_plugins()?;
         let mut plugins = builtin_plugins();
@@ -129,19 +152,43 @@ impl PluginManager {
         Ok(plugins)
     }
 
+    /// Aggregate hooks from all enabled plugins.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when registry construction or hook aggregation
+    /// fails.
     pub fn aggregated_hooks(&self) -> Result<PluginHooks, PluginError> {
         self.plugin_registry()?.aggregated_hooks()
     }
 
+    /// Aggregate tools from all enabled plugins.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when registry construction fails, an enabled
+    /// plugin is invalid, or duplicate tool names are detected.
     pub fn aggregated_tools(&self) -> Result<Vec<PluginTool>, PluginError> {
         self.plugin_registry()?.aggregated_tools()
     }
 
+    /// Validate a local plugin source before installation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the source cannot be resolved, read, parsed,
+    /// or validated as a plugin manifest.
     pub fn validate_plugin_source(&self, source: &str) -> Result<PluginManifest, PluginError> {
         let path = resolve_local_source(source)?;
         load_plugin_from_directory(&path)
     }
 
+    /// Install a plugin from a local path or git URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when source materialization, manifest loading,
+    /// filesystem copying, registry writing, or enabled-state persistence fails.
     pub fn install(&mut self, source: &str) -> Result<InstallOutcome, PluginError> {
         let install_source = parse_install_source(source)?;
         let temp_root = self.install_root().join(".tmp");
@@ -185,6 +232,12 @@ impl PluginManager {
         })
     }
 
+    /// Enable a known plugin.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the plugin is unknown or settings cannot be
+    /// persisted.
     pub fn enable(&mut self, plugin_id: &str) -> Result<(), PluginError> {
         self.ensure_known_plugin(plugin_id)?;
         self.write_enabled_state(plugin_id, Some(true))?;
@@ -194,6 +247,12 @@ impl PluginManager {
         Ok(())
     }
 
+    /// Disable a known plugin.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the plugin is unknown or settings cannot be
+    /// persisted.
     pub fn disable(&mut self, plugin_id: &str) -> Result<(), PluginError> {
         self.ensure_known_plugin(plugin_id)?;
         self.write_enabled_state(plugin_id, Some(false))?;
@@ -203,6 +262,12 @@ impl PluginManager {
         Ok(())
     }
 
+    /// Uninstall an external plugin.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the plugin is not installed, is bundled, or
+    /// registry/settings/filesystem updates fail.
     pub fn uninstall(&mut self, plugin_id: &str) -> Result<(), PluginError> {
         let mut registry = self.load_registry()?;
         let record = registry.plugins.remove(plugin_id).ok_or_else(|| {
@@ -223,6 +288,13 @@ impl PluginManager {
         Ok(())
     }
 
+    /// Update an installed external plugin from its original source.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the plugin is not installed, source
+    /// materialization fails, the updated manifest cannot be loaded, or registry
+    /// and filesystem updates fail.
     pub fn update(&mut self, plugin_id: &str) -> Result<UpdateOutcome, PluginError> {
         let mut registry = self.load_registry()?;
         let record = registry.plugins.get(plugin_id).cloned().ok_or_else(|| {
@@ -565,6 +637,12 @@ fn load_plugin_definition(
     })
 }
 
+/// Load and validate a plugin manifest from a directory.
+///
+/// # Errors
+///
+/// Returns [`PluginError`] when the manifest file cannot be read, parsed, or
+/// validated.
 pub fn load_plugin_from_directory(root: &Path) -> Result<PluginManifest, PluginError> {
     load_manifest_from_directory(root)
 }
@@ -1130,8 +1208,7 @@ fn describe_install_source(source: &PluginInstallSource) -> String {
 fn unix_time_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("time should be after epoch")
-        .as_millis()
+        .map_or(0, |duration| duration.as_millis())
 }
 
 fn copy_dir_all(source: &Path, destination: &Path) -> Result<(), PluginError> {
@@ -1177,7 +1254,8 @@ fn ensure_object<'a>(root: &'a mut Map<String, Value>, key: &str) -> &'a mut Map
     if !root.get(key).is_some_and(Value::is_object) {
         root.insert(key.to_string(), Value::Object(Map::new()));
     }
-    root.get_mut(key)
-        .and_then(Value::as_object_mut)
-        .expect("object should exist")
+    match root.get_mut(key) {
+        Some(Value::Object(object)) => object,
+        _ => unreachable!("ensure_object inserts a JSON object before returning it"),
+    }
 }

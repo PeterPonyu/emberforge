@@ -85,6 +85,12 @@ impl HookRunner {
         Self { hooks }
     }
 
+    /// Build a hook runner from the enabled hooks in a plugin registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when an enabled plugin has an invalid manifest
+    /// while its hook configuration is aggregated.
     pub fn from_registry(plugin_registry: &PluginRegistry) -> Result<Self, PluginError> {
         Ok(Self::new(plugin_registry.aggregated_hooks()?))
     }
@@ -322,6 +328,8 @@ impl CommandWithStdin {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::{HookRunResult, HookRunner};
     use crate::{PluginManager, PluginManagerConfig};
     use std::fs;
