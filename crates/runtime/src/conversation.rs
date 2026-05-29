@@ -615,7 +615,10 @@ mod tests {
 
         struct SingleCallApiClient;
         impl ApiClient for SingleCallApiClient {
-            fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
+            fn stream(
+                &mut self,
+                request: ApiRequest<'_>,
+            ) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 if request
                     .messages
                     .iter()
@@ -663,7 +666,10 @@ mod tests {
         }
 
         impl ApiClient for SingleCallApiClient {
-            fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
+            fn stream(
+                &mut self,
+                request: ApiRequest<'_>,
+            ) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 self.calls += 1;
                 match self.calls {
                     1 => {
@@ -715,7 +721,10 @@ mod tests {
     fn denies_tool_use_when_pre_tool_hook_blocks() {
         struct SingleCallApiClient;
         impl ApiClient for SingleCallApiClient {
-            fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
+            fn stream(
+                &mut self,
+                request: ApiRequest<'_>,
+            ) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 if request
                     .messages
                     .iter()
@@ -779,7 +788,10 @@ mod tests {
         }
 
         impl ApiClient for TwoCallApiClient {
-            fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
+            fn stream(
+                &mut self,
+                request: ApiRequest<'_>,
+            ) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 self.calls += 1;
                 match self.calls {
                     1 => Ok(vec![
