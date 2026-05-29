@@ -111,11 +111,15 @@ pub fn is_bare_repo(git_root: &Path) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Get the current HEAD commit hash (short form).
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn get_head(cwd: &Path) -> io::Result<String> {
     git_output(cwd, &["rev-parse", "--short", "HEAD"])
 }
 
 /// Get the current branch name. Returns `None` if in detached HEAD state.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn get_branch(cwd: &Path) -> io::Result<Option<String>> {
     match git_output(cwd, &["symbolic-ref", "--short", "HEAD"]) {
         Ok(branch) if !branch.is_empty() => Ok(Some(branch)),
@@ -127,6 +131,8 @@ pub fn get_branch(cwd: &Path) -> io::Result<Option<String>> {
 ///
 /// Checks the remote HEAD first, then falls back to checking whether `main`
 /// or `master` exist locally.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn get_default_branch(cwd: &Path) -> io::Result<String> {
     // Try remote HEAD symbolic ref (works when origin is set).
     if let Ok(sym) = git_output(cwd, &["symbolic-ref", "refs/remotes/origin/HEAD"]) {
@@ -151,6 +157,8 @@ pub fn get_default_branch(cwd: &Path) -> io::Result<String> {
 }
 
 /// Get the remote URL for origin.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn get_remote_url(cwd: &Path) -> io::Result<Option<String>> {
     match git_output(cwd, &["remote", "get-url", "origin"]) {
         Ok(url) if !url.is_empty() => Ok(Some(url)),
@@ -161,6 +169,8 @@ pub fn get_remote_url(cwd: &Path) -> io::Result<Option<String>> {
 /// Check if the working tree is clean (no uncommitted changes).
 ///
 /// When `ignore_untracked` is true, untracked files are not considered dirty.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn is_clean(cwd: &Path, ignore_untracked: bool) -> io::Result<bool> {
     let args: Vec<&str> = if ignore_untracked {
         vec!["status", "--porcelain", "-uno"]
@@ -210,6 +220,8 @@ pub struct FileStatus {
 ///
 /// Parses `git status --porcelain=v1` output. Each line has the format
 /// `XY <path>` where X is the index status and Y the work-tree status.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn get_changed_files(cwd: &Path) -> io::Result<Vec<FileStatus>> {
     let raw = git_output(cwd, &["status", "--porcelain"])?;
     if raw.is_empty() {
@@ -255,6 +267,8 @@ pub fn get_changed_files(cwd: &Path) -> io::Result<Vec<FileStatus>> {
 /// Check if HEAD has been pushed to the remote tracking branch.
 ///
 /// Returns `true` when there are local commits not yet on the remote.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn has_unpushed_commits(cwd: &Path) -> io::Result<bool> {
     // @{u} refers to the upstream tracking branch.
     match git_output(cwd, &["rev-list", "--count", "@{u}..HEAD"]) {
@@ -268,6 +282,8 @@ pub fn has_unpushed_commits(cwd: &Path) -> io::Result<bool> {
 }
 
 /// Get the number of git worktrees.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn get_worktree_count(cwd: &Path) -> io::Result<usize> {
     let trees = list_worktrees(cwd)?;
     Ok(trees.len())
@@ -290,6 +306,8 @@ pub struct GitState {
 }
 
 /// Capture a complete git state snapshot.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn get_git_state(cwd: &Path) -> io::Result<GitState> {
     let head = get_head(cwd)?;
     let branch = get_branch(cwd)?;
@@ -321,6 +339,8 @@ pub fn get_git_state(cwd: &Path) -> io::Result<GitState> {
 ///
 /// Returns the stash ref (e.g. `stash@{0}`) if changes were stashed, or
 /// `None` if there was nothing to stash.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn safe_stash(cwd: &Path) -> io::Result<Option<String>> {
     // Check if there is anything to stash.
     if is_clean(cwd, false)? {
@@ -351,11 +371,15 @@ pub fn safe_stash(cwd: &Path) -> io::Result<Option<String>> {
 }
 
 /// Pop the most recent stash.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn stash_pop(cwd: &Path) -> io::Result<()> {
     git_ok(cwd, &["stash", "pop"])
 }
 
 /// Check if the repository is a shallow clone.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn is_shallow_clone(cwd: &Path) -> io::Result<bool> {
     // Modern git (2.15+) supports --is-shallow-repository.
     match git_output(cwd, &["rev-parse", "--is-shallow-repository"]) {
@@ -374,6 +398,8 @@ pub fn is_shallow_clone(cwd: &Path) -> io::Result<bool> {
 /// Find the merge-base between HEAD and a remote branch.
 ///
 /// `remote_branch` should be a full ref like `origin/main`.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn find_merge_base(cwd: &Path, remote_branch: &str) -> io::Result<Option<String>> {
     match git_output(cwd, &["merge-base", "HEAD", remote_branch]) {
         Ok(hash) if !hash.is_empty() => Ok(Some(hash)),
@@ -435,6 +461,8 @@ fn parse_owner_repo(s: &str) -> Option<(String, String)> {
 }
 
 /// Get the GitHub owner/repo for the current repository.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn get_github_repo(cwd: &Path) -> io::Result<Option<(String, String)>> {
     let Some(url) = get_remote_url(cwd)? else {
         return Ok(None);
@@ -465,6 +493,8 @@ pub struct WorktreeInfo {
 /// HEAD abc123
 /// branch refs/heads/main
 /// ```
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn list_worktrees(cwd: &Path) -> io::Result<Vec<WorktreeInfo>> {
     let raw = git_output(cwd, &["worktree", "list", "--porcelain"])?;
     if raw.is_empty() {
@@ -508,12 +538,16 @@ pub fn list_worktrees(cwd: &Path) -> io::Result<Vec<WorktreeInfo>> {
 }
 
 /// Create a new worktree.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn create_worktree(cwd: &Path, path: &Path, branch: &str) -> io::Result<()> {
     let path_str = path.to_string_lossy();
     git_ok(cwd, &["worktree", "add", &path_str, branch])
 }
 
 /// Remove a worktree.
+/// # Errors
+/// Returns an [`io::Error`] if the `git` subprocess cannot be spawned or exits non-zero.
 pub fn remove_worktree(cwd: &Path, path: &Path) -> io::Result<()> {
     let path_str = path.to_string_lossy();
     git_ok(cwd, &["worktree", "remove", &path_str])
@@ -525,6 +559,9 @@ pub fn remove_worktree(cwd: &Path, path: &Path) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use std::fs;
 

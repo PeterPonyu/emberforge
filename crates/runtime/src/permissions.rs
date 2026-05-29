@@ -756,6 +756,9 @@ fn format_rule_source(source: RuleSource) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{
         DenialTracker, PermissionMode, PermissionOutcome, PermissionPolicy,
         PermissionPromptDecision, PermissionPrompter, PermissionRequest, PermissionRule,

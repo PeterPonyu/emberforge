@@ -491,6 +491,9 @@ fn normalize_path_allow_missing(path: &str) -> io::Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{edit_file, glob_search, grep_search, read_file, write_file, GrepSearchInput};

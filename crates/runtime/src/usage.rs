@@ -211,6 +211,9 @@ impl UsageTracker {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{format_usd, pricing_for_model, TokenUsage, UsageTracker};
     use crate::session::{ContentBlock, ConversationMessage, MessageRole, Session};
 

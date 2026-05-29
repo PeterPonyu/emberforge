@@ -1071,6 +1071,9 @@ pub fn render_checkpoint_context(checkpoint: &PreCompactCheckpoint) -> Option<St
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{
         collect_key_files, compact_session, estimate_session_tokens, format_compact_summary,
         get_compact_continuation_message, infer_pending_work, should_compact, CompactionConfig,
