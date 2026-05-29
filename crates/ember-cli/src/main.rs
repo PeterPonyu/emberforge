@@ -7401,11 +7401,10 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
     }
 
     // Uses a fake PID (u32::MAX) and expects the reconciler to mark the worker
-    // dead. Liveness is checked via `kill(pid, 0)`-style POSIX signaling; the
-    // Windows path uses different API and returns a different status for an
-    // arbitrary PID, so gate this case on Unix until liveness is abstracted
-    // behind a cross-platform trait (tracked in the cross-platform test work).
-    #[cfg(unix)]
+    // dead. Liveness is now resolved by `task_mgmt::process_is_alive`, which is
+    // cross-platform: `/proc` on Linux, `kill -0` on other Unix, and a
+    // `tasklist /FI "PID eq <pid>"` probe on Windows. A fake PID is absent on
+    // every platform, so this test runs everywhere.
     #[test]
     fn task_reports_mark_current_session_and_reconcile_dead_workers() {
         let _lock = env_lock();

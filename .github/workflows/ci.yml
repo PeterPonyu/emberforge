@@ -38,13 +38,12 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets
 
-      # cargo test stays skipped on Windows: the plugin and runtime suites have
-      # additional POSIX-only assumptions (process-exit-code paths, shell-script
-      # fixtures) on top of the four cases addressed by per-test cfg gates in
-      # this PR. windows-latest continues to gate cargo check, clippy, and the
-      # release build. Re-enabling test on Windows is tracked in #25.
+      # cargo test now runs on every OS, including windows-latest (refs #25).
+      # The remaining POSIX-only suites (mcp_stdio shell-script fixtures, the
+      # plugin tool/lifecycle fixtures, and a few env/path cases) are gated
+      # with `#[cfg(unix)]` and inline justification, so they simply do not
+      # compile into the Windows test binaries rather than failing the run.
       - name: Run cargo test
-        if: runner.os != 'Windows'
         run: cargo test --workspace
 
       - name: Run release build

@@ -420,7 +420,33 @@ fn process_is_alive(pid: u32) -> bool {
             .status();
         matches!(ret, Ok(status) if status.success())
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        // No FFI: the workspace forbids `unsafe`, so we cannot call
+        // `OpenProcess`/`GetExitCodeProcess` directly. Instead we query the
+        // built-in `tasklist` utility, which reports the matching process or
+        // the literal "INFO: No tasks ..." line when the PID is absent. This
+        // mirrors the subprocess-based `kill -0` probe used on non-Linux Unix.
+        let output = std::process::Command::new("tasklist")
+            .arg("/FI")
+            .arg(format!("PID eq {pid}"))
+            .arg("/NH")
+            .stderr(std::process::Stdio::null())
+            .output();
+        match output {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                // `tasklist` echoes the PID in the matching row; the "no tasks"
+                // notice never contains the queried PID, so a substring check
+                // distinguishes a live process from an absent one.
+                stdout.contains(&pid.to_string())
+            }
+            // If `tasklist` is unavailable or errors, fall back to assuming the
+            // process is alive so we never spuriously mark a task interrupted.
+            _ => true,
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = pid;
         true
