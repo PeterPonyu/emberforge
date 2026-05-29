@@ -23,9 +23,16 @@ const TOKEN_ESTIMATION_PADDING_DEN: usize = 3;
 
 /// Tools whose results are safe to content-clear during micro-compaction.
 const COMPACTABLE_TOOLS: &[&str] = &[
-    "bash", "read_file", "grep_search", "glob_search",
-    "WebFetch", "WebSearch", "edit_file", "write_file",
-    "NotebookEdit", "LSPTool",
+    "bash",
+    "read_file",
+    "grep_search",
+    "glob_search",
+    "WebFetch",
+    "WebSearch",
+    "edit_file",
+    "write_file",
+    "NotebookEdit",
+    "LSPTool",
 ];
 /// Number of recent files to restore after full compaction.
 const POST_COMPACT_MAX_FILES: usize = 5;
@@ -247,8 +254,7 @@ pub fn compact_session(session: &Session, config: CompactionConfig) -> Compactio
     let summary =
         merge_compact_summaries(existing_summary.as_deref(), &summarize_messages(removed));
     let formatted_summary = format_compact_summary(&summary);
-    let mut continuation =
-        get_compact_continuation_message(&summary, false, !preserved.is_empty());
+    let mut continuation = get_compact_continuation_message(&summary, false, !preserved.is_empty());
     if let Some(checkpoint_context) = checkpoint_context {
         continuation.push_str("\n\n");
         continuation.push_str(&checkpoint_context);
@@ -347,7 +353,10 @@ pub fn micro_compact_session(session: &Session, preserve_recent: usize) -> Micro
     let mut compactable_positions: Vec<(usize, usize, String)> = Vec::new();
     for (msg_idx, message) in messages.iter().enumerate().take(boundary) {
         for (blk_idx, block) in message.blocks.iter().enumerate() {
-            if let ContentBlock::ToolResult { tool_name, output, .. } = block {
+            if let ContentBlock::ToolResult {
+                tool_name, output, ..
+            } = block
+            {
                 if is_compactable_tool(tool_name) && !output.is_empty() {
                     compactable_positions.push((msg_idx, blk_idx, tool_name.clone()));
                 }
@@ -392,9 +401,11 @@ pub fn micro_compact_session(session: &Session, preserve_recent: usize) -> Micro
     // Also truncate any non-compactable oversized results (fallback)
     for message in messages.iter_mut().take(boundary) {
         for block in &mut message.blocks {
-            if let ContentBlock::ToolResult { tool_name, output, .. } = block {
-                if !is_compactable_tool(tool_name)
-                    && output.len() > MICRO_COMPACT_TOOL_RESULT_LIMIT
+            if let ContentBlock::ToolResult {
+                tool_name, output, ..
+            } = block
+            {
+                if !is_compactable_tool(tool_name) && output.len() > MICRO_COMPACT_TOOL_RESULT_LIMIT
                 {
                     let old_tokens = estimate_text_tokens(output);
                     let truncated: String = output
@@ -558,10 +569,7 @@ pub fn post_compact_restore_file_hints(result: &CompactionResult) -> CompactionR
         return result.clone();
     }
 
-    let restore_files: Vec<_> = files
-        .into_iter()
-        .take(POST_COMPACT_MAX_FILES)
-        .collect();
+    let restore_files: Vec<_> = files.into_iter().take(POST_COMPACT_MAX_FILES).collect();
     let _ = POST_COMPACT_PER_FILE_TOKENS; // reserved for future per-file content restoration
 
     let hint = format!(
@@ -1010,15 +1018,14 @@ pub fn create_pre_compact_checkpoint(session: &Session) -> PreCompactCheckpoint 
         .take(10)
         .flat_map(|msg| msg.blocks.iter())
         .filter_map(|block| match block {
-            ContentBlock::Text { text } if text.contains("TODO") || text.contains("todo") => {
-                text.lines()
-                    .filter(|line| {
-                        let t = line.trim().to_ascii_lowercase();
-                        t.contains("todo") || t.starts_with("- [ ]")
-                    })
-                    .map(|line| line.trim().to_string())
-                    .next()
-            }
+            ContentBlock::Text { text } if text.contains("TODO") || text.contains("todo") => text
+                .lines()
+                .filter(|line| {
+                    let t = line.trim().to_ascii_lowercase();
+                    t.contains("todo") || t.starts_with("- [ ]")
+                })
+                .map(|line| line.trim().to_string())
+                .next(),
             _ => None,
         })
         .collect();
@@ -1179,7 +1186,7 @@ mod tests {
             &Session {
                 version: 1,
                 plan_mode: false,
-            messages: follow_up_messages,
+                messages: follow_up_messages,
             },
             config,
         );
@@ -1278,7 +1285,8 @@ mod tests {
                     "TODO: keep the current execution checklist visible after compaction.",
                 ),
                 ConversationMessage::assistant(vec![ContentBlock::Text {
-                    text: "Next: wire the checkpoint back into the continuation system message.".to_string(),
+                    text: "Next: wire the checkpoint back into the continuation system message."
+                        .to_string(),
                 }]),
                 ConversationMessage::user_text("word ".repeat(250)),
             ],
@@ -1297,9 +1305,13 @@ mod tests {
         };
 
         assert!(text.contains("Pre-compaction state — pending TODOs:"));
-        assert!(text.contains("TODO: keep the current execution checklist visible after compaction."));
+        assert!(
+            text.contains("TODO: keep the current execution checklist visible after compaction.")
+        );
         assert!(text.contains("Pre-compaction state — detected pending work:"));
-        assert!(text.contains("Next: wire the checkpoint back into the continuation system message."));
+        assert!(
+            text.contains("Next: wire the checkpoint back into the continuation system message.")
+        );
         assert!(text.contains("Pre-compaction state — plan mode was active"));
         assert!(text.contains(super::COMPACT_DIRECT_RESUME_INSTRUCTION));
     }
@@ -1307,8 +1319,8 @@ mod tests {
     // ── Auto-compaction tests ──────────────────────────────────────────
 
     use super::{
-        auto_compact_session, calculate_token_warning, micro_compact_session,
-        should_auto_compact, AutoCompactConfig, AutoCompactState, TokenWarningLevel,
+        auto_compact_session, calculate_token_warning, micro_compact_session, should_auto_compact,
+        AutoCompactConfig, AutoCompactState, TokenWarningLevel,
     };
 
     #[test]

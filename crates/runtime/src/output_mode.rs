@@ -192,8 +192,8 @@ pub fn message_to_output_events(message: &ConversationMessage) -> Vec<OutputEven
                 });
             }
             ContentBlock::ToolUse { id, name, input } => {
-                let input_value = serde_json::from_str(input)
-                    .unwrap_or_else(|_| json!({ "raw": input }));
+                let input_value =
+                    serde_json::from_str(input).unwrap_or_else(|_| json!({ "raw": input }));
                 events.push(OutputEvent::ToolUse {
                     id: id.clone(),
                     name: name.clone(),
@@ -243,8 +243,8 @@ pub fn build_json_response(
             match block {
                 ContentBlock::Text { text } => texts.push(text.clone()),
                 ContentBlock::ToolUse { id, name, input } => {
-                    let input_val = serde_json::from_str(input)
-                        .unwrap_or_else(|_| json!({ "raw": input }));
+                    let input_val =
+                        serde_json::from_str(input).unwrap_or_else(|_| json!({ "raw": input }));
                     tool_uses.push(json!({
                         "id": id,
                         "name": name,
@@ -298,10 +298,22 @@ mod tests {
     #[test]
     fn output_mode_parse_variants() {
         assert_eq!(OutputMode::from_str_loose("json"), Some(OutputMode::Json));
-        assert_eq!(OutputMode::from_str_loose("NDJSON"), Some(OutputMode::Ndjson));
-        assert_eq!(OutputMode::from_str_loose("jsonl"), Some(OutputMode::Ndjson));
-        assert_eq!(OutputMode::from_str_loose("terminal"), Some(OutputMode::Terminal));
-        assert_eq!(OutputMode::from_str_loose("tty"), Some(OutputMode::Terminal));
+        assert_eq!(
+            OutputMode::from_str_loose("NDJSON"),
+            Some(OutputMode::Ndjson)
+        );
+        assert_eq!(
+            OutputMode::from_str_loose("jsonl"),
+            Some(OutputMode::Ndjson)
+        );
+        assert_eq!(
+            OutputMode::from_str_loose("terminal"),
+            Some(OutputMode::Terminal)
+        );
+        assert_eq!(
+            OutputMode::from_str_loose("tty"),
+            Some(OutputMode::Terminal)
+        );
         assert_eq!(OutputMode::from_str_loose("plain"), Some(OutputMode::Plain));
         assert_eq!(OutputMode::from_str_loose("text"), Some(OutputMode::Plain));
         assert_eq!(OutputMode::from_str_loose("unknown"), None);
@@ -459,7 +471,13 @@ mod tests {
         assert_eq!(events.len(), 3); // Text + ToolUse + Usage
         assert!(matches!(&events[0], OutputEvent::Text { content } if content == "Let me check."));
         assert!(matches!(&events[1], OutputEvent::ToolUse { name, .. } if name == "bash"));
-        assert!(matches!(&events[2], OutputEvent::Usage { input_tokens: 100, .. }));
+        assert!(matches!(
+            &events[2],
+            OutputEvent::Usage {
+                input_tokens: 100,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -467,12 +485,7 @@ mod tests {
         let assistant = vec![ConversationMessage::assistant(vec![ContentBlock::Text {
             text: "The answer is 42.".to_string(),
         }])];
-        let tools = vec![ConversationMessage::tool_result(
-            "t1",
-            "bash",
-            "42",
-            false,
-        )];
+        let tools = vec![ConversationMessage::tool_result("t1", "bash", "42", false)];
         let usage = TokenUsage {
             input_tokens: 100,
             output_tokens: 20,

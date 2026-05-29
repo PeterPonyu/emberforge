@@ -324,7 +324,9 @@ fn generate_random_token(bytes: usize) -> io::Result<String> {
 }
 
 fn credentials_home_dir() -> io::Result<PathBuf> {
-    if let Some(path) = std::env::var_os("EMBER_CONFIG_HOME").or_else(|| std::env::var_os("CLAW_CONFIG_HOME")) {
+    if let Some(path) =
+        std::env::var_os("EMBER_CONFIG_HOME").or_else(|| std::env::var_os("CLAW_CONFIG_HOME"))
+    {
         return Ok(PathBuf::from(path));
     }
     let home = std::env::var_os("HOME")

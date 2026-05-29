@@ -79,7 +79,10 @@ impl TerminalCapabilities {
         self.is_tty
             && self.width >= 48
             && self.color_level >= ColorLevel::Ansi16
-            && matches!(self.glyph_level, GlyphLevel::UnicodeBlocks | GlyphLevel::UnicodeBasic)
+            && matches!(
+                self.glyph_level,
+                GlyphLevel::UnicodeBlocks | GlyphLevel::UnicodeBasic
+            )
     }
 
     #[must_use]
@@ -99,9 +102,12 @@ pub fn detect_terminal_capabilities() -> TerminalCapabilities {
 }
 
 fn env_flag(name: &str) -> bool {
-    env::var(name)
-        .ok()
-        .is_some_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+    env::var(name).ok().is_some_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
 }
 
 #[cfg(test)]

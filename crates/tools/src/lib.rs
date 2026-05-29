@@ -12,7 +12,5 @@ mod tests;
 // Re-export the public API (same surface as before the split).
 pub use error::ToolExecError;
 pub use executor::{execute_tool, execute_tool_with_context};
-pub use registry::{
-    GlobalToolRegistry, ToolManifestEntry, ToolRegistry, ToolSource, ToolSpec,
-};
+pub use registry::{GlobalToolRegistry, ToolManifestEntry, ToolRegistry, ToolSource, ToolSpec};
 pub use specs::mvp_tool_specs;

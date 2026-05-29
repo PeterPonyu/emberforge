@@ -1,8 +1,6 @@
 use std::env;
 
-use runtime::{
-    RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig,
-};
+use runtime::{RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig};
 
 use super::capabilities::TerminalCapabilities;
 
@@ -46,9 +44,11 @@ pub fn render_startup_banner(
     match effective_banner_mode(ui_config, capabilities) {
         RuntimeUiBannerMode::Off => render_metadata_only(context, capabilities),
         RuntimeUiBannerMode::Classic => render_classic_banner(context, capabilities),
-        RuntimeUiBannerMode::Pixel => {
-            render_pixel_banner(context, capabilities, effective_banner_variant(ui_config, capabilities))
-        }
+        RuntimeUiBannerMode::Pixel => render_pixel_banner(
+            context,
+            capabilities,
+            effective_banner_variant(ui_config, capabilities),
+        ),
         RuntimeUiBannerMode::Auto => render_classic_banner(context, capabilities),
     }
 }
@@ -131,15 +131,17 @@ fn render_pixel_banner(
                 1,
                 format!(
                     "{}{}{}",
-                    colors.dim_prefix,
-                    "  Built for local coding workflows",
-                    colors.reset
+                    colors.dim_prefix, "  Built for local coding workflows", colors.reset
                 ),
             );
             combine_columns(&art_lines, &info_lines, art_width, 3).join("\n")
         }
         RuntimeUiBannerVariant::Auto | RuntimeUiBannerVariant::Compact => {
-            let bar = "-".repeat(usize::from(capabilities.width).saturating_sub(4).clamp(24, 52));
+            let bar = "-".repeat(
+                usize::from(capabilities.width)
+                    .saturating_sub(4)
+                    .clamp(24, 52),
+            );
             let mut lines = art_lines;
             lines.push(format!(
                 "{}{}{} {}v{}{}{}",
@@ -153,9 +155,7 @@ fn render_pixel_banner(
             ));
             lines.push(format!(
                 "{}{}{}",
-                colors.dim_prefix,
-                "terminal coding tool",
-                colors.reset
+                colors.dim_prefix, "terminal coding tool", colors.reset
             ));
             lines.extend(build_metadata_rows_only(context, &colors, &bar));
             lines.join("\n")
@@ -168,7 +168,11 @@ fn render_metadata_only(
     capabilities: &TerminalCapabilities,
 ) -> String {
     let colors = BannerColors::new(capabilities.color_enabled());
-    let bar = "-".repeat(usize::from(capabilities.width).saturating_sub(4).clamp(24, 52));
+    let bar = "-".repeat(
+        usize::from(capabilities.width)
+            .saturating_sub(4)
+            .clamp(24, 52),
+    );
     build_metadata_lines(context, &colors, &bar).join("\n")
 }
 
@@ -223,11 +227,7 @@ fn build_metadata_rows_only(
         ),
         format!(
             "  {}session{}    {}{}{}",
-            colors.dim_prefix,
-            colors.reset,
-            colors.dim_prefix,
-            context.session_id,
-            colors.reset,
+            colors.dim_prefix, colors.reset, colors.dim_prefix, context.session_id, colors.reset,
         ),
     ];
     if context.show_setup_hint {
@@ -238,9 +238,7 @@ fn build_metadata_rows_only(
     }
     lines.push(format!(
         "  {}commands{}   {} | /verbose | /model",
-        colors.dim_prefix,
-        colors.reset,
-        context.quick_start,
+        colors.dim_prefix, colors.reset, context.quick_start,
     ));
     lines.push(format!("{}{}{}", colors.dim_prefix, bar, colors.reset));
     lines.push(String::new());
@@ -377,9 +375,7 @@ impl BannerColors {
 mod tests {
     use runtime::{RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig};
 
-    use super::{
-        effective_banner_mode, render_startup_banner, StartupBannerContext,
-    };
+    use super::{effective_banner_mode, render_startup_banner, StartupBannerContext};
     use crate::ui::capabilities::{ColorLevel, GlyphLevel, TerminalCapabilities};
 
     fn banner_context() -> StartupBannerContext {
@@ -441,10 +437,8 @@ mod tests {
         let banner = render_startup_banner(
             &banner_context(),
             &capable_terminal(),
-            &RuntimeUiConfig::default().with_banner(
-                RuntimeUiBannerMode::Classic,
-                RuntimeUiBannerVariant::Auto,
-            ),
+            &RuntimeUiConfig::default()
+                .with_banner(RuntimeUiBannerMode::Classic, RuntimeUiBannerVariant::Auto),
         );
         let plain_text = strip_ansi(&banner);
 
@@ -471,10 +465,8 @@ mod tests {
 
     #[test]
     fn auto_mode_prefers_pixel_banner_when_terminal_supports_it() {
-        let config = RuntimeUiConfig::default().with_banner(
-            RuntimeUiBannerMode::Auto,
-            RuntimeUiBannerVariant::Auto,
-        );
+        let config = RuntimeUiConfig::default()
+            .with_banner(RuntimeUiBannerMode::Auto, RuntimeUiBannerVariant::Auto);
         let banner = render_startup_banner(&banner_context(), &capable_terminal(), &config);
         let plain_text = strip_ansi(&banner);
 
@@ -488,10 +480,8 @@ mod tests {
 
     #[test]
     fn pixel_mode_falls_back_to_classic_for_narrow_terminals() {
-        let config = RuntimeUiConfig::default().with_banner(
-            RuntimeUiBannerMode::Pixel,
-            RuntimeUiBannerVariant::Wide,
-        );
+        let config = RuntimeUiConfig::default()
+            .with_banner(RuntimeUiBannerMode::Pixel, RuntimeUiBannerVariant::Wide);
         let banner = render_startup_banner(&banner_context(), &narrow_terminal(), &config);
         let plain_text = strip_ansi(&banner);
 

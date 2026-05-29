@@ -228,7 +228,10 @@ pub fn glob_search(pattern: &str, path: Option<&str>) -> io::Result<GlobSearchOu
     let search_pattern = if Path::new(pattern.as_ref()).is_absolute() {
         pattern.into_owned()
     } else {
-        base_dir.join(pattern.as_ref()).to_string_lossy().into_owned()
+        base_dir
+            .join(pattern.as_ref())
+            .to_string_lossy()
+            .into_owned()
     };
 
     let mut matches = Vec::new();

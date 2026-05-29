@@ -84,8 +84,7 @@ impl WebhookProvider {
 
     /// Auto-detect provider from URL pattern.
     pub fn detect_from_url(url: &str) -> Self {
-        if url.contains("discord.com/api/webhooks") || url.contains("discordapp.com/api/webhooks")
-        {
+        if url.contains("discord.com/api/webhooks") || url.contains("discordapp.com/api/webhooks") {
             Self::Discord
         } else if url.contains("hooks.slack.com") {
             Self::Slack
@@ -238,9 +237,7 @@ impl NotificationDispatcher {
 ///   }
 /// }
 /// ```
-pub(crate) fn parse_webhook_configs(
-    settings: &serde_json::Value,
-) -> Vec<WebhookConfig> {
+pub(crate) fn parse_webhook_configs(settings: &serde_json::Value) -> Vec<WebhookConfig> {
     let Some(notifications) = settings.get("notifications") else {
         return Vec::new();
     };

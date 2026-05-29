@@ -486,13 +486,15 @@ impl McpServerManager {
         self.ensure_server_ready(server_name).await?;
         let request_id = self.take_request_id();
         let server = self.server_mut(server_name)?;
-        let process = server.process.as_mut().ok_or_else(|| {
-            McpServerManagerError::InvalidResponse {
-                server_name: server_name.to_string(),
-                method: "resources/list",
-                details: "server process missing after initialization".to_string(),
-            }
-        })?;
+        let process =
+            server
+                .process
+                .as_mut()
+                .ok_or_else(|| McpServerManagerError::InvalidResponse {
+                    server_name: server_name.to_string(),
+                    method: "resources/list",
+                    details: "server process missing after initialization".to_string(),
+                })?;
         let result = process
             .list_resources(request_id, Some(McpListResourcesParams { cursor: None }))
             .await?;
@@ -508,13 +510,15 @@ impl McpServerManager {
         self.ensure_server_ready(server_name).await?;
         let request_id = self.take_request_id();
         let server = self.server_mut(server_name)?;
-        let process = server.process.as_mut().ok_or_else(|| {
-            McpServerManagerError::InvalidResponse {
-                server_name: server_name.to_string(),
-                method: "resources/read",
-                details: "server process missing after initialization".to_string(),
-            }
-        })?;
+        let process =
+            server
+                .process
+                .as_mut()
+                .ok_or_else(|| McpServerManagerError::InvalidResponse {
+                    server_name: server_name.to_string(),
+                    method: "resources/read",
+                    details: "server process missing after initialization".to_string(),
+                })?;
         let result = process
             .read_resource(
                 request_id,

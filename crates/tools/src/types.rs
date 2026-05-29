@@ -228,7 +228,11 @@ pub(crate) struct AgentOutput {
     pub(crate) prompt: Option<String>,
     #[serde(rename = "subagentType")]
     pub(crate) subagent_type: Option<String>,
-    #[serde(rename = "restartedFrom", skip_serializing_if = "Option::is_none", default)]
+    #[serde(
+        rename = "restartedFrom",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub(crate) restarted_from: Option<String>,
     pub(crate) model: Option<String>,
     pub(crate) status: String,
@@ -246,15 +250,35 @@ pub(crate) struct AgentOutput {
         skip_serializing_if = "String::is_empty"
     )]
     pub(crate) updated_at: String,
-    #[serde(rename = "statusDetail", skip_serializing_if = "Option::is_none", default)]
+    #[serde(
+        rename = "statusDetail",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub(crate) status_detail: Option<String>,
-    #[serde(rename = "lastHeartbeatAt", skip_serializing_if = "Option::is_none", default)]
+    #[serde(
+        rename = "lastHeartbeatAt",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub(crate) last_heartbeat_at: Option<String>,
-    #[serde(rename = "stopRequestedAt", skip_serializing_if = "Option::is_none", default)]
+    #[serde(
+        rename = "stopRequestedAt",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub(crate) stop_requested_at: Option<String>,
-    #[serde(rename = "stopReason", skip_serializing_if = "Option::is_none", default)]
+    #[serde(
+        rename = "stopReason",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub(crate) stop_reason: Option<String>,
-    #[serde(rename = "parentSessionId", skip_serializing_if = "Option::is_none", default)]
+    #[serde(
+        rename = "parentSessionId",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub(crate) parent_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub(crate) cwd: Option<String>,
@@ -375,7 +399,6 @@ pub(crate) struct SearchHit {
     pub(crate) title: String,
     pub(crate) url: String,
 }
-
 
 // ── New tool input types for TS parity ───────────────────────────
 

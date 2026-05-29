@@ -167,10 +167,7 @@ impl StarterBuddyState {
         if let Some(idx) = value.get("next_index").and_then(Value::as_u64) {
             self.next_index = usize::try_from(idx).unwrap_or(0);
         }
-        self.muted = value
-            .get("muted")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+        self.muted = value.get("muted").and_then(Value::as_bool).unwrap_or(false);
         self.companion = value.get("companion").and_then(|companion| {
             if companion.is_null() {
                 return None;
@@ -279,7 +276,9 @@ fn default_state_path() -> PathBuf {
     }
     if let Ok(home) = env::var("HOME") {
         if !home.trim().is_empty() {
-            return PathBuf::from(home).join(".emberforge").join("buddy-state.json");
+            return PathBuf::from(home)
+                .join(".emberforge")
+                .join("buddy-state.json");
         }
     }
     PathBuf::from(".emberforge").join("buddy-state.json")

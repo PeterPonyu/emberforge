@@ -67,7 +67,10 @@ mod tests {
 
     #[test]
     fn display_io_error() {
-        let err = ToolExecError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
+        let err = ToolExecError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "file not found",
+        ));
         assert!(err.to_string().contains("file not found"));
     }
 

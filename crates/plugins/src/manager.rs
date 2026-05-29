@@ -6,9 +6,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 
-use crate::types::{REGISTRY_FILE_NAME, SETTINGS_FILE_NAME, Plugin, PluginDefinition, PluginHooks, PluginTool, PluginManifest, PluginInstallSource, EXTERNAL_MARKETPLACE, InstalledPluginRecord, PluginKind, BUNDLED_MARKETPLACE, PluginMetadata, InstalledPluginRegistry, BuiltinPlugin, BUILTIN_MARKETPLACE, PluginLifecycle, BundledPlugin, ExternalPlugin, RawPluginManifest, MANIFEST_FILE_NAME, MANIFEST_RELATIVE_PATH, PluginPermission, RawPluginToolManifest, PluginToolManifest, PluginToolPermission, PluginCommandManifest, PluginToolDefinition};
-use crate::registry::{PluginRegistry, RegisteredPlugin, PluginSummary};
 use crate::error::{PluginError, PluginManifestValidationError};
+use crate::registry::{PluginRegistry, PluginSummary, RegisteredPlugin};
+use crate::types::{
+    BuiltinPlugin, BundledPlugin, ExternalPlugin, InstalledPluginRecord, InstalledPluginRegistry,
+    Plugin, PluginCommandManifest, PluginDefinition, PluginHooks, PluginInstallSource, PluginKind,
+    PluginLifecycle, PluginManifest, PluginMetadata, PluginPermission, PluginTool,
+    PluginToolDefinition, PluginToolManifest, PluginToolPermission, RawPluginManifest,
+    RawPluginToolManifest, BUILTIN_MARKETPLACE, BUNDLED_MARKETPLACE, EXTERNAL_MARKETPLACE,
+    MANIFEST_FILE_NAME, MANIFEST_RELATIVE_PATH, REGISTRY_FILE_NAME, SETTINGS_FILE_NAME,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginManagerConfig {
@@ -53,7 +60,6 @@ pub struct UpdateOutcome {
     pub new_version: String,
     pub install_path: PathBuf,
 }
-
 
 impl From<serde_json::Error> for PluginError {
     fn from(value: serde_json::Error) -> Self {
@@ -467,7 +473,10 @@ impl PluginManager {
         }
     }
 
-    pub(crate) fn store_registry(&self, registry: &InstalledPluginRegistry) -> Result<(), PluginError> {
+    pub(crate) fn store_registry(
+        &self,
+        registry: &InstalledPluginRegistry,
+    ) -> Result<(), PluginError> {
         let path = self.registry_path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -896,7 +905,10 @@ pub(crate) fn resolve_tools(
         .collect()
 }
 
-pub(crate) fn validate_hook_paths(root: Option<&Path>, hooks: &PluginHooks) -> Result<(), PluginError> {
+pub(crate) fn validate_hook_paths(
+    root: Option<&Path>,
+    hooks: &PluginHooks,
+) -> Result<(), PluginError> {
     let Some(root) = root else {
         return Ok(());
     };
@@ -919,7 +931,10 @@ pub(crate) fn validate_lifecycle_paths(
     Ok(())
 }
 
-pub(crate) fn validate_tool_paths(root: Option<&Path>, tools: &[PluginTool]) -> Result<(), PluginError> {
+pub(crate) fn validate_tool_paths(
+    root: Option<&Path>,
+    tools: &[PluginTool],
+) -> Result<(), PluginError> {
     let Some(root) = root else {
         return Ok(());
     };
@@ -929,7 +944,11 @@ pub(crate) fn validate_tool_paths(root: Option<&Path>, tools: &[PluginTool]) -> 
     Ok(())
 }
 
-pub(crate) fn validate_command_path(root: &Path, entry: &str, kind: &str) -> Result<(), PluginError> {
+pub(crate) fn validate_command_path(
+    root: &Path,
+    entry: &str,
+    kind: &str,
+) -> Result<(), PluginError> {
     if is_literal_command(entry) {
         return Ok(());
     }
@@ -1162,4 +1181,3 @@ fn ensure_object<'a>(root: &'a mut Map<String, Value>, key: &str) -> &'a mut Map
         .and_then(Value::as_object_mut)
         .expect("object should exist")
 }
-

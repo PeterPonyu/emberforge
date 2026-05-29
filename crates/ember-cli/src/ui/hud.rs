@@ -39,25 +39,50 @@ pub fn render_turn_hud(
     let mut parts = Vec::new();
 
     if let Some(branch) = context.git_branch.as_deref().and_then(sanitize) {
-        parts.push(format!("{}branch:{}{}", colors.accent_prefix, branch, colors.reset));
+        parts.push(format!(
+            "{}branch:{}{}",
+            colors.accent_prefix, branch, colors.reset
+        ));
     }
-    parts.push(format!("{}model:{}{}", colors.green_prefix, sanitize(&context.model)?, colors.reset));
+    parts.push(format!(
+        "{}model:{}{}",
+        colors.green_prefix,
+        sanitize(&context.model)?,
+        colors.reset
+    ));
 
     match preset {
         RuntimeUiHudPreset::Off => return None,
         RuntimeUiHudPreset::Minimal => {
             if context.effort != "balanced" {
-                parts.push(format!("{}effort:{}{}", colors.yellow_prefix, context.effort, colors.reset));
+                parts.push(format!(
+                    "{}effort:{}{}",
+                    colors.yellow_prefix, context.effort, colors.reset
+                ));
             }
         }
         RuntimeUiHudPreset::Focused => {
-            parts.push(format!("{}perm:{}{}", colors.dim_prefix, sanitize(&context.permission_mode)?, colors.reset));
-            parts.push(format!("{}turns:{}{}", colors.dim_prefix, context.turns, colors.reset));
+            parts.push(format!(
+                "{}perm:{}{}",
+                colors.dim_prefix,
+                sanitize(&context.permission_mode)?,
+                colors.reset
+            ));
+            parts.push(format!(
+                "{}turns:{}{}",
+                colors.dim_prefix, context.turns, colors.reset
+            ));
             if context.effort != "balanced" {
-                parts.push(format!("{}effort:{}{}", colors.yellow_prefix, context.effort, colors.reset));
+                parts.push(format!(
+                    "{}effort:{}{}",
+                    colors.yellow_prefix, context.effort, colors.reset
+                ));
             }
             if context.thinking_visible {
-                parts.push(format!("{}thinking:on{}", colors.accent_prefix, colors.reset));
+                parts.push(format!(
+                    "{}thinking:on{}",
+                    colors.accent_prefix, colors.reset
+                ));
             }
             parts.push(format!(
                 "{}tasks:{}{}",
@@ -67,17 +92,44 @@ pub fn render_turn_hud(
             ));
         }
         RuntimeUiHudPreset::Full => {
-            parts.push(format!("{}provider:{}{}", colors.dim_prefix, sanitize(&context.provider_label)?, colors.reset));
-            parts.push(format!("{}perm:{}{}", colors.dim_prefix, sanitize(&context.permission_mode)?, colors.reset));
-            parts.push(format!("{}effort:{}{}", colors.yellow_prefix, context.effort, colors.reset));
-            parts.push(format!("{}turns:{}{}", colors.dim_prefix, context.turns, colors.reset));
-            parts.push(format!("{}ctx:{}{}", colors.dim_prefix, format_token_count(context.estimated_tokens), colors.reset));
-            parts.push(format!("{}cost:{}in/{}out{}", colors.dim_prefix,
+            parts.push(format!(
+                "{}provider:{}{}",
+                colors.dim_prefix,
+                sanitize(&context.provider_label)?,
+                colors.reset
+            ));
+            parts.push(format!(
+                "{}perm:{}{}",
+                colors.dim_prefix,
+                sanitize(&context.permission_mode)?,
+                colors.reset
+            ));
+            parts.push(format!(
+                "{}effort:{}{}",
+                colors.yellow_prefix, context.effort, colors.reset
+            ));
+            parts.push(format!(
+                "{}turns:{}{}",
+                colors.dim_prefix, context.turns, colors.reset
+            ));
+            parts.push(format!(
+                "{}ctx:{}{}",
+                colors.dim_prefix,
+                format_token_count(context.estimated_tokens),
+                colors.reset
+            ));
+            parts.push(format!(
+                "{}cost:{}in/{}out{}",
+                colors.dim_prefix,
                 format_token_count(context.cumulative_input_tokens as usize),
                 format_token_count(context.cumulative_output_tokens as usize),
-                colors.reset));
+                colors.reset
+            ));
             if context.thinking_visible {
-                parts.push(format!("{}thinking:on{}", colors.accent_prefix, colors.reset));
+                parts.push(format!(
+                    "{}thinking:on{}",
+                    colors.accent_prefix, colors.reset
+                ));
             }
             parts.push(format!(
                 "{}tasks:{}{}",
@@ -85,7 +137,12 @@ pub fn render_turn_hud(
                 format_task_count(context.session_task_count, context.background_task_count),
                 colors.reset
             ));
-            parts.push(format!("{}session:{}{}", colors.dim_prefix, shorten_session_id(&context.session_id), colors.reset));
+            parts.push(format!(
+                "{}session:{}{}",
+                colors.dim_prefix,
+                shorten_session_id(&context.session_id),
+                colors.reset
+            ));
         }
     }
 
@@ -250,7 +307,8 @@ mod tests {
     #[test]
     fn minimal_hud_renders_label_branch_and_model() {
         let config = RuntimeUiConfig::default().with_hud_preset(RuntimeUiHudPreset::Minimal);
-        let hud = render_turn_hud(&context(), &capable_terminal(), &config).expect("hud should render");
+        let hud =
+            render_turn_hud(&context(), &capable_terminal(), &config).expect("hud should render");
         let plain = strip_ansi(&hud);
 
         assert!(plain.contains("[hud]"));
@@ -262,7 +320,8 @@ mod tests {
     #[test]
     fn full_hud_includes_extended_metrics() {
         let config = RuntimeUiConfig::default().with_hud_preset(RuntimeUiHudPreset::Full);
-        let hud = render_turn_hud(&context(), &capable_terminal(), &config).expect("hud should render");
+        let hud =
+            render_turn_hud(&context(), &capable_terminal(), &config).expect("hud should render");
         let plain = strip_ansi(&hud);
 
         assert!(plain.contains("provider:Ollama"));

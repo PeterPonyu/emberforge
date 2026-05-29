@@ -6,14 +6,20 @@
 use std::process::Command;
 
 use api::{
-    ContentBlockDelta, InputContentBlock, InputMessage, MessageRequest,
-    OutputContentBlock, ProviderClient, ProviderKind, StreamEvent,
-    ToolChoice, ToolDefinition,
+    ContentBlockDelta, InputContentBlock, InputMessage, MessageRequest, OutputContentBlock,
+    ProviderClient, ProviderKind, StreamEvent, ToolChoice, ToolDefinition,
 };
 
 fn ollama_available() -> bool {
     Command::new("curl")
-        .args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:11434/api/tags"])
+        .args([
+            "-s",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            "http://localhost:11434/api/tags",
+        ])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "200")
         .unwrap_or(false)
@@ -28,7 +34,11 @@ fn provider_client_routes_ollama_models() {
         return;
     }
     let client = ProviderClient::from_model("qwen3:8b");
-    assert!(client.is_ok(), "should resolve Ollama model: {:?}", client.err());
+    assert!(
+        client.is_ok(),
+        "should resolve Ollama model: {:?}",
+        client.err()
+    );
     assert_eq!(client.unwrap().provider_kind(), ProviderKind::Ollama);
 }
 
@@ -38,10 +48,24 @@ fn provider_client_routes_multiple_ollama_families() {
         eprintln!("SKIPPED: Ollama not running");
         return;
     }
-    for model in ["llama3.2:1b", "gemma3:1b", "phi4-mini", "deepseek-r1:1.5b", "mistral:7b-instruct-v0.3-q4_K_M"] {
+    for model in [
+        "llama3.2:1b",
+        "gemma3:1b",
+        "phi4-mini",
+        "deepseek-r1:1.5b",
+        "mistral:7b-instruct-v0.3-q4_K_M",
+    ] {
         let client = ProviderClient::from_model(model);
-        assert!(client.is_ok(), "{model} should route to Ollama: {:?}", client.err());
-        assert_eq!(client.unwrap().provider_kind(), ProviderKind::Ollama, "{model}");
+        assert!(
+            client.is_ok(),
+            "{model} should route to Ollama: {:?}",
+            client.err()
+        );
+        assert_eq!(
+            client.unwrap().provider_kind(),
+            ProviderKind::Ollama,
+            "{model}"
+        );
     }
 }
 
@@ -72,10 +96,17 @@ async fn ollama_send_message_generates_text() {
     };
 
     let response = client.send_message(&request).await;
-    assert!(response.is_ok(), "send_message failed: {:?}", response.err());
+    assert!(
+        response.is_ok(),
+        "send_message failed: {:?}",
+        response.err()
+    );
     let msg = response.unwrap();
     assert!(!msg.content.is_empty(), "response should have content");
-    let has_text = msg.content.iter().any(|b| matches!(b, OutputContentBlock::Text { text } if !text.is_empty()));
+    let has_text = msg
+        .content
+        .iter()
+        .any(|b| matches!(b, OutputContentBlock::Text { text } if !text.is_empty()));
     assert!(has_text, "should contain non-empty text");
     eprintln!("  qwen2.5:0.5b send_message: OK");
 }
@@ -114,10 +145,14 @@ async fn ollama_streaming_produces_events() {
         match &event {
             StreamEvent::ContentBlockDelta(delta) => {
                 if let ContentBlockDelta::TextDelta { text } = &delta.delta {
-                    if !text.is_empty() { got_text = true; }
+                    if !text.is_empty() {
+                        got_text = true;
+                    }
                 }
             }
-            StreamEvent::MessageStop(_) => { got_stop = true; }
+            StreamEvent::MessageStop(_) => {
+                got_stop = true;
+            }
             _ => {}
         }
     }
@@ -194,7 +229,9 @@ async fn ollama_tool_calling() {
     let msg = result.unwrap();
     assert!(!msg.content.is_empty());
 
-    let tool_calls: Vec<_> = msg.content.iter()
+    let tool_calls: Vec<_> = msg
+        .content
+        .iter()
         .filter(|b| matches!(b, OutputContentBlock::ToolUse { .. }))
         .collect();
     if !tool_calls.is_empty() {

@@ -521,7 +521,11 @@ impl LineEditor {
                     self.execute_motion(session, ch);
                     let end = session.cursor;
                     if start != end {
-                        let (from, to) = if start < end { (start, end) } else { (end, start) };
+                        let (from, to) = if start < end {
+                            (start, end)
+                        } else {
+                            (end, start)
+                        };
                         match operator {
                             'd' => {
                                 self.yank_buffer.text = session.text[from..to].to_string();
@@ -756,7 +760,9 @@ impl LineEditor {
                 if session.cursor < session.text.len() {
                     let end = next_boundary(&session.text, session.cursor);
                     let mut buf = [0; 4];
-                    session.text.replace_range(session.cursor..end, target.encode_utf8(&mut buf));
+                    session
+                        .text
+                        .replace_range(session.cursor..end, target.encode_utf8(&mut buf));
                 }
             }
             // g: gg → go to start
@@ -774,7 +780,9 @@ impl LineEditor {
         scope: char,
         obj_type: char,
     ) {
-        let Some((start, end)) = resolve_text_object(&session.text, session.cursor, scope, obj_type) else {
+        let Some((start, end)) =
+            resolve_text_object(&session.text, session.cursor, scope, obj_type)
+        else {
             return;
         };
 
@@ -815,7 +823,9 @@ impl LineEditor {
             session.text.insert_str(start, &insertion);
             session.cursor = start;
         } else {
-            session.text.insert_str(session.cursor, &self.yank_buffer.text);
+            session
+                .text
+                .insert_str(session.cursor, &self.yank_buffer.text);
         }
     }
 
@@ -1396,7 +1406,7 @@ fn first_non_blank(text: &str, cursor: usize) -> usize {
 #[derive(PartialEq)]
 enum CharClass {
     Whitespace,
-    Word,       // alphanumeric + underscore
+    Word, // alphanumeric + underscore
     Punctuation,
 }
 
@@ -1690,11 +1700,20 @@ fn text_object_around_word(text: &str, cursor: usize) -> Option<(usize, usize)> 
 }
 
 /// Find matching bracket pair around cursor.
-fn text_object_bracket(text: &str, cursor: usize, open: char, close: char, inner: bool) -> Option<(usize, usize)> {
+fn text_object_bracket(
+    text: &str,
+    cursor: usize,
+    open: char,
+    close: char,
+    inner: bool,
+) -> Option<(usize, usize)> {
     // Search backward for opening bracket
     let mut depth = 0i32;
     let mut open_pos = None;
-    for (i, ch) in text[..=cursor.min(text.len().saturating_sub(1))].char_indices().rev() {
+    for (i, ch) in text[..=cursor.min(text.len().saturating_sub(1))]
+        .char_indices()
+        .rev()
+    {
         if ch == close {
             depth += 1;
         } else if ch == open {
@@ -1733,7 +1752,12 @@ fn text_object_bracket(text: &str, cursor: usize, open: char, close: char, inner
 }
 
 /// Find matching quote pair around cursor.
-fn text_object_quote(text: &str, cursor: usize, quote: char, inner: bool) -> Option<(usize, usize)> {
+fn text_object_quote(
+    text: &str,
+    cursor: usize,
+    quote: char,
+    inner: bool,
+) -> Option<(usize, usize)> {
     // Find the nearest quote pair containing cursor
     let mut positions = Vec::new();
     let mut escaped = false;
@@ -1767,7 +1791,12 @@ fn text_object_quote(text: &str, cursor: usize, quote: char, inner: bool) -> Opt
 }
 
 /// Resolve a text object from the scope (i/a) and type character.
-fn resolve_text_object(text: &str, cursor: usize, scope: char, obj_type: char) -> Option<(usize, usize)> {
+fn resolve_text_object(
+    text: &str,
+    cursor: usize,
+    scope: char,
+    obj_type: char,
+) -> Option<(usize, usize)> {
     let inner = scope == 'i';
     match obj_type {
         'w' => {

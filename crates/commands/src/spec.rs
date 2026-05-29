@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandManifestEntry {
     pub name: String,
@@ -531,4 +530,3 @@ pub fn resume_supported_slash_commands() -> Vec<&'static SlashCommandSpec> {
         .filter(|spec| spec.resume_supported)
         .collect()
 }
-

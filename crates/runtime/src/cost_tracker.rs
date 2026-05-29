@@ -178,13 +178,21 @@ impl CostTracker {
 
         // Code metrics (only if there is any activity).
         let cm = &self.code_metrics;
-        if cm.lines_added > 0 || cm.lines_removed > 0 || cm.files_created > 0 || cm.files_modified > 0 {
+        if cm.lines_added > 0
+            || cm.lines_removed > 0
+            || cm.files_created > 0
+            || cm.files_modified > 0
+        {
             let mut parts: Vec<String> = Vec::new();
             if cm.lines_added > 0 || cm.lines_removed > 0 {
                 parts.push(format!("+{} / -{} lines", cm.lines_added, cm.lines_removed));
             }
             if cm.files_modified > 0 {
-                let label = if cm.files_modified == 1 { "file" } else { "files" };
+                let label = if cm.files_modified == 1 {
+                    "file"
+                } else {
+                    "files"
+                };
                 parts.push(format!("{} {} modified", cm.files_modified, label));
             }
             if cm.files_created > 0 {
@@ -247,17 +255,14 @@ pub fn save_session_costs(
 /// Load cost tracker state for a session from a JSON file.
 ///
 /// Returns `Ok(None)` if the file does not exist.
-pub fn load_session_costs(
-    project_dir: &Path,
-    session_id: &str,
-) -> io::Result<Option<CostTracker>> {
+pub fn load_session_costs(project_dir: &Path, session_id: &str) -> io::Result<Option<CostTracker>> {
     let path = session_cost_path(project_dir, session_id);
     if !path.exists() {
         return Ok(None);
     }
     let data = std::fs::read_to_string(&path)?;
-    let tracker: CostTracker = serde_json::from_str(&data)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let tracker: CostTracker =
+        serde_json::from_str(&data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     Ok(Some(tracker))
 }
 
@@ -349,7 +354,10 @@ mod tests {
         // Opus should cost more than Haiku for the same token counts.
         let opus_cost = tracker.models["claude-opus-4-6"].total_cost_usd;
         let haiku_cost = tracker.models["claude-haiku-4-5"].total_cost_usd;
-        assert!(opus_cost > haiku_cost, "opus={opus_cost} should > haiku={haiku_cost}");
+        assert!(
+            opus_cost > haiku_cost,
+            "opus={opus_cost} should > haiku={haiku_cost}"
+        );
     }
 
     #[test]
@@ -426,23 +434,50 @@ mod tests {
         assert!(summary.starts_with("Session Cost: $"), "got: {summary}");
 
         // Must contain both models.
-        assert!(summary.contains("claude-opus-4-6"), "missing opus in:\n{summary}");
-        assert!(summary.contains("claude-haiku-4-5"), "missing haiku in:\n{summary}");
+        assert!(
+            summary.contains("claude-opus-4-6"),
+            "missing opus in:\n{summary}"
+        );
+        assert!(
+            summary.contains("claude-haiku-4-5"),
+            "missing haiku in:\n{summary}"
+        );
 
         // Must contain calls count.
-        assert!(summary.contains("3 calls"), "missing '3 calls' in:\n{summary}");
-        assert!(summary.contains("2 calls"), "missing '2 calls' in:\n{summary}");
+        assert!(
+            summary.contains("3 calls"),
+            "missing '3 calls' in:\n{summary}"
+        );
+        assert!(
+            summary.contains("2 calls"),
+            "missing '2 calls' in:\n{summary}"
+        );
 
         // Must contain code metrics.
-        assert!(summary.contains("Code:"), "missing Code: line in:\n{summary}");
-        assert!(summary.contains("+65 / -18 lines"), "wrong line counts in:\n{summary}");
-        assert!(summary.contains("3 files modified"), "wrong files modified in:\n{summary}");
-        assert!(summary.contains("1 created"), "missing created in:\n{summary}");
+        assert!(
+            summary.contains("Code:"),
+            "missing Code: line in:\n{summary}"
+        );
+        assert!(
+            summary.contains("+65 / -18 lines"),
+            "wrong line counts in:\n{summary}"
+        );
+        assert!(
+            summary.contains("3 files modified"),
+            "wrong files modified in:\n{summary}"
+        );
+        assert!(
+            summary.contains("1 created"),
+            "missing created in:\n{summary}"
+        );
 
         // Opus should appear before haiku (higher cost first).
         let opus_pos = summary.find("claude-opus-4-6").unwrap();
         let haiku_pos = summary.find("claude-haiku-4-5").unwrap();
-        assert!(opus_pos < haiku_pos, "opus should come before haiku (cost desc)");
+        assert!(
+            opus_pos < haiku_pos,
+            "opus should come before haiku (cost desc)"
+        );
     }
 
     #[test]
@@ -458,8 +493,14 @@ mod tests {
         let short = tracker.format_short();
 
         assert!(short.starts_with('$'), "should start with $: {short}");
-        assert!(short.contains("5 turns"), "should contain '5 turns': {short}");
-        assert!(short.contains("1,801 tokens"), "should contain '1,801 tokens': {short}");
+        assert!(
+            short.contains("5 turns"),
+            "should contain '5 turns': {short}"
+        );
+        assert!(
+            short.contains("1,801 tokens"),
+            "should contain '1,801 tokens': {short}"
+        );
     }
 
     #[test]
@@ -467,7 +508,10 @@ mod tests {
         let mut tracker = CostTracker::new();
         tracker.record_turn();
         let short = tracker.format_short();
-        assert!(short.contains("1 turn,"), "should use singular 'turn': {short}");
+        assert!(
+            short.contains("1 turn,"),
+            "should use singular 'turn': {short}"
+        );
     }
 
     /// Create a unique temp directory for a test and return its path.

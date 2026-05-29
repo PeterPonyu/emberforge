@@ -84,10 +84,7 @@ impl Default for CollapseConfig {
 
 /// Collapse context segments according to the given config.
 #[must_use]
-pub fn collapse_context(
-    segments: &[ContextSegment],
-    config: &CollapseConfig,
-) -> CollapseResult {
+pub fn collapse_context(segments: &[ContextSegment], config: &CollapseConfig) -> CollapseResult {
     let total_tokens: usize = segments.iter().map(|s| s.estimated_tokens).sum();
 
     if total_tokens <= config.target_tokens {
@@ -108,10 +105,7 @@ pub fn collapse_context(
     }
 }
 
-fn collapse_by_importance(
-    segments: &[ContextSegment],
-    config: &CollapseConfig,
-) -> CollapseResult {
+fn collapse_by_importance(segments: &[ContextSegment], config: &CollapseConfig) -> CollapseResult {
     let total = segments.len();
     let preserve_start = total.saturating_sub(config.preserve_recent);
 
@@ -121,7 +115,11 @@ fn collapse_by_importance(
         .enumerate()
         .filter(|(_, s)| !s.pinned)
         .collect();
-    candidates.sort_by(|a, b| a.1.importance.partial_cmp(&b.1.importance).unwrap_or(std::cmp::Ordering::Equal));
+    candidates.sort_by(|a, b| {
+        a.1.importance
+            .partial_cmp(&b.1.importance)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut retained = Vec::new();
     let mut removed_count = 0;
@@ -154,10 +152,7 @@ fn collapse_by_importance(
     }
 }
 
-fn collapse_by_recency(
-    segments: &[ContextSegment],
-    config: &CollapseConfig,
-) -> CollapseResult {
+fn collapse_by_recency(segments: &[ContextSegment], config: &CollapseConfig) -> CollapseResult {
     let total = segments.len();
     let preserve_start = total.saturating_sub(config.preserve_recent);
 
@@ -184,10 +179,7 @@ fn collapse_by_recency(
     }
 }
 
-fn truncate_tool_results(
-    segments: &[ContextSegment],
-    config: &CollapseConfig,
-) -> CollapseResult {
+fn truncate_tool_results(segments: &[ContextSegment], config: &CollapseConfig) -> CollapseResult {
     let mut retained = Vec::new();
     let mut tokens_saved = 0;
     let mut removed_count = 0;

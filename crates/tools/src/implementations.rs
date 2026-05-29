@@ -18,15 +18,25 @@ use runtime::{
 use runtime::{AppState, TeamContext};
 use serde_json::{json, Value};
 
-use crate::registry::ToolSpec;
 use crate::executor::execute_tool;
+use crate::registry::ToolSpec;
 use crate::specs::mvp_tool_specs;
 use crate::team_helpers::{
     cleanup_team_directories, default_teams_dir, generate_unique_team_name, get_team_file_path,
-    now_millis, read_team_file, register_team_for_session_cleanup, unregister_team_for_session_cleanup,
-    write_team_file, TeamFile, TeamMember, TEAM_LEAD_NAME,
+    now_millis, read_team_file, register_team_for_session_cleanup,
+    unregister_team_for_session_cleanup, write_team_file, TeamFile, TeamMember, TEAM_LEAD_NAME,
 };
-use crate::types::{WebFetchInput, WebFetchOutput, WebSearchInput, WebSearchOutput, WebSearchResultItem, SearchHit, TodoWriteInput, TodoWriteOutput, TodoItem, TodoStatus, SkillInput, SkillOutput, AgentActivityEntry, AgentOutput, AgentInput, AgentJob, ToolSearchInput, ToolSearchOutput, NotebookEditInput, NotebookEditOutput, NotebookEditMode, NotebookCellType, SleepInput, SleepOutput, BriefInput, BriefOutput, BriefStatus, ResolvedAttachment, ConfigInput, ConfigOutput, StructuredOutputInput, StructuredOutputResult, ReplInput, ReplOutput, ConfigValue, PowerShellInput, TeamCreateInput, TeamCreateOutput, TeamDeleteInput, TeamDeleteOutput, DiscoverSkillsInput, DiscoverSkillsOutput, VerifyPlanExecutionInput, VerifyPlanExecutionOutput, WorkflowInput, WorkflowOutput};
+use crate::types::{
+    AgentActivityEntry, AgentInput, AgentJob, AgentOutput, BriefInput, BriefOutput, BriefStatus,
+    ConfigInput, ConfigOutput, ConfigValue, DiscoverSkillsInput, DiscoverSkillsOutput,
+    NotebookCellType, NotebookEditInput, NotebookEditMode, NotebookEditOutput, PowerShellInput,
+    ReplInput, ReplOutput, ResolvedAttachment, SearchHit, SkillInput, SkillOutput, SleepInput,
+    SleepOutput, StructuredOutputInput, StructuredOutputResult, TeamCreateInput, TeamCreateOutput,
+    TeamDeleteInput, TeamDeleteOutput, TodoItem, TodoStatus, TodoWriteInput, TodoWriteOutput,
+    ToolSearchInput, ToolSearchOutput, VerifyPlanExecutionInput, VerifyPlanExecutionOutput,
+    WebFetchInput, WebFetchOutput, WebSearchInput, WebSearchOutput, WebSearchResultItem,
+    WorkflowInput, WorkflowOutput,
+};
 
 pub(crate) fn execute_web_fetch(input: &WebFetchInput) -> Result<WebFetchOutput, String> {
     let started = Instant::now();
@@ -488,7 +498,9 @@ fn validate_todos(todos: &[TodoItem]) -> Result<(), String> {
 }
 
 fn todo_store_path() -> Result<std::path::PathBuf, String> {
-    if let Ok(path) = std::env::var("EMBER_TODO_STORE").or_else(|_| std::env::var("CLAW_TODO_STORE")) {
+    if let Ok(path) =
+        std::env::var("EMBER_TODO_STORE").or_else(|_| std::env::var("CLAW_TODO_STORE"))
+    {
         return Ok(std::path::PathBuf::from(path));
     }
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
@@ -555,8 +567,7 @@ const DEFAULT_AGENT_MAX_ITERATIONS: usize = 32;
 const AGENT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(2);
 const MAX_AGENT_ACTIVITY_ENTRIES: usize = 40;
 
-static AGENT_MANIFEST_LOCK: LazyLock<Mutex<()>> =
-    LazyLock::new(|| Mutex::new(()));
+static AGENT_MANIFEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 fn new_agent_activity_entry(
     at: &str,
@@ -605,7 +616,10 @@ pub(crate) fn execute_agent(input: AgentInput) -> Result<AgentOutput, String> {
     execute_agent_with_spawn(input, spawn_agent_job)
 }
 
-pub(crate) fn execute_agent_with_spawn<F>(input: AgentInput, spawn_fn: F) -> Result<AgentOutput, String>
+pub(crate) fn execute_agent_with_spawn<F>(
+    input: AgentInput,
+    spawn_fn: F,
+) -> Result<AgentOutput, String>
 where
     F: FnOnce(AgentJob) -> Result<(), String>,
 {
@@ -726,8 +740,12 @@ pub(crate) fn spawn_agent_job(job: AgentJob) -> Result<(), String> {
             match result {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
-                    let _ =
-                        persist_agent_terminal_state(&job.manifest, "failed", None, Some(error.as_str()));
+                    let _ = persist_agent_terminal_state(
+                        &job.manifest,
+                        "failed",
+                        None,
+                        Some(error.as_str()),
+                    );
                 }
                 Err(_) => {
                     let _ = persist_agent_terminal_state(
@@ -759,7 +777,11 @@ pub(crate) fn run_agent_job(job: &AgentJob) -> Result<(), String> {
             let stop_requested = agent_stop_requested(&job.manifest)?;
             persist_agent_progress(
                 &job.manifest,
-                if stop_requested { "stopping" } else { "finishing" },
+                if stop_requested {
+                    "stopping"
+                } else {
+                    "finishing"
+                },
                 &if stop_requested {
                     format!(
                         "Stop requested; current turn finished after {iteration_count} iterations"
@@ -770,7 +792,11 @@ pub(crate) fn run_agent_job(job: &AgentJob) -> Result<(), String> {
             )?;
             persist_agent_terminal_state(
                 &job.manifest,
-                if stop_requested { "cancelled" } else { "completed" },
+                if stop_requested {
+                    "cancelled"
+                } else {
+                    "completed"
+                },
                 Some(final_text.as_str()),
                 None,
             )
@@ -785,15 +811,27 @@ pub(crate) fn run_agent_job(job: &AgentJob) -> Result<(), String> {
             )?;
             persist_agent_terminal_state(
                 &job.manifest,
-                if stop_requested { "cancelled" } else { "failed" },
+                if stop_requested {
+                    "cancelled"
+                } else {
+                    "failed"
+                },
                 None,
-                if stop_requested { None } else { Some(error_msg.as_str()) },
+                if stop_requested {
+                    None
+                } else {
+                    Some(error_msg.as_str())
+                },
             )
         }
     }
 }
 
-fn persist_agent_progress(manifest: &AgentOutput, status: &str, message: &str) -> Result<(), String> {
+fn persist_agent_progress(
+    manifest: &AgentOutput,
+    status: &str,
+    message: &str,
+) -> Result<(), String> {
     use std::fmt::Write as _;
     // Append progress to the output markdown file
     let mut content = std::fs::read_to_string(&manifest.output_file).unwrap_or_default();
@@ -802,8 +840,7 @@ fn persist_agent_progress(manifest: &AgentOutput, status: &str, message: &str) -
         content,
         "\n## Progress: {status}\n{message}\n_Updated: {updated_at}_\n"
     );
-    std::fs::write(&manifest.output_file, content).map_err(|e| e.to_string())
-        ?;
+    std::fs::write(&manifest.output_file, content).map_err(|e| e.to_string())?;
     update_agent_manifest(&manifest.manifest_file, |next_manifest| {
         next_manifest.status = status.to_string();
         next_manifest.updated_at.clone_from(&updated_at);
@@ -957,9 +994,7 @@ fn current_session_id_from_env() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn with_agent_manifest_lock<T>(
-    f: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
+fn with_agent_manifest_lock<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
     let _guard = AGENT_MANIFEST_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -983,10 +1018,7 @@ fn normalize_agent_manifest(manifest: &mut AgentOutput) {
             .error
             .as_deref()
             .map(truncate_agent_status_detail)
-            .or_else(|| {
-                (!manifest.status.trim().is_empty())
-                    .then(|| manifest.status.clone())
-            });
+            .or_else(|| (!manifest.status.trim().is_empty()).then(|| manifest.status.clone()));
     }
 }
 
@@ -1049,8 +1081,7 @@ fn is_active_agent_status(status: &str) -> bool {
 }
 
 fn agent_stop_requested(manifest: &AgentOutput) -> Result<bool, String> {
-    read_agent_manifest(&manifest.manifest_file)
-        .map(|current| current.stop_requested_at.is_some())
+    read_agent_manifest(&manifest.manifest_file).map(|current| current.stop_requested_at.is_some())
 }
 
 fn persist_agent_heartbeat(manifest: &AgentOutput) -> Result<(), String> {
@@ -1076,10 +1107,7 @@ fn persist_agent_heartbeat(manifest: &AgentOutput) -> Result<(), String> {
 
 fn spawn_agent_heartbeat(
     manifest: AgentOutput,
-) -> (
-    std::sync::mpsc::Sender<()>,
-    std::thread::JoinHandle<()>,
-) {
+) -> (std::sync::mpsc::Sender<()>, std::thread::JoinHandle<()>) {
     let (stop_tx, stop_rx) = std::sync::mpsc::channel();
     let heartbeat_name = format!("ember-agent-heartbeat-{}", manifest.agent_id);
     let handle = std::thread::Builder::new()
@@ -1312,8 +1340,9 @@ impl SubagentToolExecutor {
         let Some(path) = self.manifest_file.as_deref() else {
             return Ok(false);
         };
-        let manifest = read_agent_manifest(path)
-            .map_err(|error| ToolError::new(format!("failed to read sub-agent manifest: {error}")))?;
+        let manifest = read_agent_manifest(path).map_err(|error| {
+            ToolError::new(format!("failed to read sub-agent manifest: {error}"))
+        })?;
         Ok(manifest.stop_requested_at.is_some())
     }
 }
@@ -1680,7 +1709,9 @@ fn iso8601_now() -> String {
 }
 
 #[allow(clippy::too_many_lines)]
-pub(crate) fn execute_notebook_edit(input: NotebookEditInput) -> Result<NotebookEditOutput, String> {
+pub(crate) fn execute_notebook_edit(
+    input: NotebookEditInput,
+) -> Result<NotebookEditOutput, String> {
     let path = std::path::PathBuf::from(&input.notebook_path);
     if path.extension().and_then(|ext| ext.to_str()) != Some("ipynb") {
         return Err(String::from(
@@ -2247,7 +2278,9 @@ fn iso8601_timestamp() -> String {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-pub(crate) fn execute_powershell(input: PowerShellInput) -> std::io::Result<runtime::BashCommandOutput> {
+pub(crate) fn execute_powershell(
+    input: PowerShellInput,
+) -> std::io::Result<runtime::BashCommandOutput> {
     let _ = &input.description;
     let shell = detect_powershell_shell()?;
     execute_shell_command(
@@ -2469,7 +2502,9 @@ fn parse_skill_description(contents: &str) -> Option<String> {
     None
 }
 
-pub(crate) fn execute_ask_user_question(input: &crate::types::AskUserQuestionInput) -> crate::types::AskUserQuestionOutput {
+pub(crate) fn execute_ask_user_question(
+    input: &crate::types::AskUserQuestionInput,
+) -> crate::types::AskUserQuestionOutput {
     // In non-interactive mode, return a placeholder.
     // The real implementation requires a callback channel to the CLI input loop,
     // which will be wired in the claw-cli main.rs ToolExecutor impl.
@@ -2478,14 +2513,19 @@ pub(crate) fn execute_ask_user_question(input: &crate::types::AskUserQuestionInp
     }
 }
 
-pub(crate) fn execute_enter_plan_mode(_input: crate::types::EnterPlanModeInput) -> crate::types::PlanModeOutput {
+pub(crate) fn execute_enter_plan_mode(
+    _input: crate::types::EnterPlanModeInput,
+) -> crate::types::PlanModeOutput {
     crate::types::PlanModeOutput {
         mode: "plan".to_string(),
-        message: "Entered plan mode. Tools are now disabled. Focus on designing the approach.".to_string(),
+        message: "Entered plan mode. Tools are now disabled. Focus on designing the approach."
+            .to_string(),
     }
 }
 
-pub(crate) fn execute_exit_plan_mode(_input: crate::types::ExitPlanModeInput) -> crate::types::PlanModeOutput {
+pub(crate) fn execute_exit_plan_mode(
+    _input: crate::types::ExitPlanModeInput,
+) -> crate::types::PlanModeOutput {
     crate::types::PlanModeOutput {
         mode: "execute".to_string(),
         message: "Exited plan mode. Tools are now available.".to_string(),
@@ -2515,14 +2555,18 @@ pub(crate) fn execute_lsp_tool(input: &crate::types::LspToolInput) -> crate::typ
     }
 }
 
-pub(crate) fn execute_list_mcp_resources(input: &crate::types::ListMcpResourcesInput) -> serde_json::Value {
+pub(crate) fn execute_list_mcp_resources(
+    input: &crate::types::ListMcpResourcesInput,
+) -> serde_json::Value {
     serde_json::json!({
         "server": input.server_name,
         "message": "Configure MCP servers in .claw.json to list resources"
     })
 }
 
-pub(crate) fn execute_read_mcp_resource(input: &crate::types::ReadMcpResourceInput) -> serde_json::Value {
+pub(crate) fn execute_read_mcp_resource(
+    input: &crate::types::ReadMcpResourceInput,
+) -> serde_json::Value {
     serde_json::json!({
         "server": input.server_name,
         "uri": input.resource_uri,
@@ -2530,7 +2574,9 @@ pub(crate) fn execute_read_mcp_resource(input: &crate::types::ReadMcpResourceInp
     })
 }
 
-pub(crate) fn execute_cron_create(input: crate::types::CronCreateInput) -> Result<crate::types::CronCreateOutput, String> {
+pub(crate) fn execute_cron_create(
+    input: crate::types::CronCreateInput,
+) -> Result<crate::types::CronCreateOutput, String> {
     use runtime::{create_task, load_durable_tasks, save_durable_tasks};
 
     let recurring = !input.one_shot.unwrap_or(false);
@@ -2553,8 +2599,10 @@ pub(crate) fn execute_cron_create(input: crate::types::CronCreateInput) -> Resul
     })
 }
 
-pub(crate) fn execute_cron_delete(input: crate::types::CronDeleteInput) -> Result<crate::types::CronDeleteOutput, String> {
-    use runtime::{load_durable_tasks, save_durable_tasks, delete_task};
+pub(crate) fn execute_cron_delete(
+    input: crate::types::CronDeleteInput,
+) -> Result<crate::types::CronDeleteOutput, String> {
+    use runtime::{delete_task, load_durable_tasks, save_durable_tasks};
 
     let project_dir = std::env::current_dir().map_err(|e| e.to_string())?;
     let mut tasks = load_durable_tasks(&project_dir).unwrap_or_default();
@@ -2569,7 +2617,9 @@ pub(crate) fn execute_cron_delete(input: crate::types::CronDeleteInput) -> Resul
     })
 }
 
-pub(crate) fn execute_cron_list(_input: crate::types::CronListInput) -> Result<crate::types::CronListOutput, String> {
+pub(crate) fn execute_cron_list(
+    _input: crate::types::CronListInput,
+) -> Result<crate::types::CronListOutput, String> {
     use runtime::load_durable_tasks;
 
     let project_dir = std::env::current_dir().map_err(|e| e.to_string())?;
@@ -2592,27 +2642,32 @@ pub(crate) fn execute_cron_list(_input: crate::types::CronListInput) -> Result<c
     })
 }
 
-
-pub(crate) fn execute_enter_worktree(input: &crate::types::EnterWorktreeInput) -> Result<crate::types::EnterWorktreeOutput, String> {
-    use runtime::{find_git_root, create_worktree};
+pub(crate) fn execute_enter_worktree(
+    input: &crate::types::EnterWorktreeInput,
+) -> Result<crate::types::EnterWorktreeOutput, String> {
+    use runtime::{create_worktree, find_git_root};
 
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let git_root = find_git_root(&cwd).ok_or_else(|| "Not in a git repository".to_string())?;
     let worktree_path = std::path::PathBuf::from(&input.path);
-    let branch = input.branch.clone().unwrap_or_else(|| {
-        format!("ember-worktree-{}", &uuid_v4()[..8])
-    });
+    let branch = input
+        .branch
+        .clone()
+        .unwrap_or_else(|| format!("ember-worktree-{}", &uuid_v4()[..8]));
 
     create_worktree(&git_root, &worktree_path, &branch).map_err(|e| e.to_string())?;
 
     Ok(crate::types::EnterWorktreeOutput {
         worktree_path: worktree_path.display().to_string(),
         branch,
-        message: "Worktree created. Switch your working directory to the worktree path.".to_string(),
+        message: "Worktree created. Switch your working directory to the worktree path."
+            .to_string(),
     })
 }
 
-pub(crate) fn execute_exit_worktree(input: &crate::types::ExitWorktreeInput) -> Result<crate::types::ExitWorktreeOutput, String> {
+pub(crate) fn execute_exit_worktree(
+    input: &crate::types::ExitWorktreeInput,
+) -> Result<crate::types::ExitWorktreeOutput, String> {
     use runtime::{find_git_root, remove_worktree};
 
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
@@ -2636,7 +2691,9 @@ pub(crate) fn execute_exit_worktree(input: &crate::types::ExitWorktreeInput) -> 
     })
 }
 
-pub(crate) fn execute_task_create(input: crate::types::TaskCreateInput) -> Result<crate::types::TaskCreateOutput, String> {
+pub(crate) fn execute_task_create(
+    input: crate::types::TaskCreateInput,
+) -> Result<crate::types::TaskCreateOutput, String> {
     use runtime::task_store;
 
     // Create manifest on disk
@@ -2651,8 +2708,8 @@ pub(crate) fn execute_task_create(input: crate::types::TaskCreateInput) -> Resul
     let task_id = manifest.agent_id.clone();
 
     // Spawn the shell task immediately (real subprocess)
-    let running = task_store::spawn_shell_task(&task_id, &input.prompt)
-        .map_err(|e| e.to_string())?;
+    let running =
+        task_store::spawn_shell_task(&task_id, &input.prompt).map_err(|e| e.to_string())?;
 
     Ok(crate::types::TaskCreateOutput {
         task_id,
@@ -2665,7 +2722,9 @@ pub(crate) fn execute_task_create(input: crate::types::TaskCreateInput) -> Resul
     })
 }
 
-pub(crate) fn execute_task_update(input: crate::types::TaskUpdateInput) -> Result<crate::types::TaskUpdateOutput, String> {
+pub(crate) fn execute_task_update(
+    input: crate::types::TaskUpdateInput,
+) -> Result<crate::types::TaskUpdateOutput, String> {
     use runtime::task_store;
 
     let status = input.status.as_deref().and_then(|s| match s {
@@ -2678,12 +2737,8 @@ pub(crate) fn execute_task_update(input: crate::types::TaskUpdateInput) -> Resul
     });
 
     if let Some(status) = status {
-        task_store::update_manifest_status(
-            &input.task_id,
-            status,
-            input.notes.as_deref(),
-        )
-        .map_err(|e| e.to_string())?;
+        task_store::update_manifest_status(&input.task_id, status, input.notes.as_deref())
+            .map_err(|e| e.to_string())?;
         Ok(crate::types::TaskUpdateOutput {
             task_id: input.task_id,
             updated: true,
@@ -2711,7 +2766,9 @@ pub(crate) fn execute_task_update(input: crate::types::TaskUpdateInput) -> Resul
     }
 }
 
-pub(crate) fn execute_task_get(input: &crate::types::TaskGetInput) -> Result<crate::types::TaskGetOutput, String> {
+pub(crate) fn execute_task_get(
+    input: &crate::types::TaskGetInput,
+) -> Result<crate::types::TaskGetOutput, String> {
     use runtime::task_store;
 
     let manifest = task_store::load_manifest(&input.task_id).map_err(|e| e.to_string())?;
@@ -2728,11 +2785,13 @@ pub(crate) fn execute_task_get(input: &crate::types::TaskGetInput) -> Result<cra
     })
 }
 
-pub(crate) fn execute_task_list(input: &crate::types::TaskListInput) -> Result<crate::types::TaskListOutput, String> {
+pub(crate) fn execute_task_list(
+    input: &crate::types::TaskListInput,
+) -> Result<crate::types::TaskListOutput, String> {
     use runtime::task_store;
 
-    let manifests = task_store::list_manifests(input.status_filter.as_deref())
-        .map_err(|e| e.to_string())?;
+    let manifests =
+        task_store::list_manifests(input.status_filter.as_deref()).map_err(|e| e.to_string())?;
 
     let tasks: Vec<crate::types::TaskSummaryItem> = manifests
         .iter()
@@ -2747,7 +2806,9 @@ pub(crate) fn execute_task_list(input: &crate::types::TaskListInput) -> Result<c
     Ok(crate::types::TaskListOutput { tasks, count })
 }
 
-pub(crate) fn execute_task_stop(input: crate::types::TaskStopInput) -> Result<crate::types::TaskStopOutput, String> {
+pub(crate) fn execute_task_stop(
+    input: crate::types::TaskStopInput,
+) -> Result<crate::types::TaskStopOutput, String> {
     use runtime::task_store;
 
     let stopped = task_store::stop_task(&input.task_id).map_err(|e| e.to_string())?;
@@ -2763,12 +2824,14 @@ pub(crate) fn execute_task_stop(input: crate::types::TaskStopInput) -> Result<cr
     })
 }
 
-pub(crate) fn execute_task_output(input: crate::types::TaskOutputInput) -> Result<crate::types::TaskOutputOutput, String> {
+pub(crate) fn execute_task_output(
+    input: crate::types::TaskOutputInput,
+) -> Result<crate::types::TaskOutputOutput, String> {
     use runtime::task_store;
 
     let tail = input.tail.unwrap_or(100);
-    let (output, truncated) = task_store::read_task_output(&input.task_id, tail)
-        .map_err(|e| e.to_string())?;
+    let (output, truncated) =
+        task_store::read_task_output(&input.task_id, tail).map_err(|e| e.to_string())?;
 
     Ok(crate::types::TaskOutputOutput {
         task_id: input.task_id,
@@ -2780,11 +2843,14 @@ pub(crate) fn execute_task_output(input: crate::types::TaskOutputInput) -> Resul
 static MESSAGE_LOG: LazyLock<Mutex<Vec<(String, String, String)>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 
-pub(crate) fn execute_send_message(input: crate::types::SendMessageInput) -> Result<crate::types::SendMessageOutput, String> {
-    MESSAGE_LOG
-        .lock()
-        .map_err(|e| e.to_string())?
-        .push((input.to.clone(), input.message.clone(), iso8601_now()));
+pub(crate) fn execute_send_message(
+    input: crate::types::SendMessageInput,
+) -> Result<crate::types::SendMessageOutput, String> {
+    MESSAGE_LOG.lock().map_err(|e| e.to_string())?.push((
+        input.to.clone(),
+        input.message.clone(),
+        iso8601_now(),
+    ));
 
     Ok(crate::types::SendMessageOutput {
         delivered: true,
@@ -2793,7 +2859,6 @@ pub(crate) fn execute_send_message(input: crate::types::SendMessageInput) -> Res
     })
 }
 
-
 pub(crate) fn execute_team_create(
     input: TeamCreateInput,
     app_state: Option<Arc<AppState>>,
@@ -2801,7 +2866,9 @@ pub(crate) fn execute_team_create(
     let teams_dir = default_teams_dir();
     let final_name = generate_unique_team_name(&input.team_name, &teams_dir);
     let lead_agent_id = format!("{TEAM_LEAD_NAME}@{final_name}");
-    let lead_agent_type = input.agent_type.unwrap_or_else(|| TEAM_LEAD_NAME.to_string());
+    let lead_agent_type = input
+        .agent_type
+        .unwrap_or_else(|| TEAM_LEAD_NAME.to_string());
     let now = now_millis();
 
     let cwd = std::env::current_dir()
@@ -2861,7 +2928,11 @@ pub(crate) fn execute_team_delete(
         .as_ref()
         .and_then(|s| s.get_team_context())
         .map(|ctx| ctx.team_name)
-        .or_else(|| std::env::var("EMBERFORGE_TEAM_NAME").ok().filter(|s| !s.is_empty()));
+        .or_else(|| {
+            std::env::var("EMBERFORGE_TEAM_NAME")
+                .ok()
+                .filter(|s| !s.is_empty())
+        });
 
     let Some(team_name) = team_name_opt else {
         return Ok(TeamDeleteOutput {
@@ -2912,9 +2983,7 @@ pub(crate) fn execute_team_delete(
 
 /// Discover available skills. TS source is a 3-line stub (only exports the tool name constant).
 /// Faithful stub: returns an empty skill list with a placeholder message.
-pub(crate) fn execute_discover_skills(
-    _input: DiscoverSkillsInput,
-) -> DiscoverSkillsOutput {
+pub(crate) fn execute_discover_skills(_input: DiscoverSkillsInput) -> DiscoverSkillsOutput {
     // Deferred: real implementation would enumerate skill directories and
     // filter by input.filter. Stub returns an empty list to match TS behaviour.
     DiscoverSkillsOutput {

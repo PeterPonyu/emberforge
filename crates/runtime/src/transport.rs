@@ -260,8 +260,7 @@ impl<R: io::Read, W: io::Write> SessionTransport for NdjsonTransport<R, W> {
                 ),
             ));
         }
-        serde_json::from_str(line.trim())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        serde_json::from_str(line.trim()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     fn try_recv_event(&mut self) -> io::Result<Option<TransportEvent>> {
@@ -358,9 +357,9 @@ impl SessionTransport for MemoryTransport {
                 "transport is closed",
             ));
         }
-        self.receive_queue.pop_front().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::WouldBlock, "no events in receive queue")
-        })
+        self.receive_queue
+            .pop_front()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::WouldBlock, "no events in receive queue"))
     }
 
     fn try_recv_event(&mut self) -> io::Result<Option<TransportEvent>> {
@@ -639,7 +638,10 @@ mod tests {
 
         t.enqueue(TransportEvent::Pong);
         let event = t.recv_event().unwrap();
-        assert_eq!(event_to_json(&event).unwrap(), event_to_json(&TransportEvent::Pong).unwrap());
+        assert_eq!(
+            event_to_json(&event).unwrap(),
+            event_to_json(&TransportEvent::Pong).unwrap()
+        );
 
         // Queue empty -> WouldBlock.
         let err = t.recv_event().unwrap_err();
@@ -779,7 +781,10 @@ mod tests {
         // StreamStart + TextDelta + ToolUseRequest + StreamEnd + UsageUpdate
         assert_eq!(events.len(), 5);
         assert!(matches!(events[0], TransportEvent::AssistantStreamStart));
-        assert!(matches!(events[1], TransportEvent::AssistantTextDelta { .. }));
+        assert!(matches!(
+            events[1],
+            TransportEvent::AssistantTextDelta { .. }
+        ));
         assert!(matches!(events[2], TransportEvent::ToolUseRequest { .. }));
         assert!(matches!(events[3], TransportEvent::AssistantStreamEnd));
         assert!(matches!(events[4], TransportEvent::UsageUpdate { .. }));

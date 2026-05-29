@@ -205,9 +205,7 @@ impl TaskSize {
 }
 
 /// Escape prefixes that force lightweight mode regardless of word count.
-const LIGHTWEIGHT_PREFIXES: &[&str] = &[
-    "quick:", "simple:", "tiny:", "just:", "q:",
-];
+const LIGHTWEIGHT_PREFIXES: &[&str] = &["quick:", "simple:", "tiny:", "just:", "q:"];
 
 /// Classify task size based on input length and complexity signals.
 pub(crate) fn classify_task_size(input: &str) -> TaskSize {
@@ -347,7 +345,10 @@ mod tests {
 
     #[test]
     fn list_with_many_words_is_heavy() {
-        let input = "Please do these things:\n- First implement the auth\n- Then add the database\n- ".to_string() + &"word ".repeat(100);
+        let input =
+            "Please do these things:\n- First implement the auth\n- Then add the database\n- "
+                .to_string()
+                + &"word ".repeat(100);
         assert_eq!(classify_task_size(&input), TaskSize::Heavy);
     }
 }

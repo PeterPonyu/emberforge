@@ -189,9 +189,8 @@ pub(crate) fn format_tool_call_start(name: &str, input: &str) -> String {
             format!("mcp resource: {server}\n\x1b[2m{uri}\x1b[0m")
         }
         // Concise display for tools that don't need verbose bodies
-        "StructuredOutput" | "Config" | "TodoWrite" | "Sleep"
-        | "SendUserMessage" | "Brief" | "AskUserQuestion"
-        | "EnterPlanMode" | "ExitPlanMode" => {
+        "StructuredOutput" | "Config" | "TodoWrite" | "Sleep" | "SendUserMessage" | "Brief"
+        | "AskUserQuestion" | "EnterPlanMode" | "ExitPlanMode" => {
             format_concise_tool_call(name, &parsed).unwrap_or_default()
         }
         _ => summarize_tool_payload(input),
@@ -224,7 +223,10 @@ pub(crate) fn format_tool_result(name: &str, output: &str, is_error: bool) -> St
         "StructuredOutput" => String::new(),
         "WebSearch" => {
             let query = parsed.get("query").and_then(|v| v.as_str()).unwrap_or("");
-            let n = parsed.get("results").and_then(|v| v.as_array()).map_or(0, |a| a.len());
+            let n = parsed
+                .get("results")
+                .and_then(|v| v.as_array())
+                .map_or(0, |a| a.len());
             format!("\x1b[2m{n} results for \"{query}\"\x1b[0m")
         }
         "WebFetch" => {
@@ -235,10 +237,8 @@ pub(crate) fn format_tool_result(name: &str, output: &str, is_error: bool) -> St
         "LSPTool" => format_lsp_tool_result(&parsed),
         "ListMcpResources" => format_mcp_resources_result(&parsed),
         "ReadMcpResource" => format_read_mcp_resource_result(&parsed),
-        "TodoWrite" | "Config" | "Sleep" | "SendUserMessage" | "Brief"
-        | "AskUserQuestion" | "EnterPlanMode" | "ExitPlanMode" => {
-            String::new()
-        }
+        "TodoWrite" | "Config" | "Sleep" | "SendUserMessage" | "Brief" | "AskUserQuestion"
+        | "EnterPlanMode" | "ExitPlanMode" => String::new(),
         "Agent" => format_agent_result(&parsed),
         "Skill" | "ToolSearch" | "NotebookEdit" | "REPL" | "PowerShell" => {
             // Show brief summary, not full JSON
@@ -329,13 +329,14 @@ fn format_lsp_tool_call(parsed: &serde_json::Value) -> String {
         .or_else(|| parsed.get("filePath"))
         .and_then(|value| value.as_str());
     let line = parsed.get("line").and_then(serde_json::Value::as_u64);
-    let character = parsed
-        .get("character")
-        .and_then(serde_json::Value::as_u64);
+    let character = parsed.get("character").and_then(serde_json::Value::as_u64);
 
     let mut lines = vec![format!("lsp: {action}")];
     if let Some(file) = file {
-        lines.push(format!("\x1b[2m{}\x1b[0m", format_location(file, line, character)));
+        lines.push(format!(
+            "\x1b[2m{}\x1b[0m",
+            format_location(file, line, character)
+        ));
     }
     lines.join("\n")
 }
@@ -567,9 +568,7 @@ fn format_grep_result(parsed: &serde_json::Value) -> String {
                 .join("\n")
         })
         .unwrap_or_default();
-    let summary = format!(
-        "grep_search found {num_matches} matches across {num_files} files"
-    );
+    let summary = format!("grep_search found {num_matches} matches across {num_files} files");
     if !content.trim().is_empty() {
         format!(
             "{summary}\n\n{}",
@@ -698,7 +697,11 @@ fn format_mcp_resources_result(parsed: &serde_json::Value) -> String {
 
     let resources = parsed
         .get("resources")
-        .or_else(|| parsed.get("result").and_then(|value| value.get("resources")))
+        .or_else(|| {
+            parsed
+                .get("result")
+                .and_then(|value| value.get("resources"))
+        })
         .and_then(serde_json::Value::as_array)
         .cloned()
         .unwrap_or_default();
@@ -812,9 +815,7 @@ fn format_lsp_tool_result(parsed: &serde_json::Value) -> String {
         .or_else(|| payload.get("filePath"))
         .and_then(serde_json::Value::as_str);
     let line = payload.get("line").and_then(serde_json::Value::as_u64);
-    let character = payload
-        .get("character")
-        .and_then(serde_json::Value::as_u64);
+    let character = payload.get("character").and_then(serde_json::Value::as_u64);
     let hint = payload
         .get("hint")
         .or_else(|| payload.get("message"))
@@ -822,7 +823,10 @@ fn format_lsp_tool_result(parsed: &serde_json::Value) -> String {
 
     let mut lines = vec![format!("action: {action}")];
     if let Some(file) = file {
-        lines.push(format!("location: {}", format_location(file, line, character)));
+        lines.push(format!(
+            "location: {}",
+            format_location(file, line, character)
+        ));
     }
 
     if let Some(hint) = hint.filter(|hint| !hint.trim().is_empty()) {
@@ -834,7 +838,10 @@ fn format_lsp_tool_result(parsed: &serde_json::Value) -> String {
         ));
     }
 
-    if let Some(examples) = payload.get("examples").and_then(serde_json::Value::as_array) {
+    if let Some(examples) = payload
+        .get("examples")
+        .and_then(serde_json::Value::as_array)
+    {
         let rendered_examples = examples
             .iter()
             .filter_map(serde_json::Value::as_str)
@@ -924,15 +931,15 @@ fn format_agent_result(parsed: &serde_json::Value) -> String {
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default();
 
-    let mut lines = vec![format!(
-        "task {} · {status}",
-        shorten_task_id(id),
-    )];
+    let mut lines = vec![format!("task {} · {status}", shorten_task_id(id),)];
     if !description.trim().is_empty() {
         lines.push(truncate_for_summary(description, 96));
     }
     if !detail.trim().is_empty() {
-        lines.push(format!("\x1b[2m{}\x1b[0m", truncate_for_summary(detail, 96)));
+        lines.push(format!(
+            "\x1b[2m{}\x1b[0m",
+            truncate_for_summary(detail, 96)
+        ));
     }
     lines.push(format!("log: {log_path}"));
     if let Some(session) = session {

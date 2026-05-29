@@ -24,10 +24,21 @@ const SIGKILL_GRACE: Duration = Duration::from_secs(5);
 
 /// Patterns that suggest a shell command is waiting for interactive input.
 const INTERACTIVE_PROMPT_PATTERNS: &[&str] = &[
-    "(y/n)", "(Y/n)", "(yes/no)", "[y/N]", "[Y/n]", "[yes/no]",
-    "Do you", "Would you", "Are you sure",
-    "Press Enter", "Continue?", "Overwrite?",
-    "Password:", "password:", "passphrase",
+    "(y/n)",
+    "(Y/n)",
+    "(yes/no)",
+    "[y/N]",
+    "[Y/n]",
+    "[yes/no]",
+    "Do you",
+    "Would you",
+    "Are you sure",
+    "Press Enter",
+    "Continue?",
+    "Overwrite?",
+    "Password:",
+    "password:",
+    "passphrase",
 ];
 
 // ---------------------------------------------------------------------------
@@ -67,7 +78,10 @@ impl TaskStatus {
 
     #[must_use]
     pub fn is_active(self) -> bool {
-        matches!(self, Self::Pending | Self::Running | Self::Finishing | Self::Stopping)
+        matches!(
+            self,
+            Self::Pending | Self::Running | Self::Finishing | Self::Stopping
+        )
     }
 
     #[must_use]
@@ -172,7 +186,9 @@ pub fn generate_task_id(kind: TaskKind) -> String {
     id.push(prefix);
     let mut state = seed;
     for _ in 0..8 {
-        state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
         let idx = usize::try_from(state >> 64).unwrap_or(0) % TASK_ID_ALPHABET.len();
         id.push(TASK_ID_ALPHABET[idx] as char);
     }
@@ -440,21 +456,12 @@ fn monitor_shell_task(mut child: Child, task_id: &str, _output_path: &Path) {
     let exit_status = child.wait();
 
     let (status, detail) = match exit_status {
-        Ok(es) if es.success() => (
-            TaskStatus::Completed,
-            "Exited with code 0".to_string(),
-        ),
+        Ok(es) if es.success() => (TaskStatus::Completed, "Exited with code 0".to_string()),
         Ok(es) => {
             let code = es.code().unwrap_or(-1);
-            (
-                TaskStatus::Failed,
-                format!("Exited with code {code}"),
-            )
+            (TaskStatus::Failed, format!("Exited with code {code}"))
         }
-        Err(e) => (
-            TaskStatus::Failed,
-            format!("Process error: {e}"),
-        ),
+        Err(e) => (TaskStatus::Failed, format!("Process error: {e}")),
     };
 
     // Check if stop was requested
@@ -489,11 +496,12 @@ fn stall_watchdog(task_id: &str, output_path: &Path) {
         thread::sleep(STALL_POLL_INTERVAL);
 
         // Check if task is still active
-        let Ok(manifest) = load_manifest(task_id) else { break };
-        let status: TaskStatus = serde_json::from_value(
-            serde_json::Value::String(manifest.status.clone()),
-        )
-        .unwrap_or(TaskStatus::Running);
+        let Ok(manifest) = load_manifest(task_id) else {
+            break;
+        };
+        let status: TaskStatus =
+            serde_json::from_value(serde_json::Value::String(manifest.status.clone()))
+                .unwrap_or(TaskStatus::Running);
 
         if status.is_terminal() {
             break;
@@ -503,9 +511,7 @@ fn stall_watchdog(task_id: &str, output_path: &Path) {
         let _ = update_heartbeat(task_id);
 
         // Check for growth
-        let current_size = fs::metadata(output_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let current_size = fs::metadata(output_path).map(|m| m.len()).unwrap_or(0);
 
         if current_size == last_size {
             stall_count += 1;
@@ -519,9 +525,7 @@ fn stall_watchdog(task_id: &str, output_path: &Path) {
                                 let _ = update_manifest_status(
                                     task_id,
                                     TaskStatus::Running,
-                                    Some(&format!(
-                                        "Stalled: may be waiting for input ({pattern})"
-                                    )),
+                                    Some(&format!("Stalled: may be waiting for input ({pattern})")),
                                 );
                                 // Don't spam — reset counter
                                 stall_count = 0;
@@ -558,10 +562,9 @@ pub fn stop_task(task_id: &str) -> io::Result<bool> {
     let mut manifest = load_manifest(task_id)?;
     let now = iso8601_now();
 
-    let status: TaskStatus = serde_json::from_value(
-        serde_json::Value::String(manifest.status.clone()),
-    )
-    .unwrap_or(TaskStatus::Running);
+    let status: TaskStatus =
+        serde_json::from_value(serde_json::Value::String(manifest.status.clone()))
+            .unwrap_or(TaskStatus::Running);
 
     if status.is_terminal() {
         return Ok(false);
@@ -653,7 +656,9 @@ fn write_task_notification(task_id: &str, status: &str, summary: &str) -> io::Re
 
 /// Drain all pending task notifications, returning XML fragments for injection.
 pub fn drain_notifications() -> Vec<String> {
-    let Ok(mut queue) = NOTIFICATION_QUEUE.lock() else { return Vec::new() };
+    let Ok(mut queue) = NOTIFICATION_QUEUE.lock() else {
+        return Vec::new();
+    };
     let notifications: Vec<TaskNotification> = queue.drain(..).collect();
     drop(queue);
 
@@ -691,9 +696,7 @@ fn iso8601_now() -> String {
     let hour = (secs % 86400) / 3600;
     let minute = (secs % 3600) / 60;
     let second = secs % 60;
-    format!(
-        "{years:04}-{months:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z"
-    )
+    format!("{years:04}-{months:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
 
 fn process_is_alive(pid: u32) -> bool {
@@ -758,7 +761,8 @@ mod tests {
     #[test]
     fn create_and_load_manifest() {
         let (dir, _guard) = setup_test_store();
-        let manifest = create_task_manifest(TaskKind::Shell, "test task", "echo hello", None).unwrap();
+        let manifest =
+            create_task_manifest(TaskKind::Shell, "test task", "echo hello", None).unwrap();
         assert_eq!(manifest.status, "pending");
         assert!(manifest.agent_id.starts_with('b'));
 
@@ -793,11 +797,15 @@ mod tests {
         let (dir, _guard) = setup_test_store();
         let manifest = create_task_manifest(TaskKind::Shell, "test", "true", None).unwrap();
 
-        let updated = update_manifest_status(&manifest.agent_id, TaskStatus::Running, Some("started")).unwrap();
+        let updated =
+            update_manifest_status(&manifest.agent_id, TaskStatus::Running, Some("started"))
+                .unwrap();
         assert_eq!(updated.status, "running");
         assert!(updated.started_at.is_some());
 
-        let completed = update_manifest_status(&manifest.agent_id, TaskStatus::Completed, Some("done")).unwrap();
+        let completed =
+            update_manifest_status(&manifest.agent_id, TaskStatus::Completed, Some("done"))
+                .unwrap();
         assert_eq!(completed.status, "completed");
         assert!(completed.completed_at.is_some());
 
@@ -807,7 +815,8 @@ mod tests {
     #[test]
     fn spawn_and_monitor_shell_task() {
         let (dir, _guard) = setup_test_store();
-        let manifest = create_task_manifest(TaskKind::Shell, "echo test", "echo hello world", None).unwrap();
+        let manifest =
+            create_task_manifest(TaskKind::Shell, "echo test", "echo hello world", None).unwrap();
         let task_id = manifest.agent_id.clone();
 
         let running = spawn_shell_task(&task_id, "echo hello world").unwrap();
@@ -831,7 +840,8 @@ mod tests {
     #[test]
     fn stop_task_sends_signal() {
         let (dir, _guard) = setup_test_store();
-        let manifest = create_task_manifest(TaskKind::Shell, "long task", "sleep 60", None).unwrap();
+        let manifest =
+            create_task_manifest(TaskKind::Shell, "long task", "sleep 60", None).unwrap();
         let task_id = manifest.agent_id.clone();
 
         let _ = spawn_shell_task(&task_id, "sleep 60").unwrap();
@@ -871,15 +881,15 @@ mod tests {
         let task_id = manifest.agent_id;
 
         for i in 0..50 {
-            let _ = update_manifest_status(
-                &task_id,
-                TaskStatus::Running,
-                Some(&format!("update {i}")),
-            );
+            let _ =
+                update_manifest_status(&task_id, TaskStatus::Running, Some(&format!("update {i}")));
         }
 
         let loaded = load_manifest(&task_id).unwrap();
-        assert!(loaded.activity.len() <= 40, "Activity log should be capped at 40");
+        assert!(
+            loaded.activity.len() <= 40,
+            "Activity log should be capped at 40"
+        );
 
         cleanup_test_store(&dir);
     }

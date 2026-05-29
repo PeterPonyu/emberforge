@@ -167,7 +167,9 @@ pub fn detect_ides(cwd: &Path) -> Vec<DetectedIde> {
         if !dir.is_dir() {
             continue;
         }
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             let name = path
@@ -205,7 +207,9 @@ pub fn parse_lockfile(path: &Path) -> io::Result<Option<DetectedIde>> {
     };
 
     // Port is required.
-    let Some(port) = lockfile.port else { return Ok(None) };
+    let Some(port) = lockfile.port else {
+        return Ok(None);
+    };
 
     let ide_name = lockfile.ide_name.unwrap_or_default();
     let kind = IdeKind::from_name(&ide_name);
@@ -365,7 +369,11 @@ pub fn is_wsl() -> bool {
 pub fn unix_to_windows_path(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("/mnt/") {
         if let Some((drive, remainder)) = rest.split_once('/') {
-            if drive.len() == 1 && drive.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+            if drive.len() == 1
+                && drive
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphabetic())
             {
                 let win_remainder = remainder.replace('/', "\\");
                 return format!("{}:\\{}", drive.to_ascii_uppercase(), win_remainder);
@@ -387,10 +395,7 @@ pub fn unix_to_windows_path(path: &str) -> String {
 pub fn windows_to_unix_path(path: &str) -> String {
     // Handle `C:\...` or `C:/...`
     let bytes = path.as_bytes();
-    if bytes.len() >= 2
-        && bytes[0].is_ascii_alphabetic()
-        && (bytes[1] == b':')
-    {
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && (bytes[1] == b':') {
         let drive = (bytes[0] as char).to_ascii_lowercase();
         let rest = if bytes.len() > 2 { &path[2..] } else { "" };
         let unix_rest = rest.replace('\\', "/");
@@ -443,9 +448,7 @@ mod tests {
 
     /// Create a unique temporary directory for a test.
     fn tmp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join("emberforge_ide_tests")
-            .join(name);
+        let dir = std::env::temp_dir().join("emberforge_ide_tests").join(name);
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -509,7 +512,10 @@ mod tests {
         assert_eq!(ide.pid, Some(12345));
         assert_eq!(ide.auth_token, Some("secret123".into()));
         assert_eq!(ide.transport, IdeTransport::WebSocket);
-        assert_eq!(ide.workspace_folders, vec![PathBuf::from("/home/user/project")]);
+        assert_eq!(
+            ide.workspace_folders,
+            vec![PathBuf::from("/home/user/project")]
+        );
         assert_eq!(ide.url, "ws://localhost:3000");
     }
 
@@ -518,11 +524,7 @@ mod tests {
     fn test_parse_lockfile_minimal() {
         let dir = tmp_dir("minimal_lockfile");
         let lock_path = dir.join("ide.lock.json");
-        fs::write(
-            &lock_path,
-            serde_json::json!({ "port": 8080 }).to_string(),
-        )
-        .unwrap();
+        fs::write(&lock_path, serde_json::json!({ "port": 8080 }).to_string()).unwrap();
 
         let ide = parse_lockfile(&lock_path).unwrap().unwrap();
         assert_eq!(ide.kind, IdeKind::Unknown);
@@ -552,10 +554,7 @@ mod tests {
             unix_to_windows_path("/mnt/c/Users/foo/file.txt"),
             "C:\\Users\\foo\\file.txt"
         );
-        assert_eq!(
-            unix_to_windows_path("/mnt/d/projects"),
-            "D:\\projects"
-        );
+        assert_eq!(unix_to_windows_path("/mnt/d/projects"), "D:\\projects");
         assert_eq!(
             unix_to_windows_path("/home/user/file"),
             "\\home\\user\\file"
@@ -569,14 +568,8 @@ mod tests {
             windows_to_unix_path("C:\\Users\\foo\\file.txt"),
             "/mnt/c/Users/foo/file.txt"
         );
-        assert_eq!(
-            windows_to_unix_path("D:\\projects"),
-            "/mnt/d/projects"
-        );
-        assert_eq!(
-            windows_to_unix_path("C:"),
-            "/mnt/c"
-        );
+        assert_eq!(windows_to_unix_path("D:\\projects"), "/mnt/d/projects");
+        assert_eq!(windows_to_unix_path("C:"), "/mnt/c");
     }
 
     // 8. format_diff_for_ide produces valid JSON
