@@ -7287,6 +7287,12 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
         assert!(help.contains("ember --output-format ndjson -p \"status\""));
     }
 
+    // Uses a fake PID (u32::MAX) and expects the reconciler to mark the worker
+    // dead. Liveness is checked via `kill(pid, 0)`-style POSIX signaling; the
+    // Windows path uses different API and returns a different status for an
+    // arbitrary PID, so gate this case on Unix until liveness is abstracted
+    // behind a cross-platform trait (tracked in the cross-platform test work).
+    #[cfg(unix)]
     #[test]
     fn task_reports_mark_current_session_and_reconcile_dead_workers() {
         let _lock = env_lock();

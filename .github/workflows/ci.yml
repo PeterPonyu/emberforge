@@ -33,12 +33,11 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets
 
-      # Test execution is currently Unix-only: a handful of suites rely on POSIX
-      # semantics (PID liveness via signal 0, PermissionsExt::set_mode, shell
-      # scripts, forward-slash path matches, empty-env-var handling). The
-      # Windows runner still gates cargo check, clippy, and the release build,
-      # which is the main value of windows-latest for refs #13. Making the
-      # tests themselves cross-platform is tracked as a separate follow-up.
+      # cargo test stays skipped on Windows: the plugin and runtime suites have
+      # additional POSIX-only assumptions (process-exit-code paths, shell-script
+      # fixtures) on top of the four cases addressed by per-test cfg gates in
+      # this PR. windows-latest continues to gate cargo check, clippy, and the
+      # release build. Re-enabling test on Windows is tracked in #25.
       - name: Run cargo test
         if: runner.os != 'Windows'
         run: cargo test --workspace

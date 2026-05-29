@@ -777,20 +777,26 @@ fn lists_auto_installed_bundled_plugins_with_status() {
     let _ = fs::remove_dir_all(bundled_root);
 }
 
-// On Windows, `PathBuf::to_str()` yields backslash-separated paths but
-// `git worktree list` emits forward-slash paths, so the substring match in
-// the final assertion is false even when the worktree was created correctly.
-// Path normalization is the right long-term fix; gating on Unix keeps the
-// Windows lane green while still exercising this flow on Linux/macOS.
-#[cfg(unix)]
 #[test]
 fn branch_and_worktree_commands_manage_git_state() {
     // given
     let repo = init_git_repo("branch-worktree");
-    let worktree_path = repo
-        .parent()
-        .expect("repo should have parent")
-        .join("branch-worktree-linked");
+    // Canonicalize the parent so the worktree path is already in its long form
+    // on Windows. Without this, the runner's TEMP resolves to a DOS 8.3 short
+    // name (e.g. `RUNNER~1`) and `git worktree list` emits the long form,
+    // making the substring assertion below false even when the worktree exists.
+    let parent_canonical = std::fs::canonicalize(repo.parent().expect("repo should have parent"))
+        .expect("canonicalize parent");
+    // Rust's canonicalize prefixes paths with `\\?\` (UNC verbatim) on Windows;
+    // git never emits that prefix, so strip it before handing the path to git.
+    let parent_canonical = {
+        let s = parent_canonical.to_string_lossy();
+        match s.strip_prefix(r"\\?\") {
+            Some(stripped) => std::path::PathBuf::from(stripped),
+            None => parent_canonical,
+        }
+    };
+    let worktree_path = parent_canonical.join("branch-worktree-linked");
 
     // when
     let branch_list =
@@ -821,7 +827,15 @@ fn branch_and_worktree_commands_manage_git_state() {
     assert!(created.contains("feature/demo"));
     assert!(switched.contains("main"));
     assert!(added.contains("wt-demo"));
-    assert!(listed_worktrees.contains(worktree_path.to_str().expect("utf8 path")));
+    // `git worktree list` emits forward-slash paths on every platform; on
+    // Windows `worktree_path.to_str()` yields backslashes, so normalize both
+    // sides before the substring check.
+    let listed_normalized = listed_worktrees.replace('\\', "/");
+    let expected_normalized = worktree_path.to_string_lossy().replace('\\', "/");
+    assert!(
+        listed_normalized.contains(&expected_normalized),
+        "expected `{expected_normalized}` in worktree list:\n{listed_normalized}"
+    );
     assert!(removed.contains("Result           removed"));
 
     let _ = fs::remove_dir_all(repo);
