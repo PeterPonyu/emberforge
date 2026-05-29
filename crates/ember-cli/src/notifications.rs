@@ -372,6 +372,7 @@ pub(crate) fn error_event(error_message: &str) -> NotificationEvent {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]

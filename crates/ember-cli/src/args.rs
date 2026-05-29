@@ -51,6 +51,7 @@ pub enum OutputFormat {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use clap::Parser;
 
     use super::{Cli, Command, OutputFormat, PermissionMode};

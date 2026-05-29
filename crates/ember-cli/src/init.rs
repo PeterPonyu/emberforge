@@ -383,6 +383,7 @@ fn framework_notes(detection: &RepoDetection) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{initialize_repo, render_init_ember_md};
     use std::fs;
     use std::path::Path;

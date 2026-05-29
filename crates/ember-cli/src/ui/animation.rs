@@ -266,6 +266,7 @@ fn parse_animation_mode(value: &str) -> Option<RuntimeUiAnimationMode> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use runtime::{
         RuntimeUiAnimationMode, RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig,
     };
