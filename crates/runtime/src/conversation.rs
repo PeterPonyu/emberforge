@@ -11,10 +11,15 @@ use crate::permissions::{PermissionOutcome, PermissionPolicy, PermissionPrompter
 use crate::session::{ContentBlock, ConversationMessage, Session};
 use crate::usage::{TokenUsage, UsageTracker};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ApiRequest {
-    pub system_prompt: Vec<String>,
-    pub messages: Vec<ConversationMessage>,
+/// Per-turn request handed to an [`ApiClient`].
+///
+/// Holds borrowed references into the live [`ConversationRuntime`] so that
+/// building a request is O(1) regardless of conversation length. Use the
+/// public accessors to read the fields; they are exposed as borrowed slices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApiRequest<'a> {
+    pub system_prompt: &'a [String],
+    pub messages: &'a [ConversationMessage],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,7 +35,7 @@ pub enum AssistantEvent {
 }
 
 pub trait ApiClient {
-    fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError>;
+    fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError>;
 }
 
 pub trait ToolExecutor {
@@ -205,8 +210,8 @@ where
             }
 
             let request = ApiRequest {
-                system_prompt: self.system_prompt.clone(),
-                messages: self.session.messages.clone(),
+                system_prompt: &self.system_prompt,
+                messages: &self.session.messages,
             };
             let events = self.api_client.stream(request)?;
             let (assistant_message, usage) = build_assistant_message(events)?;
@@ -488,7 +493,7 @@ mod tests {
     }
 
     impl ApiClient for ScriptedApiClient {
-        fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
+        fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
             self.call_count += 1;
             match self.call_count {
                 1 => {
@@ -607,7 +612,7 @@ mod tests {
 
         struct SingleCallApiClient;
         impl ApiClient for SingleCallApiClient {
-            fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
+            fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 if request
                     .messages
                     .iter()
@@ -655,7 +660,7 @@ mod tests {
         }
 
         impl ApiClient for SingleCallApiClient {
-            fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
+            fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 self.calls += 1;
                 match self.calls {
                     1 => {
@@ -703,7 +708,7 @@ mod tests {
     fn denies_tool_use_when_pre_tool_hook_blocks() {
         struct SingleCallApiClient;
         impl ApiClient for SingleCallApiClient {
-            fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
+            fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 if request
                     .messages
                     .iter()
@@ -767,7 +772,7 @@ mod tests {
         }
 
         impl ApiClient for TwoCallApiClient {
-            fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
+            fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 self.calls += 1;
                 match self.calls {
                     1 => Ok(vec![
@@ -840,7 +845,7 @@ mod tests {
         impl ApiClient for SimpleApi {
             fn stream(
                 &mut self,
-                _request: ApiRequest,
+                _request: ApiRequest<'_>,
             ) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 Ok(vec![
                     AssistantEvent::TextDelta("done".to_string()),
@@ -882,7 +887,7 @@ mod tests {
         impl ApiClient for SimpleApi {
             fn stream(
                 &mut self,
-                _request: ApiRequest,
+                _request: ApiRequest<'_>,
             ) -> Result<Vec<AssistantEvent>, RuntimeError> {
                 Ok(vec![
                     AssistantEvent::TextDelta("done".to_string()),
