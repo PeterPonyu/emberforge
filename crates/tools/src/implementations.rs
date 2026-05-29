@@ -1449,6 +1449,7 @@ fn response_to_events(response: MessageResponse) -> Vec<AssistantEvent> {
         // SAFETY: `index` is an `enumerate()` counter over a single API
         // response's content blocks; exceeding `u32::MAX` (~4 billion blocks)
         // is not reachable, so this conversion is an infallible invariant.
+        #[allow(clippy::expect_used)] // see SAFETY note: infallible invariant
         let index = u32::try_from(index).expect("response block index overflow");
         push_output_block(block, index, &mut events, &mut pending_tools, false);
         if let Some((id, name, input)) = pending_tools.remove(&index) {
@@ -1766,6 +1767,7 @@ pub(crate) fn execute_notebook_edit(
             // SAFETY: `resolved_cell_type` is always `Some` for the `Insert`
             // arm (set above), so this is an infallible match-arm invariant,
             // not a user-input boundary.
+            #[allow(clippy::expect_used)] // see SAFETY note: infallible match-arm invariant
             let resolved_cell_type = resolved_cell_type.expect("insert cell type");
             let new_id = make_cell_id(cells.len());
             let new_cell = build_notebook_cell(&new_id, resolved_cell_type, &new_source);
@@ -1782,6 +1784,7 @@ pub(crate) fn execute_notebook_edit(
             // (guaranteed by the `match input.cell_id` arms above), so this is
             // an infallible invariant; bad indices surface earlier via
             // `resolve_cell_index(..)?`.
+            #[allow(clippy::expect_used)] // see SAFETY note: infallible match-arm invariant
             let removed = cells.remove(target_index.expect("delete target index"));
             removed
                 .get("id")
@@ -1793,7 +1796,9 @@ pub(crate) fn execute_notebook_edit(
             // for the `Replace` arm (set above), so these are infallible
             // match-arm invariants. A stale index still surfaces as a recovered
             // error via the `ok_or_else(..)?` on the `get_mut` below.
+            #[allow(clippy::expect_used)] // see SAFETY note: infallible match-arm invariant
             let resolved_cell_type = resolved_cell_type.expect("replace cell type");
+            #[allow(clippy::expect_used)] // see SAFETY note: infallible match-arm invariant
             let cell = cells
                 .get_mut(target_index.expect("replace target index"))
                 .ok_or_else(|| String::from("Cell index out of range"))?;
@@ -2266,6 +2271,7 @@ fn set_nested_value(root: &mut serde_json::Map<String, Value>, path: &[&str], ne
     // SAFETY: every caller passes a non-empty compile-time-constant
     // `ConfigSettingSpec::path` slice (e.g. `&["theme"]`); recursion always
     // shrinks toward a non-empty `rest`, so `split_first` cannot return `None`.
+    #[allow(clippy::expect_used)] // see SAFETY note: infallible (non-empty const path)
     let (first, rest) = path.split_first().expect("config path must not be empty");
     if rest.is_empty() {
         root.insert((*first).to_string(), new_value);
@@ -2280,6 +2286,7 @@ fn set_nested_value(root: &mut serde_json::Map<String, Value>, path: &[&str], ne
     }
     // SAFETY: the block above guarantees `entry` is a JSON object before this
     // call, so `as_object_mut` always yields `Some`; infallible invariant.
+    #[allow(clippy::expect_used)] // see SAFETY note: infallible (object just inserted)
     let map = entry.as_object_mut().expect("object inserted");
     set_nested_value(map, rest, new_value);
 }

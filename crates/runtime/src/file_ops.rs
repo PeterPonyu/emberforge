@@ -130,6 +130,8 @@ pub struct GrepSearchOutput {
     pub applied_offset: Option<usize>,
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the path cannot be resolved or the file cannot be read.
 pub fn read_file(
     path: &str,
     offset: Option<usize>,
@@ -156,6 +158,8 @@ pub fn read_file(
     })
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the parent directory cannot be created or the file cannot be written.
 pub fn write_file(path: &str, content: &str) -> io::Result<WriteFileOutput> {
     let absolute_path = normalize_path_allow_missing(path)?;
     let original_file = fs::read_to_string(&absolute_path).ok();
@@ -178,6 +182,8 @@ pub fn write_file(path: &str, content: &str) -> io::Result<WriteFileOutput> {
     })
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the file cannot be read or written, or if `old_string` is absent or equal to `new_string`.
 pub fn edit_file(
     path: &str,
     old_string: &str,
@@ -218,6 +224,8 @@ pub fn edit_file(
     })
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the glob pattern is invalid or the directory cannot be traversed.
 pub fn glob_search(pattern: &str, path: Option<&str>) -> io::Result<GlobSearchOutput> {
     let started = Instant::now();
     let base_dir = path
@@ -265,6 +273,8 @@ pub fn glob_search(pattern: &str, path: Option<&str>) -> io::Result<GlobSearchOu
     })
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the search pattern is invalid or the directory cannot be traversed.
 pub fn grep_search(input: &GrepSearchInput) -> io::Result<GrepSearchOutput> {
     let base_path = input
         .path

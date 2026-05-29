@@ -19,12 +19,15 @@ unsafe_code = "forbid"
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
-missing_panics_doc = "warn"
-missing_errors_doc = "warn"
-# Error-handling policy (refs #11): panicking accessors on failure boundaries
-# are disallowed. Set to `warn` for now so the existing backlog (~246 sites)
-# surfaces in CI without breaking the build; ratchet both to `deny` once the
-# per-crate migration sweeps land. Test code opts out via a per-module
+missing_panics_doc = "deny"
+missing_errors_doc = "deny"
+# Error-handling policy (refs #11, #20): panicking accessors on failure
+# boundaries are disallowed, and public fallible/panicking APIs must document
+# their failure modes. After the per-crate migration sweeps (#36/#41/#42/#43/#45)
+# triaged every production `unwrap()`/`expect()` — migrating real boundaries to
+# `Result` and annotating the infallible sites with `#[allow(...)]` + a
+# `// SAFETY:` rationale — these lints are ratcheted to `deny` to lock in the
+# bar. Test code opts out via a per-module
 # `#![allow(clippy::unwrap_used, clippy::expect_used)]`.
-unwrap_used = "warn"
-expect_used = "warn"
+unwrap_used = "deny"
+expect_used = "deny"

@@ -561,6 +561,8 @@ impl ConfigLoader {
         ]
     }
 
+    /// # Errors
+    /// Returns a [`ConfigError`] if a config file cannot be read or its contents fail to parse.
     pub fn load(&self) -> Result<RuntimeConfig, ConfigError> {
         let mut merged = BTreeMap::new();
         let mut loaded_entries = Vec::new();

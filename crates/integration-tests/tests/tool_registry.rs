@@ -7,6 +7,9 @@
 //! the `tools`, `plugins`, `runtime`, and `api` crates — a seam no per-crate
 //! unit test can reach.
 
+// Test code: panicking on a failed assumption is the desired failure mode.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::collections::BTreeSet;
 
 use plugins::{PluginTool, PluginToolDefinition, PluginToolPermission};

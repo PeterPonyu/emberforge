@@ -149,6 +149,8 @@ struct OllamaTag {
 }
 
 /// List locally available Ollama model tags via `/api/tags`.
+/// # Errors
+/// Returns `Err` with a message if the Ollama process cannot be run or its output cannot be parsed.
 pub fn list_ollama_models() -> Result<Vec<String>, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))

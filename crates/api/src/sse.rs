@@ -12,6 +12,8 @@ impl SseParser {
         Self::default()
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if a buffered SSE frame cannot be parsed.
     pub fn push(&mut self, chunk: &[u8]) -> Result<Vec<StreamEvent>, ApiError> {
         self.buffer.extend_from_slice(chunk);
         let mut events = Vec::new();
@@ -25,6 +27,8 @@ impl SseParser {
         Ok(events)
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if a trailing buffered SSE frame cannot be parsed.
     pub fn finish(&mut self) -> Result<Vec<StreamEvent>, ApiError> {
         if self.buffer.is_empty() {
             return Ok(Vec::new());
@@ -60,6 +64,8 @@ impl SseParser {
     }
 }
 
+/// # Errors
+/// Returns an [`ApiError`] if the frame contains malformed event data.
 pub fn parse_frame(frame: &str) -> Result<Option<StreamEvent>, ApiError> {
     let trimmed = frame.trim();
     if trimmed.is_empty() {

@@ -93,11 +93,15 @@ impl Session {
         }
     }
 
+    /// # Errors
+    /// Returns a [`SessionError`] if the session cannot be serialized or written to `path`.
     pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<(), SessionError> {
         fs::write(path, self.to_json().render())?;
         Ok(())
     }
 
+    /// # Errors
+    /// Returns a [`SessionError`] if `path` cannot be read or its contents fail to deserialize.
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self, SessionError> {
         let contents = fs::read_to_string(path)?;
         Self::from_json(&JsonValue::parse(&contents)?)
@@ -125,6 +129,8 @@ impl Session {
         JsonValue::Object(object)
     }
 
+    /// # Errors
+    /// Returns a [`SessionError`] if `value` is not a valid serialized session.
     pub fn from_json(value: &JsonValue) -> Result<Self, SessionError> {
         let object = value
             .as_object()

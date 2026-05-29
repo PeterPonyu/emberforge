@@ -35,10 +35,14 @@ pub enum AssistantEvent {
 }
 
 pub trait ApiClient {
+    /// # Errors
+    /// Returns a [`RuntimeError`] if the underlying API request fails.
     fn stream(&mut self, request: ApiRequest<'_>) -> Result<Vec<AssistantEvent>, RuntimeError>;
 }
 
 pub trait ToolExecutor {
+    /// # Errors
+    /// Returns a [`ToolError`] if the named tool fails to execute.
     fn execute(&mut self, tool_name: &str, input: &str) -> Result<String, ToolError>;
 }
 
@@ -188,6 +192,8 @@ where
         &self.auto_compact_state
     }
 
+    /// # Errors
+    /// Returns a [`RuntimeError`] if the model request, tool execution, or permission flow fails.
     pub fn run_turn(
         &mut self,
         user_input: impl Into<String>,

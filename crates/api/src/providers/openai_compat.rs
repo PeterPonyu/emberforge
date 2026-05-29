@@ -100,6 +100,8 @@ impl OpenAiCompatClient {
         }
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if required environment variables are missing or invalid.
     pub fn from_env(config: OpenAiCompatConfig) -> Result<Self, ApiError> {
         // Ollama doesn't require an API key — use a dummy placeholder
         if config.provider_name == "Ollama" {
@@ -135,6 +137,8 @@ impl OpenAiCompatClient {
         self
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if the request fails, the response is an HTTP error, or the body cannot be parsed.
     pub async fn send_message(
         &self,
         request: &MessageRequest,
@@ -153,6 +157,8 @@ impl OpenAiCompatClient {
         Ok(normalized)
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if the request fails or the streaming response cannot be established.
     pub async fn stream_message(
         &self,
         request: &MessageRequest,

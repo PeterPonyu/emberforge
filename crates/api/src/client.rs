@@ -27,10 +27,14 @@ pub enum ProviderClient {
 }
 
 impl ProviderClient {
+    /// # Errors
+    /// Returns an [`ApiError`] if `model` is unknown or required credentials are missing.
     pub fn from_model(model: &str) -> Result<Self, ApiError> {
         Self::from_model_with_default_auth(model, None)
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if `model` is unknown or required credentials cannot be resolved.
     pub fn from_model_with_default_auth(
         model: &str,
         default_auth: Option<AuthSource>,
@@ -63,6 +67,8 @@ impl ProviderClient {
         }
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if the request fails, the response is an HTTP error, or the body cannot be parsed.
     pub async fn send_message(
         &self,
         request: &MessageRequest,
@@ -75,6 +81,8 @@ impl ProviderClient {
         }
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if the request fails or the streaming response cannot be established.
     pub async fn stream_message(
         &self,
         request: &MessageRequest,
@@ -107,6 +115,8 @@ impl MessageStream {
         }
     }
 
+    /// # Errors
+    /// Returns an [`ApiError`] if the stream fails or a frame cannot be parsed.
     pub async fn next_event(&mut self) -> Result<Option<StreamEvent>, ApiError> {
         match self {
             Self::ClawApi(stream) => stream.next_event().await,

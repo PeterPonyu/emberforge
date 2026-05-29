@@ -190,6 +190,8 @@ pub fn parse_frontmatter(content: &str) -> Option<(MemoryFrontmatter, &str)> {
 ///
 /// Returns files sorted by modification time (newest first), capped at
 /// `config.max_files`.  `MEMORY.md` (the entrypoint) is always skipped.
+/// # Errors
+/// Returns an [`io::Error`] if `dir` cannot be read or a memory file cannot be loaded.
 pub fn scan_memory_dir(dir: &Path, config: &MemoryConfig) -> io::Result<Vec<MemoryFile>> {
     if !dir.is_dir() {
         return Ok(Vec::new());
@@ -273,6 +275,8 @@ fn sort_memory_files(files: &mut [MemoryFile]) {
 ///
 /// The content is truncated to at most `config.max_entrypoint_lines` lines and
 /// `config.max_entrypoint_bytes` bytes (whichever limit is hit first).
+/// # Errors
+/// Returns an [`io::Error`] if the entrypoint file cannot be read.
 pub fn load_entrypoint(dir: &Path, config: &MemoryConfig) -> io::Result<Option<MemoryIndex>> {
     let path = dir.join("MEMORY.md");
     if !path.is_file() {
@@ -319,6 +323,8 @@ fn truncate_content(s: &str, max_lines: usize, max_bytes: usize) -> String {
 ///
 /// This is idempotent — calling it on an already-initialized directory is a
 /// no-op.
+/// # Errors
+/// Returns an [`io::Error`] if the memory directory cannot be created.
 pub fn ensure_memory_dir(dir: &Path) -> io::Result<()> {
     fs::create_dir_all(dir)?;
 
@@ -396,12 +402,16 @@ pub fn build_memory_manifest(files: &[MemoryFile]) -> String {
 // ---------------------------------------------------------------------------
 
 /// Return the user-level memory directory (`~/.ember/memory/`).
+/// # Errors
+/// Returns an [`io::Error`] if the user's home directory cannot be determined.
 pub fn user_memory_dir() -> io::Result<PathBuf> {
     let home = home_dir()?;
     Ok(home.join(".ember").join("memory"))
 }
 
 /// Return the project-level memory directory (`.ember/memory/` relative to cwd).
+/// # Errors
+/// Returns an [`io::Error`] if the current working directory cannot be determined.
 pub fn project_memory_dir() -> io::Result<PathBuf> {
     let cwd = std::env::current_dir()?;
     Ok(cwd.join(".ember").join("memory"))
@@ -429,6 +439,8 @@ fn home_dir() -> io::Result<PathBuf> {
 /// Includes `MEMORY.md` content and memory manifests from both the user-level
 /// and project-level directories.  Returns `None` if no memory content is
 /// found anywhere.
+/// # Errors
+/// Returns an [`io::Error`] if the memory files cannot be discovered or read.
 pub fn build_memory_prompt(config: &MemoryConfig) -> io::Result<Option<String>> {
     let mut sections: Vec<String> = Vec::new();
 

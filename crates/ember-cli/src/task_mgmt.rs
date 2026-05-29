@@ -816,6 +816,9 @@ fn render_task_next_action_lines(task: &TaskManifestRecord) -> Vec<String> {
     lines
 }
 
+// The `previous.is_none()` branch returns early, so the later expect is
+// infallible (see SAFETY note at the call site).
+#[allow(clippy::expect_used)]
 fn render_task_watch_update(
     previous: Option<&TaskWatchSnapshot>,
     record: &TaskManifestRecord,

@@ -24,6 +24,9 @@
 //! filesystem; the test then reads those records back. The tool invocation count
 //! is observed directly via a shared counter inside the `ToolExecutor` adapter.
 
+// Test code: panicking on a failed assumption is the desired failure mode.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

@@ -231,6 +231,8 @@ impl OAuthRefreshRequest {
     }
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if secure random bytes cannot be generated.
 pub fn generate_pkce_pair() -> io::Result<PkceCodePair> {
     let verifier = generate_random_token(32)?;
     Ok(PkceCodePair {
@@ -240,6 +242,8 @@ pub fn generate_pkce_pair() -> io::Result<PkceCodePair> {
     })
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if secure random bytes cannot be generated.
 pub fn generate_state() -> io::Result<String> {
     generate_random_token(32)
 }
@@ -255,10 +259,14 @@ pub fn loopback_redirect_uri(port: u16) -> String {
     format!("http://localhost:{port}/callback")
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the credentials directory cannot be resolved.
 pub fn credentials_path() -> io::Result<PathBuf> {
     Ok(credentials_home_dir()?.join("credentials.json"))
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the credentials file exists but cannot be read or deserialized.
 pub fn load_oauth_credentials() -> io::Result<Option<OAuthTokenSet>> {
     let path = credentials_path()?;
     let root = read_credentials_root(&path)?;
@@ -273,6 +281,8 @@ pub fn load_oauth_credentials() -> io::Result<Option<OAuthTokenSet>> {
     Ok(Some(stored.into()))
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the credentials directory cannot be created or the file cannot be written.
 pub fn save_oauth_credentials(token_set: &OAuthTokenSet) -> io::Result<()> {
     let path = credentials_path()?;
     let mut root = read_credentials_root(&path)?;
@@ -284,6 +294,8 @@ pub fn save_oauth_credentials(token_set: &OAuthTokenSet) -> io::Result<()> {
     write_credentials_root(&path, &root)
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the credentials file cannot be removed.
 pub fn clear_oauth_credentials() -> io::Result<()> {
     let path = credentials_path()?;
     let mut root = read_credentials_root(&path)?;
@@ -291,6 +303,8 @@ pub fn clear_oauth_credentials() -> io::Result<()> {
     write_credentials_root(&path, &root)
 }
 
+/// # Errors
+/// Returns `Err` with a message if the request target is not a valid OAuth callback.
 pub fn parse_oauth_callback_request_target(target: &str) -> Result<OAuthCallbackParams, String> {
     let (path, query) = target
         .split_once('?')
@@ -301,6 +315,8 @@ pub fn parse_oauth_callback_request_target(target: &str) -> Result<OAuthCallback
     parse_oauth_callback_query(query)
 }
 
+/// # Errors
+/// Returns `Err` with a message if the query string is missing required OAuth parameters.
 pub fn parse_oauth_callback_query(query: &str) -> Result<OAuthCallbackParams, String> {
     let mut params = BTreeMap::new();
     for pair in query.split('&').filter(|pair| !pair.is_empty()) {
