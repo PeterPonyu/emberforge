@@ -292,6 +292,13 @@ impl PluginTool {
         self.required_permission.as_str()
     }
 
+    /// Execute this plugin tool command with a JSON input payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the process cannot be spawned, stdin cannot
+    /// be written, output cannot be collected, or the command exits with a
+    /// non-zero status.
     pub fn execute(&self, input: &Value) -> Result<String, PluginError> {
         let input_json = input.to_string();
         let mut process = Command::new(&self.command);
@@ -400,8 +407,25 @@ pub trait Plugin {
     fn hooks(&self) -> &PluginHooks;
     fn lifecycle(&self) -> &PluginLifecycle;
     fn tools(&self) -> &[PluginTool];
+    /// Validate manifest, hook, lifecycle, and tool configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the plugin definition is malformed.
     fn validate(&self) -> Result<(), PluginError>;
+    /// Run plugin initialization.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when validation fails or the configured
+    /// initialization command exits unsuccessfully.
     fn initialize(&self) -> Result<(), PluginError>;
+    /// Run plugin shutdown.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when validation fails or the configured shutdown
+    /// command exits unsuccessfully.
     fn shutdown(&self) -> Result<(), PluginError>;
 }
 

@@ -38,14 +38,32 @@ impl RegisteredPlugin {
         self.enabled
     }
 
+    /// Validate the registered plugin definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when the plugin manifest, lifecycle command, hook,
+    /// or tool definition is invalid.
     pub fn validate(&self) -> Result<(), PluginError> {
         self.definition.validate()
     }
 
+    /// Run the plugin's initialization lifecycle hook.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when validation fails or the initialization
+    /// command exits unsuccessfully.
     pub fn initialize(&self) -> Result<(), PluginError> {
         self.definition.initialize()
     }
 
+    /// Run the plugin's shutdown lifecycle hook.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when validation fails or the shutdown command
+    /// exits unsuccessfully.
     pub fn shutdown(&self) -> Result<(), PluginError> {
         self.definition.shutdown()
     }
@@ -99,6 +117,11 @@ impl PluginRegistry {
         self.plugins.iter().map(RegisteredPlugin::summary).collect()
     }
 
+    /// Merge hooks from all enabled plugins in deterministic registry order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when any enabled plugin fails validation.
     pub fn aggregated_hooks(&self) -> Result<PluginHooks, PluginError> {
         self.plugins
             .iter()
@@ -109,6 +132,12 @@ impl PluginRegistry {
             })
     }
 
+    /// Collect tool definitions from enabled plugins.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when an enabled plugin is invalid or when two
+    /// enabled plugins expose the same tool name.
     pub fn aggregated_tools(&self) -> Result<Vec<PluginTool>, PluginError> {
         let mut tools = Vec::new();
         let mut seen_names = BTreeMap::new();
@@ -130,6 +159,12 @@ impl PluginRegistry {
         Ok(tools)
     }
 
+    /// Initialize all enabled plugins.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when validation or initialization fails for any
+    /// enabled plugin.
     pub fn initialize(&self) -> Result<(), PluginError> {
         for plugin in self.plugins.iter().filter(|plugin| plugin.is_enabled()) {
             plugin.validate()?;
@@ -138,6 +173,11 @@ impl PluginRegistry {
         Ok(())
     }
 
+    /// Shut down all enabled plugins in reverse registry order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError`] when any enabled plugin shutdown hook fails.
     pub fn shutdown(&self) -> Result<(), PluginError> {
         for plugin in self
             .plugins
