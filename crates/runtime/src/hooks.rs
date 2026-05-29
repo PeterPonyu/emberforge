@@ -404,8 +404,12 @@ impl CommandWithStdin {
     fn output_with_stdin(&mut self, stdin: &[u8]) -> std::io::Result<std::process::Output> {
         let mut child = self.command.spawn()?;
         if let Some(mut child_stdin) = child.stdin.take() {
-            use std::io::Write;
-            child_stdin.write_all(stdin)?;
+            use std::io::{ErrorKind, Write as _};
+            match child_stdin.write_all(stdin) {
+                Ok(()) => {}
+                Err(error) if error.kind() == ErrorKind::BrokenPipe => {}
+                Err(error) => return Err(error),
+            }
         }
         child.wait_with_output()
     }
