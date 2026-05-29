@@ -1,0 +1,25 @@
+[package]
+name = "integration-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# This crate exists solely to host workspace-level integration tests that
+# exercise cross-crate seams (e.g. `tools` <-> `plugins` <-> `runtime`) through
+# their public APIs. It ships no library or binary code of its own; the empty
+# `src/lib.rs` keeps Cargo happy while all real assertions live under `tests/`.
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+api = { path = "../api" }
+plugins = { path = "../plugins" }
+runtime = { path = "../runtime" }
+tools = { path = "../tools" }
+serde_json.workspace = true
+tempfile = "3"
+
+[lints]
+workspace = true
