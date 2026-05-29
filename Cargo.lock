@@ -837,6 +837,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "integration-tests"
+version = "0.1.0"
+dependencies = [
+ "api",
+ "plugins",
+ "runtime",
+ "serde_json",
+ "tempfile",
+ "tools",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
