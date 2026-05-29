@@ -38,13 +38,16 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets
 
-      # cargo test now runs on every OS, including windows-latest (refs #25).
-      # The remaining POSIX-only tests (mcp_stdio shell-script fixtures, the
-      # plugin tool/lifecycle fixtures, the env/path cases, and the fake-PID
-      # reconcile test that needs Unix liveness semantics) are gated with
-      # `#[cfg(unix)]` and inline justification, so they simply do not compile
-      # into the Windows test binaries rather than failing the run.
+      # cargo test stays skipped on Windows. This PR (refs #25) made several of
+      # the originally-listed cases cross-platform and gated the rest, but
+      # enabling the Windows run surfaced a further layer of POSIX-only tests
+      # that the previous workflow-level skip had hidden: runtime `hooks` and
+      # `conversation` tests that shell out to `printf`/`exit` (cmd.exe has no
+      # `printf`), and `oauth` tests. Making those portable is a larger effort
+      # tracked in #25; windows-latest continues to gate cargo check, clippy,
+      # and the release build.
       - name: Run cargo test
+        if: runner.os != 'Windows'
         run: cargo test --workspace
 
       - name: Run release build
