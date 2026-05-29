@@ -410,8 +410,16 @@ mod tests {
 
     #[test]
     fn pre_tool_use_denies_when_plugin_hook_exits_two() {
+        // The hook protocol (exit 2 = deny, stdout = message) is platform
+        // agnostic, but the inline command must be spelled for the shell that
+        // `shell_command` invokes: `sh -lc` on Unix, `cmd /C` on Windows.
+        #[cfg(windows)]
+        let deny_command = "echo blocked by plugin& exit 2".to_string();
+        #[cfg(not(windows))]
+        let deny_command = "printf 'blocked by plugin'; exit 2".to_string();
+
         let runner = HookRunner::new(crate::PluginHooks {
-            pre_tool_use: vec!["printf 'blocked by plugin'; exit 2".to_string()],
+            pre_tool_use: vec![deny_command],
             post_tool_use: Vec::new(),
         });
 

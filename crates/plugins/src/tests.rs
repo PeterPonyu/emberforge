@@ -96,6 +96,8 @@ fn write_broken_plugin(root: &Path, name: &str) {
     );
 }
 
+// Only consumed by the Unix-only lifecycle test (see its gate for rationale).
+#[cfg(unix)]
 fn write_lifecycle_plugin(root: &Path, name: &str, version: &str) -> PathBuf {
     let log_path = root.join("lifecycle.log");
     write_file(
@@ -116,10 +118,14 @@ fn write_lifecycle_plugin(root: &Path, name: &str, version: &str) -> PathBuf {
     log_path
 }
 
+// Only consumed by the Unix-only tool-execution test (see its gate for
+// rationale): the fixture is a `#!/bin/sh` script spawned directly.
+#[cfg(unix)]
 fn write_tool_plugin(root: &Path, name: &str, version: &str) {
     write_tool_plugin_with_name(root, name, version, "plugin_echo");
 }
 
+#[cfg(unix)]
 fn write_tool_plugin_with_name(root: &Path, name: &str, version: &str, tool_name: &str) {
     let script_path = root.join("tools").join("echo-json.sh");
     write_file(
@@ -831,6 +837,14 @@ fn rejects_plugin_sources_with_missing_hook_paths() {
     let _ = fs::remove_dir_all(source_root);
 }
 
+// The lifecycle fixtures are `#!/bin/sh` scripts whose only portable behaviour
+// is appending to a log; the test asserts the log is byte-exact
+// (`"init\nshutdown\n"`). A `.cmd` equivalent would emit CRLF line endings and
+// cmd's `echo` quirks (trailing spaces, no clean way to suppress a newline),
+// so a Windows fixture cannot reproduce the exact bytes without rewriting the
+// assertion per platform. Kept Unix-only; the cross-platform lifecycle wiring
+// itself is still exercised by `run_lifecycle_commands` on every platform.
+#[cfg(unix)]
 #[test]
 fn plugin_registry_runs_initialize_and_shutdown_for_enabled_plugins() {
     let config_home = temp_dir("lifecycle-home");
@@ -854,6 +868,14 @@ fn plugin_registry_runs_initialize_and_shutdown_for_enabled_plugins() {
     let _ = fs::remove_dir_all(source_root);
 }
 
+// The tool fixture is a `#!/bin/sh` script that reads stdin and re-emits a
+// JSON document interpolating `$EMBER_*` env vars; `PluginTool::execute` spawns
+// the script's path directly (no shell wrapper). Reproducing the same stdin
+// echo + JSON assembly in a Windows batch file is fragile (quoting, CRLF, no
+// reliable `cat`), so this remains Unix-only. Tool aggregation/permission
+// wiring that doesn't depend on a shell fixture is covered by other tests that
+// run on all platforms.
+#[cfg(unix)]
 #[test]
 fn aggregates_and_executes_plugin_tools() {
     let config_home = temp_dir("tool-home");

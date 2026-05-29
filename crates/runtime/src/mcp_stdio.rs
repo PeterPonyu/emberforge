@@ -881,9 +881,14 @@ fn default_initialize_params() -> McpInitializeParams {
     }
 }
 
-// These tests drive POSIX shell scripts and rely on `PermissionsExt::set_mode`,
-// so they are inherently Unix-only. Gating the module keeps the Windows CI lane
-// (added in this PR per refs #13) green without losing coverage where it applies.
+// These tests drive POSIX shell scripts (`#!/bin/sh`, a `python3` JSON-RPC
+// fixture) and rely on `std::os::unix::fs::PermissionsExt::set_mode(0o755)` to
+// make them executable — both inherently Unix-only. Rewriting the fixtures as
+// portable executables (or batch files with `cacls`) would be a disproportionate
+// amount of work for stdio-transport coverage that is identical in spirit on
+// every platform, so the module stays Unix-only per the disposition agreed in
+// #25. The non-test stdio code itself still compiles and is exercised by
+// `cargo check`/`clippy` on Windows.
 #[cfg(all(test, unix))]
 mod tests {
     use std::collections::BTreeMap;

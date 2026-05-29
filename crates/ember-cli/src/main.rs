@@ -7401,10 +7401,11 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
     }
 
     // Uses a fake PID (u32::MAX) and expects the reconciler to mark the worker
-    // dead. Liveness is checked via `kill(pid, 0)`-style POSIX signaling; the
-    // Windows path uses different API and returns a different status for an
-    // arbitrary PID, so gate this case on Unix until liveness is abstracted
-    // behind a cross-platform trait (tracked in the cross-platform test work).
+    // dead. Liveness on Unix is a reliable `/proc` / `kill -0` probe, so a fake
+    // PID reads as absent. On Windows `task_mgmt::process_is_alive` defaults to
+    // "alive" (no `unsafe` FFI is permitted by the workspace, and a `tasklist`
+    // subprocess probe proved unreliable for edge PIDs in CI), so the worker is
+    // never marked interrupted and this assertion cannot hold. Gated on Unix.
     #[cfg(unix)]
     #[test]
     fn task_reports_mark_current_session_and_reconcile_dead_workers() {

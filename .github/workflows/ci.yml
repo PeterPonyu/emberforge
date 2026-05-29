@@ -38,11 +38,14 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets
 
-      # cargo test stays skipped on Windows: the plugin and runtime suites have
-      # additional POSIX-only assumptions (process-exit-code paths, shell-script
-      # fixtures) on top of the four cases addressed by per-test cfg gates in
-      # this PR. windows-latest continues to gate cargo check, clippy, and the
-      # release build. Re-enabling test on Windows is tracked in #25.
+      # cargo test stays skipped on Windows. This PR (refs #25) made several of
+      # the originally-listed cases cross-platform and gated the rest, but
+      # enabling the Windows run surfaced a further layer of POSIX-only tests
+      # that the previous workflow-level skip had hidden: runtime `hooks` and
+      # `conversation` tests that shell out to `printf`/`exit` (cmd.exe has no
+      # `printf`), and `oauth` tests. Making those portable is a larger effort
+      # tracked in #25; windows-latest continues to gate cargo check, clippy,
+      # and the release build.
       - name: Run cargo test
         if: runner.os != 'Windows'
         run: cargo test --workspace

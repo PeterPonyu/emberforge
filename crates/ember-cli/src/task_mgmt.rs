@@ -422,6 +422,15 @@ fn process_is_alive(pid: u32) -> bool {
     }
     #[cfg(not(unix))]
     {
+        // On non-Unix platforms (Windows) we cannot probe liveness without a
+        // dependable, side-effect-free API. Raw `OpenProcess`/`GetExitCodeProcess`
+        // would require FFI, but the workspace sets `unsafe_code = "forbid"`, so
+        // it is off the table; and the `tasklist /FI "PID eq <pid>"` subprocess
+        // probe proved unreliable for edge PIDs in CI (it does not report the
+        // absent process consistently, so a dead worker is reported as alive).
+        // Defaulting to "alive" is the safe choice: a worker is never spuriously
+        // marked interrupted. The reconcile test that depends on a fake-PID being
+        // reported dead is therefore gated `#[cfg(unix)]`.
         let _ = pid;
         true
     }
