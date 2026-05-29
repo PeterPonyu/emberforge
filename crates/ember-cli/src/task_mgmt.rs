@@ -848,6 +848,8 @@ fn render_task_watch_update(
         return Some(lines.join("\n"));
     }
 
+    // SAFETY: the `previous.is_none()` branch above returns early, so `previous`
+    // is guaranteed to be `Some` once control reaches this point.
     let previous = previous.expect("previous snapshot present");
     if activity.len() > previous.activity_count {
         for entry in &activity[previous.activity_count..] {
@@ -1644,6 +1646,7 @@ pub(crate) fn attach_to_task(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{
         render_task_logs_report, render_task_terminal_summary, render_task_watch_update,
         task_log_excerpt, task_log_stream_update, task_watch_snapshot, TaskManifestRecord,

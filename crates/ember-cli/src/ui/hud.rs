@@ -247,6 +247,7 @@ impl HudColors {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use runtime::{RuntimeUiConfig, RuntimeUiHudPreset};
 
     use super::{format_task_count, render_turn_hud, TurnHudContext};

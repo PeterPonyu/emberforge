@@ -2249,7 +2249,7 @@ impl LiveCli {
                 false
             }
             SlashCommand::Status => {
-                self.print_status();
+                self.print_status()?;
                 false
             }
             SlashCommand::Bughunter { scope } => {
@@ -2989,12 +2989,15 @@ impl LiveCli {
         Ok(())
     }
 
-    fn print_status(&self) {
-        println!(
-            "{}",
-            self.render_status_report()
-                .expect("status report should render")
-        );
+    /// Render and print the session status report to stdout.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the status report cannot be rendered (see
+    /// [`Self::render_status_report`]).
+    fn print_status(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("{}", self.render_status_report()?);
+        Ok(())
     }
 
     fn set_model(&mut self, model: Option<String>) -> Result<bool, Box<dyn std::error::Error>> {
@@ -4569,6 +4572,8 @@ impl InternalPromptProgressReporter {
 
     fn mark_model_phase(&self) {
         let snapshot = {
+            // SAFETY: the mutex is only ever held for brief, panic-free state
+            // mutations within this module, so it cannot be poisoned in practice.
             let mut state = self
                 .shared
                 .state
@@ -4594,6 +4599,8 @@ impl InternalPromptProgressReporter {
     fn mark_tool_phase(&self, name: &str, input: &str) {
         let detail = describe_tool_progress(name, input);
         let snapshot = {
+            // SAFETY: the mutex is only ever held for brief, panic-free state
+            // mutations within this module, so it cannot be poisoned in practice.
             let mut state = self
                 .shared
                 .state
@@ -4619,6 +4626,8 @@ impl InternalPromptProgressReporter {
         }
         let detail = truncate_for_summary(first_visible_line(trimmed), 120);
         let snapshot = {
+            // SAFETY: the mutex is only ever held for brief, panic-free state
+            // mutations within this module, so it cannot be poisoned in practice.
             let mut state = self
                 .shared
                 .state
@@ -4652,6 +4661,8 @@ impl InternalPromptProgressReporter {
     }
 
     fn snapshot(&self) -> InternalPromptProgressState {
+        // SAFETY: the mutex is only ever held for brief, panic-free state
+        // mutations within this module, so it cannot be poisoned in practice.
         self.shared
             .state
             .lock()
@@ -4664,6 +4675,8 @@ impl InternalPromptProgressReporter {
     }
 
     fn write_line(&self, line: &str) {
+        // SAFETY: the output lock is only ever held for brief, panic-free writes
+        // within this module, so it cannot be poisoned in practice.
         let _guard = self
             .shared
             .output_lock
@@ -6172,9 +6185,12 @@ impl CliToolExecutor {
                 &config,
             )))
         });
-        let async_runtime = mcp_manager
-            .as_ref()
-            .map(|_| Arc::new(tokio::runtime::Runtime::new().expect("tokio runtime")));
+        let async_runtime = mcp_manager.as_ref().map(|_| {
+            // SAFETY: this constructor has no Result channel to propagate into, and
+            // a multi-thread Tokio runtime only fails to build under catastrophic
+            // OS resource exhaustion, at which point the process cannot proceed.
+            Arc::new(tokio::runtime::Runtime::new().expect("tokio runtime"))
+        });
 
         Self {
             renderer: TerminalRenderer::new(),
@@ -6659,6 +6675,7 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{
         default_model_choice, describe_tool_progress, enrich_tool_error_for_model,
         filter_tool_specs, format_available_models_report, format_compact_report,

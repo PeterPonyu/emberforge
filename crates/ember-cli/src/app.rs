@@ -359,6 +359,7 @@ impl CliApp {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::path::PathBuf;
 
     use crate::args::{OutputFormat, PermissionMode};

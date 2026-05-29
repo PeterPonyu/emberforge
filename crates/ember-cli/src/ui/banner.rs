@@ -373,6 +373,7 @@ impl BannerColors {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use runtime::{RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig};
 
     use super::{effective_banner_mode, render_startup_banner, StartupBannerContext};

@@ -851,6 +851,7 @@ fn strip_ansi(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{strip_ansi, MarkdownStreamState, Spinner, TerminalRenderer};
 
     #[test]

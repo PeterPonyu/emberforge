@@ -656,6 +656,8 @@ impl LineEditor {
                 for _ in 0..count {
                     if session.cursor < session.text.len() {
                         let end = next_boundary(&session.text, session.cursor);
+                        // SAFETY: `cursor < len` and `cursor`/`end` are on char
+                        // boundaries, so the slice is non-empty and yields a char.
                         let ch = session.text[session.cursor..end].chars().next().unwrap();
                         let toggled: String = if ch.is_uppercase() {
                             ch.to_lowercase().collect()
@@ -1429,11 +1431,14 @@ fn word_forward(text: &str, cursor: usize) -> usize {
     let mut pos = cursor;
 
     // Get class of char at cursor
+    // SAFETY: `pos < len` (checked above) and `pos` is on a char boundary, so
+    // the slice is non-empty and `.next()` yields a char.
     let start_ch = text[pos..].chars().next().unwrap();
     let start_class = char_class(start_ch);
 
     // Skip current class
     while pos < len {
+        // SAFETY: `pos < len` (loop guard) on a char boundary, so non-empty.
         let ch = text[pos..].chars().next().unwrap();
         if char_class(ch) != start_class {
             break;
@@ -1443,6 +1448,7 @@ fn word_forward(text: &str, cursor: usize) -> usize {
 
     // Skip whitespace
     while pos < len {
+        // SAFETY: `pos < len` (loop guard) on a char boundary, so non-empty.
         let ch = text[pos..].chars().next().unwrap();
         if !ch.is_whitespace() {
             break;
@@ -1498,6 +1504,7 @@ fn word_end(text: &str, cursor: usize) -> usize {
 
     // Skip whitespace
     while pos < len {
+        // SAFETY: `pos < len` (loop guard) on a char boundary, so non-empty.
         let ch = text[pos..].chars().next().unwrap();
         if !ch.is_whitespace() {
             break;
@@ -1509,6 +1516,7 @@ fn word_end(text: &str, cursor: usize) -> usize {
         return len.saturating_sub(1).max(cursor);
     }
 
+    // SAFETY: `pos < len` (checked above) on a char boundary, so non-empty.
     let target_class = char_class(text[pos..].chars().next().unwrap());
 
     // Move to end of word
@@ -1534,6 +1542,7 @@ fn big_word_forward(text: &str, cursor: usize) -> usize {
 
     // Skip non-whitespace
     while pos < len {
+        // SAFETY: `pos < len` (loop guard) on a char boundary, so non-empty.
         let ch = text[pos..].chars().next().unwrap();
         if ch.is_whitespace() {
             break;
@@ -1543,6 +1552,7 @@ fn big_word_forward(text: &str, cursor: usize) -> usize {
 
     // Skip whitespace
     while pos < len {
+        // SAFETY: `pos < len` (loop guard) on a char boundary, so non-empty.
         let ch = text[pos..].chars().next().unwrap();
         if !ch.is_whitespace() {
             break;
@@ -1580,6 +1590,7 @@ fn big_word_end(text: &str, cursor: usize) -> usize {
 
     // Skip whitespace
     while pos < len {
+        // SAFETY: `pos < len` (loop guard) on a char boundary, so non-empty.
         let ch = text[pos..].chars().next().unwrap();
         if !ch.is_whitespace() {
             break;
@@ -1819,6 +1830,7 @@ fn resolve_text_object(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{
         selection_bounds, slash_command_prefix, EditSession, EditorMode, KeyAction, LineEditor,
     };
