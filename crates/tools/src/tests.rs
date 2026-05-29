@@ -1393,6 +1393,9 @@ fn structured_output_echoes_input_payload() {
 
 #[test]
 fn repl_executes_python_code() {
+    let _guard = env_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     // Skip when python is not installed (e.g. macOS CI runners).
     let has_python = std::process::Command::new("python3")
         .arg("--version")
