@@ -106,6 +106,8 @@ const FIELD_RANGES: [(u8, u8); 5] = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)]
 /// Parse a 5-field cron expression into a `CronSchedule`.
 ///
 /// Supported syntax per field: `*`, `N`, `N-M`, `N-M/S`, `*/S`, `N,M,L`.
+/// # Errors
+/// Returns a [`CronParseError`] if the cron expression is malformed.
 pub fn parse_cron(expr: &str) -> Result<CronSchedule, CronParseError> {
     let fields: Vec<&str> = expr.split_whitespace().collect();
     if fields.len() != 5 {
@@ -267,6 +269,8 @@ pub fn schedule_matches(
 // ---------------------------------------------------------------------------
 
 /// Create a new scheduled task. Validates the cron expression before creating.
+/// # Errors
+/// Returns a [`CronParseError`] if the cron expression is malformed.
 pub fn create_task(
     name: &str,
     schedule: &str,
@@ -305,6 +309,8 @@ fn tasks_file(project_dir: &Path) -> std::path::PathBuf {
 }
 
 /// Load durable tasks from `.ember/scheduled_tasks.json`.
+/// # Errors
+/// Returns an [`io::Error`] if the durable task file cannot be read/written or the scheduler thread cannot be spawned.
 pub fn load_durable_tasks(project_dir: &Path) -> io::Result<Vec<ScheduledTask>> {
     let path = tasks_file(project_dir);
     if !path.exists() {
@@ -317,6 +323,8 @@ pub fn load_durable_tasks(project_dir: &Path) -> io::Result<Vec<ScheduledTask>> 
 }
 
 /// Save durable tasks to `.ember/scheduled_tasks.json`.
+/// # Errors
+/// Returns an [`io::Error`] if the durable task file cannot be read/written or the scheduler thread cannot be spawned.
 pub fn save_durable_tasks(project_dir: &Path, tasks: &[ScheduledTask]) -> io::Result<()> {
     let path = tasks_file(project_dir);
     if let Some(parent) = path.parent() {
@@ -693,6 +701,8 @@ impl Drop for SchedulerHandle {
 /// each triggered task via the provided callback.
 ///
 /// Returns a `SchedulerHandle` that can be used to stop the scheduler.
+/// # Errors
+/// Returns an [`io::Error`] if the durable task file cannot be read/written or the scheduler thread cannot be spawned.
 pub fn start_scheduler<F>(project_dir: PathBuf, on_trigger: F) -> io::Result<SchedulerHandle>
 where
     F: Fn(&ScheduledTask) + Send + 'static,
@@ -777,6 +787,8 @@ where
 ///
 /// This is the default integration: triggered cron tasks create real background
 /// shell tasks via the Phase 1 task store infrastructure.
+/// # Errors
+/// Returns an [`io::Error`] if the durable task file cannot be read/written or the scheduler thread cannot be spawned.
 pub fn start_default_scheduler(project_dir: PathBuf) -> io::Result<SchedulerHandle> {
     start_scheduler(project_dir, |task| {
         use crate::task_store;
@@ -814,6 +826,8 @@ pub fn start_default_scheduler(project_dir: PathBuf) -> io::Result<SchedulerHand
 }
 
 /// Append a line to the cron log file.
+/// # Errors
+/// Returns an [`io::Error`] if the durable task file cannot be read/written or the scheduler thread cannot be spawned.
 fn append_cron_log(log_path: &Path, message: &str) -> io::Result<()> {
     if let Some(parent) = log_path.parent() {
         fs::create_dir_all(parent)?;
@@ -868,6 +882,9 @@ fn iso8601_now() -> String {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use std::path::PathBuf;
 

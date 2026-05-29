@@ -252,6 +252,9 @@ fn env_truthy(value: Option<&String>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{
         inherited_upstream_proxy_env, no_proxy_list, read_token, upstream_proxy_ws_url,
         RemoteSessionContext, UpstreamProxyBootstrap,

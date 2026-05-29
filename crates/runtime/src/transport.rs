@@ -99,15 +99,23 @@ impl Default for TransportConfig {
 /// events over different channels (local terminal, WebSocket, SSE, etc.).
 pub trait SessionTransport {
     /// Send an event to the other end of the transport.
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn send_event(&mut self, event: &TransportEvent) -> io::Result<()>;
 
     /// Receive the next event (blocking).
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn recv_event(&mut self) -> io::Result<TransportEvent>;
 
     /// Check if there is a pending event without blocking.
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn try_recv_event(&mut self) -> io::Result<Option<TransportEvent>>;
 
     /// Close the transport.
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn close(&mut self) -> io::Result<()>;
 
     /// Whether the transport is still connected.
@@ -148,6 +156,8 @@ impl Default for LocalTransport {
 }
 
 impl SessionTransport for LocalTransport {
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn send_event(&mut self, event: &TransportEvent) -> io::Result<()> {
         if !self.connected {
             return Err(io::Error::new(
@@ -159,6 +169,8 @@ impl SessionTransport for LocalTransport {
         Ok(())
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn recv_event(&mut self) -> io::Result<TransportEvent> {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -166,10 +178,14 @@ impl SessionTransport for LocalTransport {
         ))
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn try_recv_event(&mut self) -> io::Result<Option<TransportEvent>> {
         Ok(None)
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn close(&mut self) -> io::Result<()> {
         self.connected = false;
         Ok(())
@@ -209,6 +225,8 @@ impl<R: io::Read, W: io::Write> NdjsonTransport<R, W> {
 }
 
 impl<R: io::Read, W: io::Write> SessionTransport for NdjsonTransport<R, W> {
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn send_event(&mut self, event: &TransportEvent) -> io::Result<()> {
         if !self.connected {
             return Err(io::Error::new(
@@ -234,6 +252,8 @@ impl<R: io::Read, W: io::Write> SessionTransport for NdjsonTransport<R, W> {
         Ok(())
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn recv_event(&mut self) -> io::Result<TransportEvent> {
         if !self.connected {
             return Err(io::Error::new(
@@ -263,6 +283,8 @@ impl<R: io::Read, W: io::Write> SessionTransport for NdjsonTransport<R, W> {
         serde_json::from_str(line.trim()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn try_recv_event(&mut self) -> io::Result<Option<TransportEvent>> {
         // For a synchronous BufReader there is no non-blocking check, so we
         // inspect the internal buffer. If it contains a newline we can parse
@@ -278,6 +300,8 @@ impl<R: io::Read, W: io::Write> SessionTransport for NdjsonTransport<R, W> {
         }
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn close(&mut self) -> io::Result<()> {
         self.connected = false;
         Ok(())
@@ -339,6 +363,8 @@ impl Default for MemoryTransport {
 }
 
 impl SessionTransport for MemoryTransport {
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn send_event(&mut self, event: &TransportEvent) -> io::Result<()> {
         if !self.connected {
             return Err(io::Error::new(
@@ -350,6 +376,8 @@ impl SessionTransport for MemoryTransport {
         Ok(())
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn recv_event(&mut self) -> io::Result<TransportEvent> {
         if !self.connected {
             return Err(io::Error::new(
@@ -362,6 +390,8 @@ impl SessionTransport for MemoryTransport {
             .ok_or_else(|| io::Error::new(io::ErrorKind::WouldBlock, "no events in receive queue"))
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn try_recv_event(&mut self) -> io::Result<Option<TransportEvent>> {
         if !self.connected {
             return Ok(None);
@@ -369,6 +399,8 @@ impl SessionTransport for MemoryTransport {
         Ok(self.receive_queue.pop_front())
     }
 
+    /// # Errors
+    /// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
     fn close(&mut self) -> io::Result<()> {
         self.connected = false;
         Ok(())
@@ -530,11 +562,15 @@ pub fn events_to_message(events: &[TransportEvent]) -> Option<ConversationMessag
 }
 
 /// Serialize a `TransportEvent` to JSON.
+/// # Errors
+/// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
 pub fn event_to_json(event: &TransportEvent) -> io::Result<String> {
     serde_json::to_string(event).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
 /// Deserialize a `TransportEvent` from JSON.
+/// # Errors
+/// Returns an [`io::Error`] if the underlying reader/writer fails or a frame cannot be (de)serialized as JSON.
 pub fn event_from_json(json: &str) -> io::Result<TransportEvent> {
     serde_json::from_str(json).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
@@ -545,6 +581,9 @@ pub fn event_from_json(json: &str) -> io::Result<TransportEvent> {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use std::io::Cursor;
 

@@ -284,6 +284,9 @@ fn command_exists(command: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{
         build_linux_sandbox_command, detect_container_environment_from, FilesystemIsolationMode,
         SandboxConfig, SandboxDetectionInputs,

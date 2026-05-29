@@ -200,6 +200,8 @@ pub fn generate_task_id(kind: TaskKind) -> String {
 // ---------------------------------------------------------------------------
 
 /// Resolve the task store directory, preferring env vars, then walking ancestors.
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 pub fn task_store_dir() -> io::Result<PathBuf> {
     if let Ok(path) = std::env::var("EMBER_AGENT_STORE") {
         let trimmed = path.trim();
@@ -237,6 +239,8 @@ fn output_path(store_dir: &Path, task_id: &str) -> PathBuf {
 }
 
 /// Create a new task manifest and persist it to disk.
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 pub fn create_task_manifest(
     kind: TaskKind,
     name: &str,
@@ -281,6 +285,8 @@ pub fn create_task_manifest(
 }
 
 /// Save a manifest to disk (atomic write via tempfile + rename).
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 pub fn save_manifest(store_dir: &Path, manifest: &TaskManifest) -> io::Result<()> {
     let path = manifest_path(store_dir, &manifest.agent_id);
     let json = serde_json::to_string_pretty(manifest)
@@ -293,6 +299,8 @@ pub fn save_manifest(store_dir: &Path, manifest: &TaskManifest) -> io::Result<()
 }
 
 /// Load a task manifest from disk by ID.
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 pub fn load_manifest(task_id: &str) -> io::Result<TaskManifest> {
     let store_dir = task_store_dir()?;
     let path = manifest_path(&store_dir, task_id);
@@ -301,6 +309,8 @@ pub fn load_manifest(task_id: &str) -> io::Result<TaskManifest> {
 }
 
 /// List all task manifests from the store directory.
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 pub fn list_manifests(status_filter: Option<&str>) -> io::Result<Vec<TaskManifest>> {
     let store_dir = task_store_dir()?;
     if !store_dir.is_dir() {
@@ -344,6 +354,8 @@ pub fn list_manifests(status_filter: Option<&str>) -> io::Result<Vec<TaskManifes
 }
 
 /// Update a manifest field and persist.
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 pub fn update_manifest_status(
     task_id: &str,
     status: TaskStatus,
@@ -392,6 +404,8 @@ pub fn update_manifest_status(
 
 /// Spawn a shell task: runs `command` as a subprocess, streams output to disk file.
 /// Returns the updated manifest with PID and running status.
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 pub fn spawn_shell_task(task_id: &str, command: &str) -> io::Result<TaskManifest> {
     let store_dir = task_store_dir()?;
     let mut manifest = load_manifest(task_id)?;
@@ -542,6 +556,8 @@ fn stall_watchdog(task_id: &str, output_path: &Path) {
     }
 }
 
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 fn update_heartbeat(task_id: &str) -> io::Result<()> {
     let store_dir = task_store_dir()?;
     let path = manifest_path(&store_dir, task_id);
@@ -557,6 +573,8 @@ fn update_heartbeat(task_id: &str) -> io::Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Request a task to stop. Sends SIGTERM, waits, then SIGKILL if needed.
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 pub fn stop_task(task_id: &str) -> io::Result<bool> {
     let store_dir = task_store_dir()?;
     let mut manifest = load_manifest(task_id)?;
@@ -612,6 +630,8 @@ pub fn stop_task(task_id: &str) -> io::Result<bool> {
 }
 
 /// Read task output (tail N lines).
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 pub fn read_task_output(task_id: &str, tail: usize) -> io::Result<(String, bool)> {
     let manifest = load_manifest(task_id)?;
     let content = fs::read_to_string(&manifest.output_file)?;
@@ -633,6 +653,8 @@ pub fn read_task_output(task_id: &str, tail: usize) -> io::Result<(String, bool)
 static NOTIFICATION_QUEUE: std::sync::LazyLock<Mutex<Vec<TaskNotification>>> =
     std::sync::LazyLock::new(|| Mutex::new(Vec::new()));
 
+/// # Errors
+/// Returns an [`io::Error`] if the task store directory or manifest files cannot be read, written, created, or parsed.
 fn write_task_notification(task_id: &str, status: &str, summary: &str) -> io::Result<()> {
     let output_tail = match read_task_output(task_id, 20) {
         Ok((tail, _)) => tail,
@@ -724,6 +746,9 @@ fn process_is_alive(pid: u32) -> bool {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     /// Tests that modify the env var must hold the lock to avoid races.

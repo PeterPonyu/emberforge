@@ -299,6 +299,9 @@ pub fn format_tokens(count: u64) -> String {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use crate::usage::TokenUsage;
     use std::fs;

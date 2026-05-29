@@ -199,6 +199,8 @@ pub fn detect_ides(cwd: &Path) -> Vec<DetectedIde> {
 ///
 /// Returns `Ok(None)` when the file exists but is not a valid lockfile (e.g.
 /// missing required fields).  Returns `Err` only on I/O failures.
+/// # Errors
+/// Returns an [`io::Error`] if the lockfile cannot be read or its JSON contents cannot be parsed.
 pub fn parse_lockfile(path: &Path) -> io::Result<Option<DetectedIde>> {
     let data = std::fs::read_to_string(path)?;
     let lockfile: IdeLockfile = match serde_json::from_str(&data) {
@@ -443,6 +445,9 @@ fn home_dir() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use std::fs;
 

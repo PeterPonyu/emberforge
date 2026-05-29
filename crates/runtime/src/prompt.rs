@@ -526,6 +526,9 @@ fn get_actions_section() -> String {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{
         collapse_blank_lines, display_context_path, get_tool_usage_section,
         normalize_instruction_content, render_instruction_content, render_instruction_files,

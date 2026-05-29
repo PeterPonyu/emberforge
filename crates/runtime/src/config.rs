@@ -1501,6 +1501,9 @@ fn push_unique(target: &mut Vec<String>, value: String) {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{
         ConfigLoader, ConfigSource, McpServerConfig, McpTransport, ResolvedPermissionMode,
         RuntimeUiAnimationMode, RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiHudPreset,

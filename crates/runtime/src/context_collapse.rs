@@ -253,6 +253,9 @@ pub fn compute_importance(content: &str, source: &str, _position: usize, _total:
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     fn make_segment(id: &str, tokens: usize, importance: f64, source: &str) -> ContextSegment {

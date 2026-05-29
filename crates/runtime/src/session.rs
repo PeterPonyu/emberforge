@@ -397,6 +397,9 @@ fn required_u32(object: &BTreeMap<String, JsonValue>, key: &str) -> Result<u32, 
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::{ContentBlock, ConversationMessage, MessageRole, Session};
     use crate::usage::TokenUsage;
     use std::fs;

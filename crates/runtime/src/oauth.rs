@@ -450,6 +450,9 @@ fn decode_hex(byte: u8) -> Result<u8, String> {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{

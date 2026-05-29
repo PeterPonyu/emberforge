@@ -140,6 +140,8 @@ pub fn extract_base_command(command: &str) -> &str {
 /// This is a lightweight lexer — it does NOT handle quoted strings
 /// containing these characters, but is sufficient for security heuristics.
 pub fn split_pipeline(command: &str) -> Vec<&str> {
+    // SAFETY: compile-time-constant regex literal; cannot fail at runtime and
+    // is exercised by this module's tests. No runtime input reaches this call.
     static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*(?:\|{1,2}|&&|;)\s*").unwrap());
     RE.split(command).collect()
 }
@@ -415,6 +417,8 @@ fn check_02_fork_bomb(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
             /dev/zero\s*\|\s*.*&       # /dev/zero pipe background
         ",
         )
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         .unwrap()
     });
     if RE.is_match(command) {
@@ -457,6 +461,8 @@ fn check_03_dangerous_rm(command: &str, _cwd: &Path) -> Option<SecurityVerdict> 
 }
 
 static RE_RM_ROOT: LazyLock<Regex> = LazyLock::new(|| {
+    // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+    // and is exercised by this module's tests.
     Regex::new(r"rm\s+(-\w*r\w*\s+)*(/\s*$|/\s+|/\*|\s+--no-preserve-root)").unwrap()
 });
 
@@ -465,8 +471,12 @@ static RE_RM_ROOT: LazyLock<Regex> = LazyLock::new(|| {
 // ---------------------------------------------------------------------------
 
 fn check_04_disk_destruction(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+    // and is exercised by this module's tests.
     static RE_DD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"dd\s+.*of\s*=\s*/dev/").unwrap());
     static RE_DISK_TOOLS: LazyLock<Regex> = LazyLock::new(|| {
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         Regex::new(r"\b(mkfs|fdisk|parted|wipefs|sgdisk|gdisk|blkdiscard)\b").unwrap()
     });
 
@@ -516,8 +526,12 @@ fn check_05_permission_escalation(command: &str, _cwd: &Path) -> Option<Security
 
 fn check_06_dangerous_redirects(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
     static RE_DEV_REDIRECT: LazyLock<Regex> =
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         LazyLock::new(|| Regex::new(r">\s*/dev/(sd[a-z]|nvme|vd[a-z]|hd[a-z])").unwrap());
     static RE_SYSTEM_REDIRECT: LazyLock<Regex> = LazyLock::new(|| {
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         Regex::new(r">\s*/etc/(passwd|shadow|sudoers|hosts|fstab|resolv\.conf)").unwrap()
     });
 
@@ -536,6 +550,8 @@ fn check_06_dangerous_redirects(command: &str, _cwd: &Path) -> Option<SecurityVe
 
 fn check_07_process_substitution_abuse(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
     static RE: LazyLock<Regex> =
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         LazyLock::new(|| Regex::new(r"<\(\s*(rm|dd|mkfs|curl.*\|\s*(ba)?sh|wget)").unwrap());
     if RE.is_match(command) {
         return Some(deny(
@@ -551,6 +567,8 @@ fn check_07_process_substitution_abuse(command: &str, _cwd: &Path) -> Option<Sec
 // ---------------------------------------------------------------------------
 
 fn check_08_ifs_injection(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+    // and is exercised by this module's tests.
     static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bIFS\s*=").unwrap());
     if RE.is_match(command) {
         return Some(warn(
@@ -566,6 +584,8 @@ fn check_08_ifs_injection(command: &str, _cwd: &Path) -> Option<SecurityVerdict>
 // ---------------------------------------------------------------------------
 
 fn check_09_env_manipulation(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+    // and is exercised by this module's tests.
     static RE_PRELOAD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"LD_PRELOAD\s*=").unwrap());
     // Unsetting PATH
     if command.contains("unset PATH")
@@ -590,6 +610,8 @@ fn check_09_env_manipulation(command: &str, _cwd: &Path) -> Option<SecurityVerdi
 // ---------------------------------------------------------------------------
 
 fn check_10_proc_sys_write(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
+    // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+    // and is exercised by this module's tests.
     static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r">\s*/(proc|sys)/").unwrap());
     if RE.is_match(command) {
         return Some(deny(10, "writing to /proc or /sys filesystem"));
@@ -651,10 +673,14 @@ fn check_13_network_exfiltration(command: &str, _cwd: &Path) -> Option<SecurityV
             \|\s*bash\s*-s\s*--                     # | bash -s --
         ",
         )
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         .unwrap()
     });
     // Detect data exfil: cat sensitive | curl -d@- (POST stdin)
     static RE_EXFIL: LazyLock<Regex> =
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         LazyLock::new(|| Regex::new(r"(cat|tar|zip).*\|\s*(curl|wget|nc|ncat)\b").unwrap());
     if RE.is_match(command) {
         return Some(deny(13, "piping remote content into a shell"));
@@ -675,10 +701,16 @@ fn check_13_network_exfiltration(command: &str, _cwd: &Path) -> Option<SecurityV
 fn check_14_obfuscated_commands(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
     // base64 decode piped to shell
     static RE_B64: LazyLock<Regex> =
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         LazyLock::new(|| Regex::new(r"base64\s+(-d|--decode)\s*\|\s*(ba)?sh").unwrap());
     // echo -e with hex/octal piped to shell
     static RE_HEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r#"echo\s+-[neE]+\s+["']?\\(x[0-9a-fA-F]|[0-7]{3})"#).unwrap());
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
+        LazyLock::new(|| {
+            Regex::new(r#"echo\s+-[neE]+\s+["']?\\(x[0-9a-fA-F]|[0-7]{3})"#).unwrap()
+        });
     if RE_B64.is_match(command) {
         return Some(deny(14, "base64-decoded payload piped to shell"));
     }
@@ -713,6 +745,8 @@ fn check_15_recursive_root_ops(command: &str, _cwd: &Path) -> Option<SecurityVer
             chown\s+(-R|--recursive)\s+\S+\s+/
         ",
         )
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         .unwrap()
     });
     if RE.is_match(command) {
@@ -785,6 +819,8 @@ fn check_17_package_manager_global(command: &str, _cwd: &Path) -> Option<Securit
 
 fn check_18_kill_system_processes(command: &str, _cwd: &Path) -> Option<SecurityVerdict> {
     static RE_KILL_INIT: LazyLock<Regex> =
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         LazyLock::new(|| Regex::new(r"kill\s+(-\d+\s+)?1\b").unwrap());
     for seg in split_pipeline(command) {
         let seg = seg.trim();
@@ -835,10 +871,14 @@ fn check_19_sudo_escalation(command: &str, _cwd: &Path) -> Option<SecurityVerdic
 // ---------------------------------------------------------------------------
 
 fn check_20_path_traversal(command: &str, cwd: &Path) -> Option<SecurityVerdict> {
+    // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+    // and is exercised by this module's tests.
     static RE_TRAVERSAL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.\./\.\./").unwrap());
 
     // Check sensitive targets first (deny takes priority over warn).
     static RE_SENSITIVE: LazyLock<Regex> = LazyLock::new(|| {
+        // SAFETY: compile-time-constant regex literal; cannot fail at runtime
+        // and is exercised by this module's tests.
         Regex::new(r"\.\./+\.\./+(etc|var|boot|root)/(passwd|shadow|sudoers)").unwrap()
     });
     if RE_SENSITIVE.is_match(command) {
@@ -931,6 +971,9 @@ fn normalize_lexical(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use std::path::Path;
 
