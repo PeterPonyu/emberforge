@@ -36,6 +36,19 @@ impl NotificationKind {
         }
     }
 
+    /// Parse a notification kind from its string form (case-insensitive),
+    /// mirroring the vocabulary produced by [`Self::as_str`].
+    fn from_str(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "session_start" => Some(Self::SessionStart),
+            "session_end" => Some(Self::SessionEnd),
+            "turn_complete" => Some(Self::TurnComplete),
+            "task_complete" => Some(Self::TaskComplete),
+            "error" => Some(Self::Error),
+            _ => None,
+        }
+    }
+
     fn emoji(self) -> &'static str {
         match self {
             Self::SessionStart => "🔥",
@@ -140,13 +153,21 @@ fn truncate(value: &str, max: usize) -> String {
     }
 }
 
+/// Decide whether an event should be delivered to a webhook.
+///
+/// An empty filter means "deliver all"; otherwise only kinds present in the
+/// filter are delivered.
+fn should_deliver(config: &WebhookConfig, kind: NotificationKind) -> bool {
+    config.filter.is_empty() || config.filter.contains(&kind)
+}
+
 /// Send a notification to a single webhook (blocking HTTP POST).
 fn send_webhook(
     config: &WebhookConfig,
     event: &NotificationEvent,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Filter: if the webhook has a filter list and the event kind isn't in it, skip.
-    if !config.filter.is_empty() && !config.filter.contains(&event.kind) {
+    if !should_deliver(config, event.kind) {
         return Ok(());
     }
 
@@ -232,11 +253,23 @@ impl NotificationDispatcher {
 ///   "notifications": {
 ///     "webhooks": [
 ///       { "url": "https://discord.com/api/webhooks/...", "provider": "discord" },
-///       { "url": "https://hooks.slack.com/...", "provider": "slack" }
+///       {
+///         "url": "https://hooks.slack.com/...",
+///         "provider": "slack",
+///         "filter": ["error", "task_complete"]
+///       }
 ///     ]
 ///   }
 /// }
 /// ```
+///
+/// Each webhook may carry an optional `filter` (alias `events`) array of
+/// [`NotificationKind`] strings (e.g. `"session_start"`, `"error"`). Only the
+/// listed kinds are delivered to that webhook. An absent or empty filter
+/// preserves the default behavior of delivering every event kind (see
+/// [`send_webhook`]). Unrecognized kind strings are skipped with a warning,
+/// matching how the rest of this parser drops invalid values rather than
+/// failing the whole config.
 pub(crate) fn parse_webhook_configs(settings: &serde_json::Value) -> Vec<WebhookConfig> {
     let Some(notifications) = settings.get("notifications") else {
         return Vec::new();
@@ -254,11 +287,42 @@ pub(crate) fn parse_webhook_configs(settings: &serde_json::Value) -> Vec<Webhook
                 .and_then(|v| v.as_str())
                 .and_then(WebhookProvider::from_str)
                 .unwrap_or_else(|| WebhookProvider::detect_from_url(&url));
+            let filter = parse_kind_filter(entry);
             Some(WebhookConfig {
                 url,
                 provider,
-                filter: Vec::new(), // TODO: parse filter from config
+                filter,
             })
+        })
+        .collect()
+}
+
+/// Parse the optional `filter` (or `events`) array on a single webhook entry
+/// into a list of [`NotificationKind`]s. Unknown kind strings are skipped with
+/// a warning, consistent with the surrounding parser's lenient handling of bad
+/// values. An absent or empty array yields an empty filter (deliver all).
+fn parse_kind_filter(entry: &serde_json::Value) -> Vec<NotificationKind> {
+    let Some(values) = entry
+        .get("filter")
+        .or_else(|| entry.get("events"))
+        .and_then(|v| v.as_array())
+    else {
+        return Vec::new();
+    };
+
+    values
+        .iter()
+        .filter_map(|value| {
+            let raw = value.as_str()?;
+            match NotificationKind::from_str(raw) {
+                Some(kind) => Some(kind),
+                None => {
+                    eprintln!(
+                        "warning: ignoring unknown notification kind in webhook filter: {raw:?}"
+                    );
+                    None
+                }
+            }
         })
         .collect()
 }
@@ -402,5 +466,92 @@ mod tests {
     fn dispatcher_inactive_when_no_webhooks() {
         let d = NotificationDispatcher::default();
         assert!(!d.is_active());
+    }
+
+    #[test]
+    fn parse_webhook_filter_from_settings() {
+        let settings = serde_json::json!({
+            "notifications": {
+                "webhooks": [
+                    {
+                        "url": "https://example.com/hook",
+                        "provider": "custom",
+                        "filter": ["error", "task_complete"]
+                    }
+                ]
+            }
+        });
+        let configs = parse_webhook_configs(&settings);
+        assert_eq!(configs.len(), 1);
+        assert_eq!(
+            configs[0].filter,
+            vec![NotificationKind::Error, NotificationKind::TaskComplete]
+        );
+    }
+
+    #[test]
+    fn parse_webhook_filter_accepts_events_alias() {
+        let settings = serde_json::json!({
+            "notifications": {
+                "webhooks": [
+                    {
+                        "url": "https://example.com/hook",
+                        "provider": "custom",
+                        "events": ["session_start"]
+                    }
+                ]
+            }
+        });
+        let configs = parse_webhook_configs(&settings);
+        assert_eq!(configs[0].filter, vec![NotificationKind::SessionStart]);
+    }
+
+    #[test]
+    fn parse_webhook_filter_skips_unknown_kinds() {
+        let settings = serde_json::json!({
+            "notifications": {
+                "webhooks": [
+                    {
+                        "url": "https://example.com/hook",
+                        "provider": "custom",
+                        "filter": ["error", "not_a_real_kind"]
+                    }
+                ]
+            }
+        });
+        let configs = parse_webhook_configs(&settings);
+        // Unknown kinds are dropped; valid ones are retained.
+        assert_eq!(configs[0].filter, vec![NotificationKind::Error]);
+    }
+
+    #[test]
+    fn absent_filter_delivers_all_kinds() {
+        let config = WebhookConfig {
+            url: "https://example.com/hook".to_string(),
+            provider: WebhookProvider::Custom,
+            filter: Vec::new(),
+        };
+        for kind in [
+            NotificationKind::SessionStart,
+            NotificationKind::SessionEnd,
+            NotificationKind::TurnComplete,
+            NotificationKind::TaskComplete,
+            NotificationKind::Error,
+        ] {
+            assert!(should_deliver(&config, kind));
+        }
+    }
+
+    #[test]
+    fn filtered_webhook_delivers_matching_and_skips_non_matching() {
+        let config = WebhookConfig {
+            url: "https://example.com/hook".to_string(),
+            provider: WebhookProvider::Custom,
+            filter: vec![NotificationKind::Error],
+        };
+        // Matching kind is delivered.
+        assert!(should_deliver(&config, NotificationKind::Error));
+        // Non-matching kind is skipped.
+        assert!(!should_deliver(&config, NotificationKind::TurnComplete));
     }
 }
