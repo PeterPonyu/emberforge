@@ -58,17 +58,40 @@ fn echo_plugin_tool() -> PluginTool {
         }),
     };
 
+    let (command, args) = echo_command();
+
     PluginTool::new(
         "integration.echo_pipeline",
         "Integration Echo Pipeline",
         definition,
+        command,
+        args,
+        PluginToolPermission::WorkspaceWrite,
+        None,
+    )
+}
+
+#[cfg(windows)]
+fn echo_command() -> (&'static str, Vec<String>) {
+    (
+        "powershell.exe",
+        vec![
+            "-NoProfile".to_string(),
+            "-NonInteractive".to_string(),
+            "-Command".to_string(),
+            "[Console]::Out.Write($env:EMBER_TOOL_INPUT)".to_string(),
+        ],
+    )
+}
+
+#[cfg(not(windows))]
+fn echo_command() -> (&'static str, Vec<String>) {
+    (
         "sh",
         vec![
             "-c".to_string(),
             "printf '%s' \"$EMBER_TOOL_INPUT\"".to_string(),
         ],
-        PluginToolPermission::WorkspaceWrite,
-        None,
     )
 }
 
@@ -134,10 +157,9 @@ impl ApiClient for OneToolUseThenDoneClient {
     }
 }
 
-/// Build an inline `PreToolUse` hook snippet that appends the tool name and the
-/// input it was handed to `record`, then exits 0 (allow). On Windows the runtime
-/// spawns via `cmd /C`; cargo test is skipped on Windows in CI, but keep
-/// clippy/build green there anyway.
+/// Build an inline `PreToolUse` hook snippet that exposes the tool context. Unix
+/// records the payload to a file for the strongest assertion; Windows uses hook
+/// stdout because `cmd.exe` file redirection is fragile around quoted JSON.
 #[cfg(not(windows))]
 fn pre_hook_snippet(record: &Path) -> String {
     format!(
@@ -147,15 +169,12 @@ fn pre_hook_snippet(record: &Path) -> String {
 }
 
 #[cfg(windows)]
-fn pre_hook_snippet(record: &Path) -> String {
-    format!(
-        "echo PRE name=%HOOK_TOOL_NAME% input=%HOOK_TOOL_INPUT% >> \"{}\"",
-        record.display()
-    )
+fn pre_hook_snippet(_record: &Path) -> String {
+    "echo PRE name=%HOOK_TOOL_NAME%".to_string()
 }
 
-/// Build an inline `PostToolUse` hook snippet that appends the tool name and the
-/// tool output it observed to `record`, then exits 0 (allow).
+/// Build an inline `PostToolUse` hook snippet that appends the tool context it
+/// observed to `record`, then exits 0 (allow).
 #[cfg(not(windows))]
 fn post_hook_snippet(record: &Path) -> String {
     format!(
@@ -165,13 +184,11 @@ fn post_hook_snippet(record: &Path) -> String {
 }
 
 #[cfg(windows)]
-fn post_hook_snippet(record: &Path) -> String {
-    format!(
-        "echo POST name=%HOOK_TOOL_NAME% output=%HOOK_TOOL_OUTPUT% >> \"{}\"",
-        record.display()
-    )
+fn post_hook_snippet(_record: &Path) -> String {
+    "echo POST name=%HOOK_TOOL_NAME%".to_string()
 }
 
+#[cfg(not(windows))]
 fn read_records(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
@@ -242,26 +259,32 @@ fn full_tool_pipeline_drives_registration_permission_hooks_and_conversation_upda
     );
 
     // ── Assert: PreToolUse fired with the right tool name + input ──
-    let pre = read_records(&pre_record);
-    assert!(
-        pre.contains(&format!("name={TOOL_NAME}")),
-        "PreToolUse hook should fire for the tool, got: {pre:?}"
-    );
-    assert!(
-        pre.contains("round-trip-payload"),
-        "PreToolUse hook should observe the tool input, got: {pre:?}"
-    );
+    #[cfg(not(windows))]
+    {
+        let pre = read_records(&pre_record);
+        assert!(
+            pre.contains(&format!("name={TOOL_NAME}")),
+            "PreToolUse hook should fire for the tool, got: {pre:?}"
+        );
+        assert!(
+            pre.contains("round-trip-payload"),
+            "PreToolUse hook should observe the tool input, got: {pre:?}"
+        );
+    }
 
     // ── Assert: PostToolUse fired with the tool output ──
-    let post = read_records(&post_record);
-    assert!(
-        post.contains(&format!("name={TOOL_NAME}")),
-        "PostToolUse hook should fire for the tool, got: {post:?}"
-    );
-    assert!(
-        post.contains("round-trip-payload"),
-        "PostToolUse hook should observe the (echoed) tool output, got: {post:?}"
-    );
+    #[cfg(not(windows))]
+    {
+        let post = read_records(&post_record);
+        assert!(
+            post.contains(&format!("name={TOOL_NAME}")),
+            "PostToolUse hook should fire for the tool, got: {post:?}"
+        );
+        assert!(
+            post.contains("round-trip-payload"),
+            "PostToolUse hook should observe the (echoed) tool output, got: {post:?}"
+        );
+    }
 
     // ── Assert: tool-result message landed in the conversation in order ──
     // Expected message sequence: [user, assistant(text+tool_use), tool_result,
@@ -304,6 +327,17 @@ fn full_tool_pipeline_drives_registration_permission_hooks_and_conversation_upda
         output.contains("round-trip-payload"),
         "tool result output should carry the echoed payload, got: {output:?}"
     );
+    #[cfg(windows)]
+    {
+        assert!(
+            output.contains(&format!("PRE name={TOOL_NAME}")),
+            "Windows PreToolUse hook feedback should be merged into output, got: {output:?}"
+        );
+        assert!(
+            output.contains(&format!("POST name={TOOL_NAME}")),
+            "Windows PostToolUse hook feedback should be merged into output, got: {output:?}"
+        );
+    }
 
     assert_eq!(messages[3].role, MessageRole::Assistant);
 

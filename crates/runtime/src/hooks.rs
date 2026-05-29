@@ -352,7 +352,7 @@ fn format_hook_warning(command: &str, code: i32, stdout: Option<&str>, stderr: &
 
 fn shell_command(command: &str) -> CommandWithStdin {
     #[cfg(windows)]
-    let mut command_builder = {
+    let command_builder = {
         let mut command_builder = Command::new("cmd");
         command_builder.arg("/C").arg(command);
         CommandWithStdin::new(command_builder)
@@ -404,8 +404,12 @@ impl CommandWithStdin {
     fn output_with_stdin(&mut self, stdin: &[u8]) -> std::io::Result<std::process::Output> {
         let mut child = self.command.spawn()?;
         if let Some(mut child_stdin) = child.stdin.take() {
-            use std::io::Write;
-            child_stdin.write_all(stdin)?;
+            use std::io::{ErrorKind, Write as _};
+            match child_stdin.write_all(stdin) {
+                Ok(()) => {}
+                Err(error) if error.kind() == ErrorKind::BrokenPipe => {}
+                Err(error) => return Err(error),
+            }
         }
         child.wait_with_output()
     }
@@ -419,7 +423,7 @@ mod tests {
     #[test]
     fn allows_exit_code_zero_and_captures_stdout() {
         let runner = HookRunner::new(RuntimeHookConfig::new(
-            vec![shell_snippet("printf 'pre ok'")],
+            vec![hook_print("pre ok")],
             Vec::new(),
         ));
 
@@ -431,7 +435,7 @@ mod tests {
     #[test]
     fn denies_exit_code_two() {
         let runner = HookRunner::new(RuntimeHookConfig::new(
-            vec![shell_snippet("printf 'blocked by hook'; exit 2")],
+            vec![hook_print_and_exit("blocked by hook", 2)],
             Vec::new(),
         ));
 
@@ -444,10 +448,7 @@ mod tests {
     #[test]
     fn warns_for_other_non_zero_statuses() {
         let runner = HookRunner::from_feature_config(&RuntimeFeatureConfig::default().with_hooks(
-            RuntimeHookConfig::new(
-                vec![shell_snippet("printf 'warning hook'; exit 1")],
-                Vec::new(),
-            ),
+            RuntimeHookConfig::new(vec![hook_print_and_exit("warning hook", 1)], Vec::new()),
         ));
 
         let result = runner.run_pre_tool_use("Edit", r#"{"file":"src/lib.rs"}"#);
@@ -460,13 +461,23 @@ mod tests {
     }
 
     #[cfg(windows)]
-    fn shell_snippet(script: &str) -> String {
-        script.replace('\'', "\"")
+    fn hook_print(message: &str) -> String {
+        format!("echo {message}")
     }
 
     #[cfg(not(windows))]
-    fn shell_snippet(script: &str) -> String {
-        script.to_string()
+    fn hook_print(message: &str) -> String {
+        format!("printf '{message}'")
+    }
+
+    #[cfg(windows)]
+    fn hook_print_and_exit(message: &str, code: i32) -> String {
+        format!("echo {message} & exit /B {code}")
+    }
+
+    #[cfg(not(windows))]
+    fn hook_print_and_exit(message: &str, code: i32) -> String {
+        format!("printf '{message}'; exit {code}")
     }
 
     // ── Match rule tests ───────────────────────────────────────────────
@@ -540,10 +551,7 @@ mod tests {
     #[test]
     fn fire_event_runs_registered_commands() {
         let mut config = RuntimeHookConfig::new(Vec::new(), Vec::new());
-        config.set_event_commands(
-            HookEvent::SessionStart,
-            vec![shell_snippet("printf 'session started'")],
-        );
+        config.set_event_commands(HookEvent::SessionStart, vec![hook_print("session started")]);
         let runner = HookRunner::new(config);
         // fire_event should not panic even without capturing output
         runner.fire_event(HookEvent::SessionStart);

@@ -430,6 +430,7 @@ fn skill_loads_local_skill_prompt() {
     assert!(output["path"]
         .as_str()
         .expect("path")
+        .replace('\\', "/")
         .ends_with("/help/SKILL.md"));
     assert!(output["prompt"]
         .as_str()
@@ -449,6 +450,7 @@ fn skill_loads_local_skill_prompt() {
     assert!(dollar_output["path"]
         .as_str()
         .expect("path")
+        .replace('\\', "/")
         .ends_with("/help/SKILL.md"));
 
     match original_codex_home {
@@ -1027,9 +1029,19 @@ fn notebook_edit_rejects_invalid_inputs() {
 
 #[test]
 fn bash_tool_reports_success_exit_failure_timeout_and_background() {
+    #[cfg(windows)]
+    let (success_command, failure_command, sleep_command) = (
+        "<nul set /p=hello",
+        "echo oops 1>&2 & exit /B 7",
+        "ping -n 2 127.0.0.1 > nul",
+    );
+    #[cfg(not(windows))]
+    let (success_command, failure_command, sleep_command) =
+        ("printf 'hello'", "printf 'oops' >&2; exit 7", "sleep 1");
+
     let success = execute_tool(
         "bash",
-        &json!({ "command": "printf 'hello'", "dangerouslyDisableSandbox": true }),
+        &json!({ "command": success_command, "dangerouslyDisableSandbox": true }),
     )
     .expect("bash should succeed");
     let success_output: serde_json::Value = serde_json::from_str(&success).expect("json");
@@ -1038,7 +1050,7 @@ fn bash_tool_reports_success_exit_failure_timeout_and_background() {
 
     let failure = execute_tool(
         "bash",
-        &json!({ "command": "printf 'oops' >&2; exit 7", "dangerouslyDisableSandbox": true }),
+        &json!({ "command": failure_command, "dangerouslyDisableSandbox": true }),
     )
     .expect("bash failure should still return structured output");
     let failure_output: serde_json::Value = serde_json::from_str(&failure).expect("json");
@@ -1050,7 +1062,7 @@ fn bash_tool_reports_success_exit_failure_timeout_and_background() {
 
     let timeout = execute_tool(
         "bash",
-        &json!({ "command": "sleep 1", "timeout": 10, "dangerouslyDisableSandbox": true }),
+        &json!({ "command": sleep_command, "timeout": 10, "dangerouslyDisableSandbox": true }),
     )
     .expect("bash timeout should return output");
     let timeout_output: serde_json::Value = serde_json::from_str(&timeout).expect("json");
@@ -1063,7 +1075,7 @@ fn bash_tool_reports_success_exit_failure_timeout_and_background() {
 
     let background = execute_tool(
         "bash",
-        &json!({ "command": "sleep 1", "run_in_background": true, "dangerouslyDisableSandbox": true }),
+        &json!({ "command": sleep_command, "run_in_background": true, "dangerouslyDisableSandbox": true }),
     )
     .expect("bash background should succeed");
     let background_output: serde_json::Value = serde_json::from_str(&background).expect("json");
@@ -1214,6 +1226,7 @@ fn glob_and_grep_tools_cover_success_and_errors() {
     assert!(globbed_output["filenames"][0]
         .as_str()
         .expect("filename")
+        .replace('\\', "/")
         .ends_with("nested/lib.rs"));
 
     let glob_error = execute_tool("glob_search", &json!({ "pattern": "[" }))
@@ -1381,6 +1394,9 @@ fn structured_output_echoes_input_payload() {
 
 #[test]
 fn repl_executes_python_code() {
+    let _guard = env_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     // Skip when python is not installed (e.g. macOS CI runners).
     let has_python = std::process::Command::new("python3")
         .arg("--version")
@@ -1408,6 +1424,7 @@ fn repl_executes_python_code() {
     assert!(output["stdout"].as_str().expect("stdout").contains('2'));
 }
 
+#[cfg(not(windows))]
 #[test]
 fn powershell_runs_via_stub_shell() {
     let _guard = env_lock()

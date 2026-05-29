@@ -197,12 +197,26 @@ fn prepare_command(
         return prepared;
     }
 
-    let mut prepared = Command::new("sh");
-    prepared.arg("-lc").arg(command).current_dir(cwd);
+    let mut prepared = host_shell_command(command);
+    prepared.current_dir(cwd);
     if sandbox_status.filesystem_active {
         prepared.env("HOME", cwd.join(".sandbox-home"));
         prepared.env("TMPDIR", cwd.join(".sandbox-tmp"));
     }
+    prepared
+}
+
+#[cfg(windows)]
+fn host_shell_command(command: &str) -> Command {
+    let mut prepared = Command::new("cmd");
+    prepared.arg("/C").arg(command);
+    prepared
+}
+
+#[cfg(not(windows))]
+fn host_shell_command(command: &str) -> Command {
+    let mut prepared = Command::new("sh");
+    prepared.arg("-lc").arg(command);
     prepared
 }
 
@@ -224,12 +238,26 @@ fn prepare_tokio_command(
         return prepared;
     }
 
-    let mut prepared = TokioCommand::new("sh");
-    prepared.arg("-lc").arg(command).current_dir(cwd);
+    let mut prepared = host_tokio_shell_command(command);
+    prepared.current_dir(cwd);
     if sandbox_status.filesystem_active {
         prepared.env("HOME", cwd.join(".sandbox-home"));
         prepared.env("TMPDIR", cwd.join(".sandbox-tmp"));
     }
+    prepared
+}
+
+#[cfg(windows)]
+fn host_tokio_shell_command(command: &str) -> TokioCommand {
+    let mut prepared = TokioCommand::new("cmd");
+    prepared.arg("/C").arg(command);
+    prepared
+}
+
+#[cfg(not(windows))]
+fn host_tokio_shell_command(command: &str) -> TokioCommand {
+    let mut prepared = TokioCommand::new("sh");
+    prepared.arg("-lc").arg(command);
     prepared
 }
 
@@ -243,10 +271,20 @@ mod tests {
     use super::{execute_bash, BashCommandInput};
     use crate::sandbox::FilesystemIsolationMode;
 
+    #[cfg(windows)]
+    fn shell_print_no_newline(message: &str) -> String {
+        format!("<nul set /p={message}")
+    }
+
+    #[cfg(not(windows))]
+    fn shell_print_no_newline(message: &str) -> String {
+        format!("printf '{message}'")
+    }
+
     #[test]
     fn executes_simple_command() {
         let output = execute_bash(BashCommandInput {
-            command: String::from("printf 'hello'"),
+            command: shell_print_no_newline("hello"),
             timeout: Some(1_000),
             description: None,
             run_in_background: Some(false),
@@ -266,7 +304,7 @@ mod tests {
     #[test]
     fn disables_sandbox_when_requested() {
         let output = execute_bash(BashCommandInput {
-            command: String::from("printf 'hello'"),
+            command: shell_print_no_newline("hello"),
             timeout: Some(1_000),
             description: None,
             run_in_background: Some(false),
