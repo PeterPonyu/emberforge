@@ -1,3 +1,7 @@
+// Test code may panic freely; the error-handling policy (refs #11) targets
+// non-test failure boundaries only.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use crate::handlers::{
     handle_branch_slash_command, handle_commit_push_pr_slash_command, handle_commit_slash_command,
     handle_plugins_slash_command, handle_slash_command, handle_worktree_slash_command,

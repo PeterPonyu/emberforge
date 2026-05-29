@@ -37,6 +37,12 @@ use crate::types::{
 ///
 /// Most tools ignore `app_state`. The team orchestration tools (`TeamCreate`,
 /// `TeamDelete`) read/write the team context stored in `AppState`.
+///
+/// # Errors
+///
+/// Returns a [`ToolExecError`] if `input` fails to deserialize into the tool's
+/// expected schema, the tool name is not recognized, or the tool handler itself
+/// fails (I/O, network, or runtime error).
 pub fn execute_tool_with_context(
     name: &str,
     input: &Value,
@@ -54,6 +60,12 @@ pub fn execute_tool_with_context(
 }
 
 /// Execute a tool by name. Convenience wrapper that passes no `AppState`.
+///
+/// # Errors
+///
+/// Returns a [`ToolExecError`] if `input` fails to deserialize into the tool's
+/// expected schema, the tool name is not recognized, or the tool handler itself
+/// fails (I/O, network, or runtime error).
 pub fn execute_tool(name: &str, input: &Value) -> Result<String, ToolExecError> {
     match name {
         "bash" => from_value::<BashCommandInput>(input).and_then(run_bash),

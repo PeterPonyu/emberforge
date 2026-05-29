@@ -218,6 +218,12 @@ impl StarterBuddyState {
     }
 
     /// Hatch a new companion when none exists. Returns `(created, companion)`.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: a `StoredCompanion` is assigned to
+    /// `self.companion` immediately before the final `materialize()`, so that
+    /// call always yields `Some`. The `expect` documents this invariant.
     pub fn hatch(&mut self) -> (bool, StarterBuddyCompanion) {
         if let Some(existing) = self.materialize() {
             return (false, existing);
@@ -231,10 +237,19 @@ impl StarterBuddyState {
         });
         self.muted = false;
         self.persist();
+        // SAFETY: `self.companion` was just set to `Some(..)` above and
+        // `materialize()` returns `Some` iff `self.companion.is_some()`, so this
+        // is an infallible post-assignment invariant, not a failure boundary.
         (true, self.materialize().expect("companion just hatched"))
     }
 
     /// Replace the existing companion with the next template.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: a `StoredCompanion` is assigned to
+    /// `self.companion` immediately before `materialize()`, so that call always
+    /// yields `Some`. The `expect` documents this invariant.
     pub fn rehatch(&mut self) -> StarterBuddyCompanion {
         let template = &BUDDY_TEMPLATES[self.next_index % BUDDY_TEMPLATES.len()];
         self.next_index += 1;
@@ -245,6 +260,9 @@ impl StarterBuddyState {
         });
         self.muted = false;
         self.persist();
+        // SAFETY: `self.companion` was just set to `Some(..)` above and
+        // `materialize()` returns `Some` iff `self.companion.is_some()`, so this
+        // is an infallible post-assignment invariant, not a failure boundary.
         self.materialize().expect("companion just rehatched")
     }
 
@@ -430,6 +448,9 @@ pub fn execute_buddy_command(state: &mut StarterBuddyState, payload: &str) -> St
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};

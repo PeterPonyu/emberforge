@@ -105,6 +105,11 @@ pub fn read_team_file(name: &str, teams_dir: &Path) -> Option<TeamFile> {
 }
 
 /// Serialises and writes a team file, creating parent directories as needed.
+///
+/// # Errors
+///
+/// Returns an error string if creating the parent directory, serialising the
+/// team to JSON, or writing the file to disk fails.
 pub fn write_team_file(name: &str, team: &TeamFile, teams_dir: &Path) -> Result<(), String> {
     let path = get_team_file_path(name, teams_dir);
     if let Some(parent) = path.parent() {
@@ -120,6 +125,11 @@ pub fn write_team_file(name: &str, team: &TeamFile, teams_dir: &Path) -> Result<
 
 /// Removes the team JSON file for `name`. Safe to call even if the file is
 /// already absent.
+///
+/// # Errors
+///
+/// Returns an error string if the team file exists but cannot be removed from
+/// disk.
 pub fn cleanup_team_directories(name: &str, teams_dir: &Path) -> Result<(), String> {
     let path = get_team_file_path(name, teams_dir);
     if path.exists() {
