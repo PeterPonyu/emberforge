@@ -450,6 +450,7 @@ fn skill_loads_local_skill_prompt() {
     assert!(dollar_output["path"]
         .as_str()
         .expect("path")
+        .replace('\\', "/")
         .ends_with("/help/SKILL.md"));
 
     match original_codex_home {
