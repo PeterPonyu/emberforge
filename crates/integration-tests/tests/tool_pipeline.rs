@@ -58,17 +58,39 @@ fn echo_plugin_tool() -> PluginTool {
         }),
     };
 
+    let (command, args) = echo_command();
+
     PluginTool::new(
         "integration.echo_pipeline",
         "Integration Echo Pipeline",
         definition,
+        command,
+        args,
+        PluginToolPermission::WorkspaceWrite,
+        None,
+    )
+}
+
+#[cfg(windows)]
+fn echo_command() -> (&'static str, Vec<String>) {
+    (
+        "powershell",
+        vec![
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            "[Console]::Out.Write($env:EMBER_TOOL_INPUT)".to_string(),
+        ],
+    )
+}
+
+#[cfg(not(windows))]
+fn echo_command() -> (&'static str, Vec<String>) {
+    (
         "sh",
         vec![
             "-c".to_string(),
             "printf '%s' \"$EMBER_TOOL_INPUT\"".to_string(),
         ],
-        PluginToolPermission::WorkspaceWrite,
-        None,
     )
 }
 
@@ -135,9 +157,9 @@ impl ApiClient for OneToolUseThenDoneClient {
 }
 
 /// Build an inline `PreToolUse` hook snippet that appends the tool name and the
-/// input it was handed to `record`, then exits 0 (allow). On Windows the runtime
-/// spawns via `cmd /C`; cargo test is skipped on Windows in CI, but keep
-/// clippy/build green there anyway.
+/// input it was handed to `record`, then exits 0 (allow). On Windows this uses
+/// `PowerShell` so JSON payload quotes from the environment do not get re-parsed
+/// by `cmd.exe` before the hook can record them.
 #[cfg(not(windows))]
 fn pre_hook_snippet(record: &Path) -> String {
     format!(
@@ -149,8 +171,8 @@ fn pre_hook_snippet(record: &Path) -> String {
 #[cfg(windows)]
 fn pre_hook_snippet(record: &Path) -> String {
     format!(
-        "echo PRE name=%HOOK_TOOL_NAME% input=%HOOK_TOOL_INPUT% >> \"{}\"",
-        record.display()
+        "powershell -NoProfile -NonInteractive -Command \"Add-Content -LiteralPath '{}' -Value ('PRE name=' + $env:HOOK_TOOL_NAME + ' input=' + $env:HOOK_TOOL_INPUT)\"",
+        powershell_single_quoted_path(record)
     )
 }
 
@@ -167,9 +189,14 @@ fn post_hook_snippet(record: &Path) -> String {
 #[cfg(windows)]
 fn post_hook_snippet(record: &Path) -> String {
     format!(
-        "echo POST name=%HOOK_TOOL_NAME% output=%HOOK_TOOL_OUTPUT% >> \"{}\"",
-        record.display()
+        "powershell -NoProfile -NonInteractive -Command \"Add-Content -LiteralPath '{}' -Value ('POST name=' + $env:HOOK_TOOL_NAME + ' output=' + $env:HOOK_TOOL_OUTPUT)\"",
+        powershell_single_quoted_path(record)
     )
+}
+
+#[cfg(windows)]
+fn powershell_single_quoted_path(path: &Path) -> String {
+    path.display().to_string().replace('\'', "''")
 }
 
 fn read_records(path: &Path) -> String {
