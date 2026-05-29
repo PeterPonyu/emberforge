@@ -39,10 +39,11 @@ jobs:
         run: cargo clippy --workspace --all-targets
 
       # cargo test now runs on every OS, including windows-latest (refs #25).
-      # The remaining POSIX-only suites (mcp_stdio shell-script fixtures, the
-      # plugin tool/lifecycle fixtures, and a few env/path cases) are gated
-      # with `#[cfg(unix)]` and inline justification, so they simply do not
-      # compile into the Windows test binaries rather than failing the run.
+      # The remaining POSIX-only tests (mcp_stdio shell-script fixtures, the
+      # plugin tool/lifecycle fixtures, the env/path cases, and the fake-PID
+      # reconcile test that needs Unix liveness semantics) are gated with
+      # `#[cfg(unix)]` and inline justification, so they simply do not compile
+      # into the Windows test binaries rather than failing the run.
       - name: Run cargo test
         run: cargo test --workspace
 
