@@ -1,3 +1,6 @@
+// Integration test crate: panicking accessors are fine here (refs #11).
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::ffi::OsString;
 use std::sync::{Mutex, OnceLock};
 

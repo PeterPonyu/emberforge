@@ -21,3 +21,10 @@ pedantic = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
 missing_panics_doc = "warn"
 missing_errors_doc = "warn"
+# Error-handling policy (refs #11): panicking accessors on failure boundaries
+# are disallowed. Set to `warn` for now so the existing backlog (~246 sites)
+# surfaces in CI without breaking the build; ratchet both to `deny` once the
+# per-crate migration sweeps land. Test code opts out via a per-module
+# `#![allow(clippy::unwrap_used, clippy::expect_used)]`.
+unwrap_used = "warn"
+expect_used = "warn"

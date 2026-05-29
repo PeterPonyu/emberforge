@@ -3,6 +3,9 @@
 //! Require a running Ollama server at localhost:11434.
 //! Run: cargo test -p api --test ollama_live_integration -- --nocapture
 
+// Integration test crate: panicking accessors are fine here (refs #11).
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::process::Command;
 
 use api::{

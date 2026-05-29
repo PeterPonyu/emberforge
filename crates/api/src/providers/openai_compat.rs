@@ -1017,6 +1017,10 @@ impl StringExt for String {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::{
         build_chat_completion_request, chat_completions_endpoint, normalize_finish_reason,
         openai_tool_choice, parse_tool_arguments, OpenAiCompatClient, OpenAiCompatConfig,
