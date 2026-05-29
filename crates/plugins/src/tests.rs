@@ -1,9 +1,9 @@
+use crate::error::*;
+use crate::manager::*;
+use crate::registry::*;
+use crate::types::*;
 use crate::*;
 use serde_json::Value;
-use crate::types::*;
-use crate::manager::*;
-use crate::error::*;
-use crate::registry::*;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -370,8 +370,7 @@ fn load_plugin_from_directory_rejects_invalid_tool_required_permission() {
 }"#,
     );
 
-    let error =
-        load_plugin_from_directory(&root).expect_err("invalid tool permission should fail");
+    let error = load_plugin_from_directory(&root).expect_err("invalid tool permission should fail");
     match error {
         PluginError::ManifestValidation(errors) => {
             assert!(errors.iter().any(|error| matches!(

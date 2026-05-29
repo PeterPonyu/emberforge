@@ -37,24 +37,20 @@ pub const WORKER_ALLOWED_TOOLS: &[&str] = &[
 
 /// Tools explicitly denied for workers (CC's `ALL_AGENT_DISALLOWED_TOOLS`).
 pub const WORKER_DENIED_TOOLS: &[&str] = &[
-    "Agent",             // Workers can't spawn sub-workers
-    "AskUserQuestion",   // Workers don't interact with user
-    "TaskStop",          // Only coordinator stops workers
-    "TaskOutput",        // Only coordinator reads task output
-    "EnterPlanMode",     // Workers execute, don't plan
+    "Agent",           // Workers can't spawn sub-workers
+    "AskUserQuestion", // Workers don't interact with user
+    "TaskStop",        // Only coordinator stops workers
+    "TaskOutput",      // Only coordinator reads task output
+    "EnterPlanMode",   // Workers execute, don't plan
     "ExitPlanMode",
-    "CronCreate",        // Workers don't schedule
+    "CronCreate", // Workers don't schedule
     "CronDelete",
     "CronList",
 ];
 
 /// Tools available only to the coordinator (not workers).
-pub const COORDINATOR_ONLY_TOOLS: &[&str] = &[
-    "Agent",
-    "TaskStop",
-    "SendMessage",
-    "StructuredOutput",
-];
+pub const COORDINATOR_ONLY_TOOLS: &[&str] =
+    &["Agent", "TaskStop", "SendMessage", "StructuredOutput"];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,7 +127,7 @@ pub fn coordinator_system_prompt(scratchpad_dir: Option<&Path>) -> String {
     };
 
     format!(
-r#"You are Emberforge, an AI assistant that orchestrates software engineering tasks across multiple workers.
+        r#"You are Emberforge, an AI assistant that orchestrates software engineering tasks across multiple workers.
 
 ## 1. Your Role
 
@@ -370,8 +366,7 @@ impl Coordinator {
     /// Check if a tool is allowed for workers.
     #[must_use]
     pub fn is_worker_tool(tool_name: &str) -> bool {
-        WORKER_ALLOWED_TOOLS.contains(&tool_name)
-            && !WORKER_DENIED_TOOLS.contains(&tool_name)
+        WORKER_ALLOWED_TOOLS.contains(&tool_name) && !WORKER_DENIED_TOOLS.contains(&tool_name)
     }
 
     /// Spawn a new worker agent with restricted tools.

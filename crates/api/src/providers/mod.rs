@@ -169,9 +169,20 @@ pub fn resolve_model_alias(model: &str) -> String {
 
 /// Ollama model prefixes — local model tags that should route to the Ollama provider.
 const OLLAMA_PREFIXES: &[&str] = &[
-    "llama", "mistral", "phi", "gemma", "granite", "falcon",
-    "solar", "starcoder", "internlm", "exaone", "aya-",
-    "deepseek-r1", "glm4", "yi:",
+    "llama",
+    "mistral",
+    "phi",
+    "gemma",
+    "granite",
+    "falcon",
+    "solar",
+    "starcoder",
+    "internlm",
+    "exaone",
+    "aya-",
+    "deepseek-r1",
+    "glm4",
+    "yi:",
 ];
 
 /// Returns true if the model string looks like a local Ollama model tag.
@@ -181,7 +192,9 @@ fn is_ollama_model(model: &str) -> bool {
     if lower.contains(':') {
         return true;
     }
-    OLLAMA_PREFIXES.iter().any(|prefix| lower.starts_with(prefix))
+    OLLAMA_PREFIXES
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
 }
 
 #[must_use]
@@ -276,7 +289,10 @@ mod tests {
         assert_eq!(detect_provider_kind("phi4-mini"), ProviderKind::Ollama);
         assert_eq!(detect_provider_kind("granite3.3:8b"), ProviderKind::Ollama);
         assert_eq!(detect_provider_kind("falcon3:3b"), ProviderKind::Ollama);
-        assert_eq!(detect_provider_kind("deepseek-r1:14b"), ProviderKind::Ollama);
+        assert_eq!(
+            detect_provider_kind("deepseek-r1:14b"),
+            ProviderKind::Ollama
+        );
     }
 
     #[test]

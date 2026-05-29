@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::types::{PluginDefinition, PluginMetadata, Plugin, PluginHooks, PluginTool};
 use crate::error::PluginError;
+use crate::types::{Plugin, PluginDefinition, PluginHooks, PluginMetadata, PluginTool};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisteredPlugin {

@@ -50,12 +50,7 @@ const INTRO_FRAME_DELAY_MS: u64 = 90;
 /// Compact single-line fire-pixel spinner frames rendered on stderr.
 /// Each frame is a short string of pixel tokens that gets colorized inline.
 const FIRE_SPINNER_FRAMES: &[&str] = &[
-    " oyryo ",
-    " oyYyo ",
-    " rYyYr ",
-    " oYyro ",
-    " ryYor ",
-    " oyrYo ",
+    " oyryo ", " oyYyo ", " rYyYr ", " oYyro ", " ryYor ", " oyrYo ",
 ];
 const FIRE_SPINNER_DELAY_MS: u64 = 200;
 
@@ -134,10 +129,7 @@ pub fn start_fire_spinner(label: &'static str, color_enabled: bool) -> thread::J
                 cursor::MoveToColumn(0),
                 terminal::Clear(terminal::ClearType::CurrentLine),
             );
-            let _ = write!(
-                stderr,
-                "{rendered} \x1b[2m{label}\x1b[0m{time_suffix}"
-            );
+            let _ = write!(stderr, "{rendered} \x1b[2m{label}\x1b[0m{time_suffix}");
             let _ = stderr.flush();
 
             index += 1;
@@ -274,7 +266,9 @@ fn parse_animation_mode(value: &str) -> Option<RuntimeUiAnimationMode> {
 
 #[cfg(test)]
 mod tests {
-    use runtime::{RuntimeUiAnimationMode, RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig};
+    use runtime::{
+        RuntimeUiAnimationMode, RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig,
+    };
 
     use super::{render_inline_fire, should_play_intro_animation};
     use crate::ui::capabilities::{ColorLevel, GlyphLevel, TerminalCapabilities};

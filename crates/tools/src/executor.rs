@@ -2,16 +2,36 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use runtime::{execute_bash, glob_search, grep_search, read_file, write_file, edit_file};
-use runtime::{BashCommandInput, GrepSearchInput};
-use runtime::{validate_bash_command, SecurityVerdict, PermissionMode};
 use runtime::AppState;
+use runtime::{edit_file, execute_bash, glob_search, grep_search, read_file, write_file};
+use runtime::{validate_bash_command, PermissionMode, SecurityVerdict};
+use runtime::{BashCommandInput, GrepSearchInput};
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::error::ToolExecError;
-use crate::types::{TeamCreateInput, TeamDeleteInput, ReadFileInput, WriteFileInput, EditFileInput, GlobSearchInputValue, WebFetchInput, WebSearchInput, TodoWriteInput, SkillInput, AgentInput, ToolSearchInput, NotebookEditInput, SleepInput, BriefInput, ConfigInput, StructuredOutputInput, ReplInput, PowerShellInput, AskUserQuestionInput, EnterPlanModeInput, ExitPlanModeInput, McpToolInput, LspToolInput, ListMcpResourcesInput, ReadMcpResourceInput, CronCreateInput, CronDeleteInput, CronListInput, EnterWorktreeInput, ExitWorktreeInput, TaskCreateInput, TaskUpdateInput, TaskGetInput, TaskListInput, TaskStopInput, TaskOutputInput, SendMessageInput, WorkflowInput, DiscoverSkillsInput, VerifyPlanExecutionInput};
-use crate::implementations::{execute_web_fetch, execute_web_search, execute_todo_write, execute_skill, execute_agent, execute_tool_search, execute_notebook_edit, execute_sleep, execute_brief, execute_config, execute_structured_output, execute_repl, execute_powershell, execute_ask_user_question, execute_enter_plan_mode, execute_exit_plan_mode, execute_mcp_tool, execute_lsp_tool, execute_list_mcp_resources, execute_read_mcp_resource, execute_cron_create, execute_cron_delete, execute_cron_list, execute_enter_worktree, execute_exit_worktree, execute_task_create, execute_task_update, execute_task_get, execute_task_list, execute_task_stop, execute_task_output, execute_send_message, execute_team_create, execute_team_delete, execute_workflow, execute_discover_skills, execute_verify_plan_execution};
+use crate::implementations::{
+    execute_agent, execute_ask_user_question, execute_brief, execute_config, execute_cron_create,
+    execute_cron_delete, execute_cron_list, execute_discover_skills, execute_enter_plan_mode,
+    execute_enter_worktree, execute_exit_plan_mode, execute_exit_worktree,
+    execute_list_mcp_resources, execute_lsp_tool, execute_mcp_tool, execute_notebook_edit,
+    execute_powershell, execute_read_mcp_resource, execute_repl, execute_send_message,
+    execute_skill, execute_sleep, execute_structured_output, execute_task_create, execute_task_get,
+    execute_task_list, execute_task_output, execute_task_stop, execute_task_update,
+    execute_team_create, execute_team_delete, execute_todo_write, execute_tool_search,
+    execute_verify_plan_execution, execute_web_fetch, execute_web_search, execute_workflow,
+};
+use crate::types::{
+    AgentInput, AskUserQuestionInput, BriefInput, ConfigInput, CronCreateInput, CronDeleteInput,
+    CronListInput, DiscoverSkillsInput, EditFileInput, EnterPlanModeInput, EnterWorktreeInput,
+    ExitPlanModeInput, ExitWorktreeInput, GlobSearchInputValue, ListMcpResourcesInput,
+    LspToolInput, McpToolInput, NotebookEditInput, PowerShellInput, ReadFileInput,
+    ReadMcpResourceInput, ReplInput, SendMessageInput, SkillInput, SleepInput,
+    StructuredOutputInput, TaskCreateInput, TaskGetInput, TaskListInput, TaskOutputInput,
+    TaskStopInput, TaskUpdateInput, TeamCreateInput, TeamDeleteInput, TodoWriteInput,
+    ToolSearchInput, VerifyPlanExecutionInput, WebFetchInput, WebSearchInput, WorkflowInput,
+    WriteFileInput,
+};
 
 /// Execute a tool by name with an optional session-scoped [`AppState`].
 ///
@@ -23,10 +43,12 @@ pub fn execute_tool_with_context(
     app_state: Option<Arc<AppState>>,
 ) -> Result<String, ToolExecError> {
     match name {
-        "TeamCreate" => from_value::<TeamCreateInput>(input)
-            .and_then(|i| run_team_create(i, app_state)),
-        "TeamDelete" => from_value::<TeamDeleteInput>(input)
-            .and_then(|i| run_team_delete(i, app_state)),
+        "TeamCreate" => {
+            from_value::<TeamCreateInput>(input).and_then(|i| run_team_create(i, app_state))
+        }
+        "TeamDelete" => {
+            from_value::<TeamDeleteInput>(input).and_then(|i| run_team_delete(i, app_state))
+        }
         other => execute_tool(other, input),
     }
 }
@@ -55,18 +77,28 @@ pub fn execute_tool(name: &str, input: &Value) -> Result<String, ToolExecError> 
         }
         "REPL" => from_value::<ReplInput>(input).and_then(run_repl),
         "PowerShell" => from_value::<PowerShellInput>(input).and_then(run_powershell),
-        "AskUserQuestion" => from_value::<AskUserQuestionInput>(input).and_then(|i| run_ask_user_question(&i)),
+        "AskUserQuestion" => {
+            from_value::<AskUserQuestionInput>(input).and_then(|i| run_ask_user_question(&i))
+        }
         "EnterPlanMode" => from_value::<EnterPlanModeInput>(input).and_then(run_enter_plan_mode),
         "ExitPlanMode" => from_value::<ExitPlanModeInput>(input).and_then(run_exit_plan_mode),
         "MCPTool" => from_value::<McpToolInput>(input).and_then(|i| run_mcp_tool(&i)),
         "LSPTool" => from_value::<LspToolInput>(input).and_then(|i| run_lsp_tool(&i)),
-        "ListMcpResources" => from_value::<ListMcpResourcesInput>(input).and_then(|i| run_list_mcp_resources(&i)),
-        "ReadMcpResource" => from_value::<ReadMcpResourceInput>(input).and_then(|i| run_read_mcp_resource(&i)),
+        "ListMcpResources" => {
+            from_value::<ListMcpResourcesInput>(input).and_then(|i| run_list_mcp_resources(&i))
+        }
+        "ReadMcpResource" => {
+            from_value::<ReadMcpResourceInput>(input).and_then(|i| run_read_mcp_resource(&i))
+        }
         "CronCreate" => from_value::<CronCreateInput>(input).and_then(run_cron_create),
         "CronDelete" => from_value::<CronDeleteInput>(input).and_then(run_cron_delete),
         "CronList" => from_value::<CronListInput>(input).and_then(run_cron_list),
-        "EnterWorktree" => from_value::<EnterWorktreeInput>(input).and_then(|i| run_enter_worktree(&i)),
-        "ExitWorktree" => from_value::<ExitWorktreeInput>(input).and_then(|i| run_exit_worktree(&i)),
+        "EnterWorktree" => {
+            from_value::<EnterWorktreeInput>(input).and_then(|i| run_enter_worktree(&i))
+        }
+        "ExitWorktree" => {
+            from_value::<ExitWorktreeInput>(input).and_then(|i| run_exit_worktree(&i))
+        }
         "TaskCreate" => from_value::<TaskCreateInput>(input).and_then(run_task_create),
         "TaskUpdate" => from_value::<TaskUpdateInput>(input).and_then(run_task_update),
         "TaskGet" => from_value::<TaskGetInput>(input).and_then(|i| run_task_get(&i)),
@@ -74,10 +106,8 @@ pub fn execute_tool(name: &str, input: &Value) -> Result<String, ToolExecError> 
         "TaskStop" => from_value::<TaskStopInput>(input).and_then(run_task_stop),
         "TaskOutput" => from_value::<TaskOutputInput>(input).and_then(run_task_output),
         "SendMessage" => from_value::<SendMessageInput>(input).and_then(run_send_message),
-        "TeamCreate" => from_value::<TeamCreateInput>(input)
-            .and_then(|i| run_team_create(i, None)),
-        "TeamDelete" => from_value::<TeamDeleteInput>(input)
-            .and_then(|i| run_team_delete(i, None)),
+        "TeamCreate" => from_value::<TeamCreateInput>(input).and_then(|i| run_team_create(i, None)),
+        "TeamDelete" => from_value::<TeamDeleteInput>(input).and_then(|i| run_team_delete(i, None)),
         "Workflow" => from_value::<WorkflowInput>(input).and_then(run_workflow),
         "DiscoverSkills" => from_value::<DiscoverSkillsInput>(input).and_then(run_discover_skills),
         "VerifyPlanExecution" => {
@@ -222,7 +252,9 @@ pub(crate) fn run_lsp_tool(input: &LspToolInput) -> Result<String, ToolExecError
     to_pretty_json(execute_lsp_tool(input))
 }
 
-pub(crate) fn run_list_mcp_resources(input: &ListMcpResourcesInput) -> Result<String, ToolExecError> {
+pub(crate) fn run_list_mcp_resources(
+    input: &ListMcpResourcesInput,
+) -> Result<String, ToolExecError> {
     to_pretty_json(execute_list_mcp_resources(input))
 }
 

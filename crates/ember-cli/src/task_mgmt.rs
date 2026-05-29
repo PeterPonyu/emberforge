@@ -73,7 +73,9 @@ impl TaskManifestRecord {
     }
 
     fn model(&self) -> Option<&str> {
-        self.manifest.get("model").and_then(serde_json::Value::as_str)
+        self.manifest
+            .get("model")
+            .and_then(serde_json::Value::as_str)
     }
 
     fn output_file(&self) -> Option<&str> {
@@ -189,7 +191,10 @@ impl TaskManifestRecord {
     }
 
     fn is_terminal(&self) -> bool {
-        matches!(self.status(), "completed" | "failed" | "cancelled" | "interrupted")
+        matches!(
+            self.status(),
+            "completed" | "failed" | "cancelled" | "interrupted"
+        )
     }
 
     fn sort_timestamp(&self) -> Option<OffsetDateTime> {
@@ -313,7 +318,9 @@ fn task_store_dirs(cwd: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-pub(crate) fn load_task_manifests(cwd: &Path) -> Result<Vec<TaskManifestRecord>, Box<dyn std::error::Error>> {
+pub(crate) fn load_task_manifests(
+    cwd: &Path,
+) -> Result<Vec<TaskManifestRecord>, Box<dyn std::error::Error>> {
     let mut manifests = std::collections::BTreeMap::<String, TaskManifestRecord>::new();
 
     for dir in task_store_dirs(cwd) {
@@ -369,8 +376,14 @@ pub(crate) fn load_task_manifests(cwd: &Path) -> Result<Vec<TaskManifestRecord>,
 }
 
 fn task_manifest_preferred(candidate: &TaskManifestRecord, existing: &TaskManifestRecord) -> bool {
-    let candidate_is_ember = candidate.manifest_path.to_string_lossy().contains(".ember-agents");
-    let existing_is_ember = existing.manifest_path.to_string_lossy().contains(".ember-agents");
+    let candidate_is_ember = candidate
+        .manifest_path
+        .to_string_lossy()
+        .contains(".ember-agents");
+    let existing_is_ember = existing
+        .manifest_path
+        .to_string_lossy()
+        .contains(".ember-agents");
     if candidate_is_ember != existing_is_ember {
         return candidate_is_ember;
     }
@@ -414,7 +427,9 @@ fn process_is_alive(pid: u32) -> bool {
     }
 }
 
-pub(crate) fn write_task_manifest(record: &TaskManifestRecord) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn write_task_manifest(
+    record: &TaskManifestRecord,
+) -> Result<(), Box<dyn std::error::Error>> {
     fs::write(
         &record.manifest_path,
         serde_json::to_string_pretty(&record.manifest)?,
@@ -494,7 +509,11 @@ pub(crate) fn reconcile_task_manifest(
 }
 
 fn task_heartbeat_age(record: &TaskManifestRecord) -> Option<time::Duration> {
-    let timestamp = parse_task_timestamp(record.heartbeat_at_raw().or_else(|| record.updated_at_raw()))?;
+    let timestamp = parse_task_timestamp(
+        record
+            .heartbeat_at_raw()
+            .or_else(|| record.updated_at_raw()),
+    )?;
     Some(OffsetDateTime::now_utc() - timestamp)
 }
 
@@ -517,7 +536,9 @@ fn task_counts(
     Ok(counts)
 }
 
-pub(crate) fn count_running_background_tasks(current_session_id: Option<&str>) -> Result<BackgroundTaskCounts, Box<dyn std::error::Error>> {
+pub(crate) fn count_running_background_tasks(
+    current_session_id: Option<&str>,
+) -> Result<BackgroundTaskCounts, Box<dyn std::error::Error>> {
     task_counts(&env::current_dir()?, current_session_id)
 }
 
@@ -682,9 +703,14 @@ fn recover_task_prompt(task: &TaskManifestRecord) -> Result<String, String> {
         .ok_or_else(|| String::from("the original delegated prompt could not be recovered"))
 }
 
-fn task_restart_spec(task: &TaskManifestRecord, current_cwd: &Path) -> Result<TaskRestartSpec, String> {
+fn task_restart_spec(
+    task: &TaskManifestRecord,
+    current_cwd: &Path,
+) -> Result<TaskRestartSpec, String> {
     if task.task_kind() != "subagent" {
-        return Err(String::from("only local subagent tasks can be restarted safely"));
+        return Err(String::from(
+            "only local subagent tasks can be restarted safely",
+        ));
     }
     if task.status() != "interrupted" {
         return Err(format!(
@@ -726,7 +752,7 @@ fn render_task_next_action_lines(task: &TaskManifestRecord) -> Vec<String> {
         "interrupted" => {
             let restart_policy = env::current_dir()
                 .map_err(|_| String::from("the current workspace could not be determined"))
-                .and_then(|cwd| task_restart_spec(task, &cwd).map(|_| ())); 
+                .and_then(|cwd| task_restart_spec(task, &cwd).map(|_| ()));
             match restart_policy {
                 Ok(()) => {
                     bullets.push(format!(
@@ -738,9 +764,7 @@ fn render_task_next_action_lines(task: &TaskManifestRecord) -> Vec<String> {
                     ));
                 }
                 Err(reason) => {
-                    bullets.push(format!(
-                        "Safe restart is unavailable because {reason}."
-                    ));
+                    bullets.push(format!("Safe restart is unavailable because {reason}."));
                     bullets.push(String::from(
                         "Rerun the originating command manually to create a replacement task.",
                     ));
@@ -795,7 +819,11 @@ fn render_task_watch_update(
         lines.push(format!("[task] {} status {}", record.id(), current.status));
         if let Some(entry) = activity.last() {
             lines.push(render_task_activity_line(entry));
-        } else if let Some(detail) = current.detail.as_deref().filter(|detail| !detail.trim().is_empty()) {
+        } else if let Some(detail) = current
+            .detail
+            .as_deref()
+            .filter(|detail| !detail.trim().is_empty())
+        {
             lines.push(format!(
                 "[task] detail {}",
                 truncate_for_summary(detail, 120)
@@ -822,7 +850,11 @@ fn render_task_watch_update(
         lines.push(format!("[task] {} status {}", record.id(), current.status));
     }
     if lines.is_empty() && previous.detail.as_deref() != current.detail.as_deref() {
-        if let Some(detail) = current.detail.as_deref().filter(|detail| !detail.trim().is_empty()) {
+        if let Some(detail) = current
+            .detail
+            .as_deref()
+            .filter(|detail| !detail.trim().is_empty())
+        {
             lines.push(format!(
                 "[task] detail {}",
                 truncate_for_summary(detail, 120)
@@ -836,17 +868,19 @@ fn render_task_watch_update(
             lines.push(format!("[task] stop requested {stop_requested_at}"));
         }
     }
-    if lines.is_empty() && previous.stop_reason.as_deref() != current.stop_reason.as_deref()
-    {
-        if let Some(stop_reason) = current.stop_reason.as_deref().filter(|reason| !reason.trim().is_empty()) {
+    if lines.is_empty() && previous.stop_reason.as_deref() != current.stop_reason.as_deref() {
+        if let Some(stop_reason) = current
+            .stop_reason
+            .as_deref()
+            .filter(|reason| !reason.trim().is_empty())
+        {
             lines.push(format!(
                 "[task] reason {}",
                 truncate_for_summary(stop_reason, 120)
             ));
         }
     }
-    if previous.supervision.as_deref() != current.supervision.as_deref()
-    {
+    if previous.supervision.as_deref() != current.supervision.as_deref() {
         if let Some(supervision) = current.supervision.as_deref() {
             lines.push(format!("[task] supervision {supervision}"));
         }
@@ -865,13 +899,19 @@ fn render_task_terminal_summary(record: &TaskManifestRecord) -> String {
         record.id(),
         record.status(),
     )];
-    if let Some(detail) = record.status_detail().filter(|detail| !detail.trim().is_empty()) {
+    if let Some(detail) = record
+        .status_detail()
+        .filter(|detail| !detail.trim().is_empty())
+    {
         lines.push(format!(
             "[task] detail {}",
             truncate_for_summary(detail, 120)
         ));
     }
-    if let Some(stop_reason) = record.stop_reason().filter(|reason| !reason.trim().is_empty()) {
+    if let Some(stop_reason) = record
+        .stop_reason()
+        .filter(|reason| !reason.trim().is_empty())
+    {
         lines.push(format!(
             "[task] reason {}",
             truncate_for_summary(stop_reason, 120)
@@ -972,7 +1012,9 @@ impl AutoRestartPolicy {
         }
         let limit = val.parse::<u32>().unwrap_or(AUTO_RESTART_DEFAULT_MAX);
         let limit = limit.min(AUTO_RESTART_ABSOLUTE_MAX).max(1);
-        Some(Self { max_restarts: limit })
+        Some(Self {
+            max_restarts: limit,
+        })
     }
 
     /// Determine whether we should attempt an automatic restart for `task`.
@@ -1041,19 +1083,16 @@ pub(crate) fn try_auto_restart(
 
     // Perform the restart using the normal flow.
     let report = request_task_restart_with(cwd, task.id(), |payload| {
-        tools::execute_tool("Agent", payload).map_err(|error| {
-            io::Error::new(io::ErrorKind::Other, error.to_string()).into()
-        })
+        tools::execute_tool("Agent", payload)
+            .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()).into())
     })?;
 
     // Extract replacement id from report string.
-    let replacement_id = report
-        .lines()
-        .find_map(|line| {
-            line.trim()
-                .strip_prefix("Replacement")
-                .map(|rest| rest.trim().to_string())
-        });
+    let replacement_id = report.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("Replacement")
+            .map(|rest| rest.trim().to_string())
+    });
 
     Ok(replacement_id)
 }
@@ -1071,17 +1110,26 @@ fn render_task_entry_lines(
         session = task_session_badge(task, current_session_id),
         desc = truncate_for_summary(task.description(), 52),
     )];
-    if let Some(detail) = task.status_detail().filter(|detail| !detail.trim().is_empty()) {
+    if let Some(detail) = task
+        .status_detail()
+        .filter(|detail| !detail.trim().is_empty())
+    {
         lines.push(format!("         {}", truncate_for_summary(detail, 88)));
     }
     if let Some(supervision) = task_supervision_summary(task).filter(|_| task.is_active()) {
         lines.push(format!("         supervision {supervision}"));
     }
     if let Some(predecessor) = lineage.predecessor_of(task.id()) {
-        lines.push(format!("         ↳ restarted from {}", shorten_task_id(predecessor)));
+        lines.push(format!(
+            "         ↳ restarted from {}",
+            shorten_task_id(predecessor)
+        ));
     }
     if let Some(successor) = lineage.successor_of(task.id()) {
-        lines.push(format!("         → replaced by {}", shorten_task_id(successor)));
+        lines.push(format!(
+            "         → replaced by {}",
+            shorten_task_id(successor)
+        ));
     }
     lines
 }
@@ -1197,7 +1245,8 @@ pub(crate) fn render_task_list_report(
     let lineage = TaskLineageMap::build(tasks);
     let running = tasks.iter().filter(|task| task.is_active()).count();
     let session_running = current_session_id.map_or(0, |session_id| {
-        tasks.iter()
+        tasks
+            .iter()
             .filter(|task| task.is_active() && task.parent_session_id() == Some(session_id))
             .count()
     });
@@ -1218,21 +1267,47 @@ pub(crate) fn render_task_list_report(
             .collect::<Vec<_>>();
 
         if !current_tasks.is_empty() {
-            push_task_section(&mut lines, "Current session", &current_tasks, Some(current_session_id), &lineage);
-            push_task_section(&mut lines, "Other tasks", &other_tasks, Some(current_session_id), &lineage);
+            push_task_section(
+                &mut lines,
+                "Current session",
+                &current_tasks,
+                Some(current_session_id),
+                &lineage,
+            );
+            push_task_section(
+                &mut lines,
+                "Other tasks",
+                &other_tasks,
+                Some(current_session_id),
+                &lineage,
+            );
         } else {
             let all_tasks = tasks.iter().collect::<Vec<_>>();
-            push_task_section(&mut lines, "Entries", &all_tasks, Some(current_session_id), &lineage);
+            push_task_section(
+                &mut lines,
+                "Entries",
+                &all_tasks,
+                Some(current_session_id),
+                &lineage,
+            );
         }
     } else {
         let all_tasks = tasks.iter().collect::<Vec<_>>();
         push_task_section(&mut lines, "Entries", &all_tasks, None, &lineage);
     }
     lines.push(String::from("Next"));
-    lines.push(String::from("  /tasks show <id>    Inspect manifest metadata"));
-    lines.push(String::from("  /tasks logs <id>    Print the current task log"));
-    lines.push(String::from("  /tasks attach <id>  Follow the task log until it exits"));
-    lines.push(String::from("  /tasks stop <id>    Request a graceful stop"));
+    lines.push(String::from(
+        "  /tasks show <id>    Inspect manifest metadata",
+    ));
+    lines.push(String::from(
+        "  /tasks logs <id>    Print the current task log",
+    ));
+    lines.push(String::from(
+        "  /tasks attach <id>  Follow the task log until it exits",
+    ));
+    lines.push(String::from(
+        "  /tasks stop <id>    Request a graceful stop",
+    ));
     lines.join("\n")
 }
 
@@ -1246,7 +1321,10 @@ pub(crate) fn render_task_show_report(
     lines.push(format!("  Id               {}", task.id()));
     lines.push(format!("  Kind             {}", task.task_kind()));
     lines.push(format!("  Status           {}", task.status()));
-    lines.push(format!("  Session          {}", task_session_badge(task, current_session_id)));
+    lines.push(format!(
+        "  Session          {}",
+        task_session_badge(task, current_session_id)
+    ));
     lines.push(format!("  Description      {}", task.description()));
     if let Some(model) = task.model() {
         lines.push(format!("  Model            {model}"));
@@ -1257,8 +1335,14 @@ pub(crate) fn render_task_show_report(
     if let Some(successor) = lineage.as_ref().and_then(|l| l.successor_of(task.id())) {
         lines.push(format!("  Successor        {successor} (replaced by)"));
     }
-    if let Some(detail) = task.status_detail().filter(|detail| !detail.trim().is_empty()) {
-        lines.push(format!("  Detail           {}", truncate_for_summary(detail, 120)));
+    if let Some(detail) = task
+        .status_detail()
+        .filter(|detail| !detail.trim().is_empty())
+    {
+        lines.push(format!(
+            "  Detail           {}",
+            truncate_for_summary(detail, 120)
+        ));
     }
     if let Some(created_at) = task.created_at_raw() {
         lines.push(format!("  Created          {created_at}"));
@@ -1290,7 +1374,10 @@ pub(crate) fn render_task_show_report(
     if let Some(output_file) = task.output_file() {
         lines.push(format!("  Log file         {output_file}"));
     }
-    lines.push(format!("  Manifest         {}", task.manifest_path.display()));
+    lines.push(format!(
+        "  Manifest         {}",
+        task.manifest_path.display()
+    ));
     lines.extend(render_task_next_action_lines(task));
     lines.extend(render_recent_task_activity_lines(
         task,
@@ -1299,7 +1386,9 @@ pub(crate) fn render_task_show_report(
     lines.join("\n")
 }
 
-pub(crate) fn render_task_logs_report(task: &TaskManifestRecord) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_task_logs_report(
+    task: &TaskManifestRecord,
+) -> Result<String, Box<dyn std::error::Error>> {
     let output_path = task
         .output_file()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "task log path missing"))?;
@@ -1310,8 +1399,14 @@ pub(crate) fn render_task_logs_report(task: &TaskManifestRecord) -> Result<Strin
         format!("  Id               {}", task.id()),
         format!("  Status           {}", task.status()),
     ];
-    if let Some(detail) = task.status_detail().filter(|detail| !detail.trim().is_empty()) {
-        lines.push(format!("  Detail           {}", truncate_for_summary(detail, 120)));
+    if let Some(detail) = task
+        .status_detail()
+        .filter(|detail| !detail.trim().is_empty())
+    {
+        lines.push(format!(
+            "  Detail           {}",
+            truncate_for_summary(detail, 120)
+        ));
     }
     if let Some(supervision) = task_supervision_summary(task) {
         lines.push(format!("  Supervision      {supervision}"));
@@ -1319,8 +1414,14 @@ pub(crate) fn render_task_logs_report(task: &TaskManifestRecord) -> Result<Strin
     if let Some(stop_requested_at) = task.stop_requested_at_raw() {
         lines.push(format!("  Stop requested   {stop_requested_at}"));
     }
-    if let Some(stop_reason) = task.stop_reason().filter(|reason| !reason.trim().is_empty()) {
-        lines.push(format!("  Stop reason      {}", truncate_for_summary(stop_reason, 120)));
+    if let Some(stop_reason) = task
+        .stop_reason()
+        .filter(|reason| !reason.trim().is_empty())
+    {
+        lines.push(format!(
+            "  Stop reason      {}",
+            truncate_for_summary(stop_reason, 120)
+        ));
     }
     lines.push(format!("  File             {}", output_path));
     if excerpt.total_lines > excerpt.shown_lines {
@@ -1422,7 +1523,12 @@ where
     let replacement_id = restarted
         .get("agentId")
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "agent restart response missing agentId"))?
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "agent restart response missing agentId",
+            )
+        })?
         .to_string();
 
     let now = chrono_now_iso8601();
@@ -1451,13 +1557,15 @@ pub(crate) fn request_task_restart(
     requested_id: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     request_task_restart_with(cwd, requested_id, |payload| {
-        tools::execute_tool("Agent", payload).map_err(|error| {
-            io::Error::new(io::ErrorKind::Other, error.to_string()).into()
-        })
+        tools::execute_tool("Agent", payload)
+            .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()).into())
     })
 }
 
-pub(crate) fn attach_to_task(cwd: &Path, requested_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn attach_to_task(
+    cwd: &Path,
+    requested_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let tasks = load_task_manifests(cwd)?;
     let task = find_task_by_prefix(&tasks, requested_id)?;
     let output_path = task
@@ -1596,10 +1704,8 @@ mod tests {
             }),
         );
 
-        let rendered = super::render_task_list_report(
-            &[other, current, detached],
-            Some("session-current"),
-        );
+        let rendered =
+            super::render_task_list_report(&[other, current, detached], Some("session-current"));
 
         assert!(rendered.contains("Current session"));
         assert!(rendered.contains("Other tasks"));
@@ -1651,7 +1757,8 @@ mod tests {
 
         assert!(report.contains("Task log"));
         assert!(report.contains("Status           stopping"));
-        assert!(report.contains("Detail           Stop requested; waiting for the current step to finish"));
+        assert!(report
+            .contains("Detail           Stop requested; waiting for the current step to finish"));
         assert!(report.contains("Supervision      delayed (heartbeat 20s old)"));
         assert!(report.contains("Stop requested   2026-04-04T00:00:00Z"));
         assert!(report.contains("Stop reason      Requested from /tasks stop"));
@@ -1676,19 +1783,21 @@ mod tests {
         assert!(excerpt.text.contains("line 099"));
 
         let initial = task_log_stream_update(&full_log, 0, 80).expect("initial attach update");
-        assert!(initial.text.contains("existing log has 100 lines; showing last 80"));
+        assert!(initial
+            .text
+            .contains("existing log has 100 lines; showing last 80"));
         assert!(!initial.text.contains("line 000"));
         assert_eq!(initial.next_len, full_log.len());
 
         let delta_source = format!("{}line 100\n", full_log);
-        let delta = task_log_stream_update(&delta_source, full_log.len(), 80)
-            .expect("delta update");
+        let delta =
+            task_log_stream_update(&delta_source, full_log.len(), 80).expect("delta update");
         assert_eq!(delta.text, "line 100\n");
         assert_eq!(delta.next_len, delta_source.len());
 
         let truncated = String::from("fresh line\nnext line\n");
-        let reset = task_log_stream_update(&truncated, delta_source.len(), 80)
-            .expect("reset update");
+        let reset =
+            task_log_stream_update(&truncated, delta_source.len(), 80).expect("reset update");
         assert!(reset.text.contains("log file was truncated"));
         assert!(reset.text.contains("fresh line"));
         assert_eq!(reset.next_len, truncated.len());
@@ -1752,10 +1861,13 @@ mod tests {
         );
 
         let snapshot = task_watch_snapshot(&running);
-        let update = render_task_watch_update(Some(&snapshot), &stopping).expect("transition update");
+        let update =
+            render_task_watch_update(Some(&snapshot), &stopping).expect("transition update");
         assert!(update.contains("activity 2026-04-04T00:00:02Z | stop-requested | stopping"));
         assert!(update.contains("supervision delayed (heartbeat 25s old)"));
-        assert!(render_task_watch_update(Some(&task_watch_snapshot(&stopping)), &stopping).is_none());
+        assert!(
+            render_task_watch_update(Some(&task_watch_snapshot(&stopping)), &stopping).is_none()
+        );
 
         let terminal = make_record(
             &root,
@@ -1992,7 +2104,11 @@ mod tests {
             .as_array()
             .expect("activity array")
             .iter()
-            .any(|entry| entry["kind"] == "restart-requested" && entry["message"].as_str().expect("message").contains("agent-456")));
+            .any(|entry| entry["kind"] == "restart-requested"
+                && entry["message"]
+                    .as_str()
+                    .expect("message")
+                    .contains("agent-456")));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -2022,7 +2138,10 @@ mod tests {
         .expect("blocked report should succeed");
 
         assert!(report.contains("Result           blocked"));
-        assert!(report.contains("delegated prompt could not be recovered") || report.contains("prompt was not persisted"));
+        assert!(
+            report.contains("delegated prompt could not be recovered")
+                || report.contains("prompt was not persisted")
+        );
 
         let _ = fs::remove_dir_all(root);
     }
@@ -2063,8 +2182,12 @@ mod tests {
         let report = super::render_task_show_report(&record, None, None);
 
         assert!(report.contains("  Activity"));
-        assert!(report.contains("2026-04-04T00:00:00Z | created | running | Queued for background execution"));
-        assert!(report.contains("2026-04-04T00:00:05Z | terminal | completed | Finished successfully"));
+        assert!(report.contains(
+            "2026-04-04T00:00:00Z | created | running | Queued for background execution"
+        ));
+        assert!(
+            report.contains("2026-04-04T00:00:05Z | terminal | completed | Finished successfully")
+        );
 
         let _ = fs::remove_dir_all(root);
     }

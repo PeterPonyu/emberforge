@@ -132,7 +132,10 @@ mod tests {
     fn simple_queries_are_simple() {
         assert_eq!(estimate_complexity("hello"), TaskComplexity::Simple);
         assert_eq!(estimate_complexity("hi"), TaskComplexity::Simple);
-        assert_eq!(estimate_complexity("what time is it"), TaskComplexity::Simple);
+        assert_eq!(
+            estimate_complexity("what time is it"),
+            TaskComplexity::Simple
+        );
     }
 
     #[test]
@@ -150,7 +153,9 @@ mod tests {
     #[test]
     fn multi_step_queries_are_complex() {
         assert_eq!(
-            estimate_complexity("first read the config, then update the database, finally restart the service"),
+            estimate_complexity(
+                "first read the config, then update the database, finally restart the service"
+            ),
             TaskComplexity::Complex
         );
     }
@@ -167,7 +172,10 @@ mod tests {
     fn fixed_strategy_always_returns_same_model() {
         let strategy = RoutingStrategy::Fixed("llama3.1:8b".to_string());
         assert_eq!(select_model(&strategy, "hello"), "llama3.1:8b");
-        assert_eq!(select_model(&strategy, "implement a database"), "llama3.1:8b");
+        assert_eq!(
+            select_model(&strategy, "implement a database"),
+            "llama3.1:8b"
+        );
     }
 
     #[test]

@@ -280,7 +280,11 @@ pub fn load_entrypoint(dir: &Path, config: &MemoryConfig) -> io::Result<Option<M
     }
 
     let raw = fs::read_to_string(&path)?;
-    let content = truncate_content(&raw, config.max_entrypoint_lines, config.max_entrypoint_bytes);
+    let content = truncate_content(
+        &raw,
+        config.max_entrypoint_lines,
+        config.max_entrypoint_bytes,
+    );
 
     Ok(Some(MemoryIndex { path, content }))
 }
@@ -377,11 +381,7 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 pub fn build_memory_manifest(files: &[MemoryFile]) -> String {
     let mut out = String::new();
     for f in files {
-        let fname = f
-            .path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("?");
+        let fname = f.path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
         let date = format_date(f.modified);
         let type_label = f.frontmatter.memory_type.label();
         let description = &f.frontmatter.description;
@@ -412,7 +412,12 @@ fn home_dir() -> io::Result<PathBuf> {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map(PathBuf::from)
-        .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "could not determine home directory"))
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "could not determine home directory",
+            )
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -757,7 +762,9 @@ body
 
     #[test]
     fn scan_nonexistent_dir() {
-        let dir = std::env::temp_dir().join("emberforge_memory_tests").join("no_such_dir");
+        let dir = std::env::temp_dir()
+            .join("emberforge_memory_tests")
+            .join("no_such_dir");
         let _ = fs::remove_dir_all(&dir);
         let config = MemoryConfig::default();
         let files = scan_memory_dir(&dir, &config).expect("scan");
@@ -906,10 +913,7 @@ body
 
     #[test]
     fn ensure_memory_dir_nested() {
-        let dir = test_dir("ensure_nested")
-            .join("a")
-            .join("b")
-            .join("memory");
+        let dir = test_dir("ensure_nested").join("a").join("b").join("memory");
         ensure_memory_dir(&dir).expect("ensure nested");
         assert!(dir.join("MEMORY.md").is_file());
     }

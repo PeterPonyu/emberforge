@@ -127,4 +127,3 @@ pub fn suggest_slash_commands(input: &str, limit: usize) -> Vec<String> {
         .map(|(_, _, display)| display)
         .collect()
 }
-

@@ -4,18 +4,17 @@
 
 use std::collections::BTreeMap;
 use std::io;
-use std::{env, fs};
 use std::path::PathBuf;
+use std::{env, fs};
 
 use runtime::model_profiles;
 use runtime::Session;
 use serde_json::json;
 
 use crate::{
-    build_runtime, build_system_prompt, chrono_now_iso8601, collect_tool_uses,
-    collect_tool_results, discover_available_models,
-    final_assistant_text, resolve_model_alias, truncate_for_summary,
-    ConfigLoader, PermissionMode, DOCTOR_FAMILY_REPRESENTATIVES, VERSION,
+    build_runtime, build_system_prompt, chrono_now_iso8601, collect_tool_results,
+    collect_tool_uses, discover_available_models, final_assistant_text, resolve_model_alias,
+    truncate_for_summary, ConfigLoader, PermissionMode, DOCTOR_FAMILY_REPRESENTATIVES, VERSION,
 };
 
 // ---------------------------------------------------------------------------
@@ -183,7 +182,10 @@ pub fn run_doctor(mode: Option<&str>, model: &str) -> Result<String, Box<dyn std
     Ok(match mode {
         DoctorMode::Quick => {
             let cache_key = doctor_quick_cache_key(model);
-            if let Some(report) = cache.quick.as_ref().filter(|report| report.cache_key == cache_key)
+            if let Some(report) = cache
+                .quick
+                .as_ref()
+                .filter(|report| report.cache_key == cache_key)
             {
                 format_doctor_report(report, true)
             } else {
@@ -197,7 +199,10 @@ pub fn run_doctor(mode: Option<&str>, model: &str) -> Result<String, Box<dyn std
         DoctorMode::Full => {
             let models = doctor_full_inventory()?;
             let cache_key = doctor_full_cache_key(&models);
-            if let Some(report) = cache.full.as_ref().filter(|report| report.cache_key == cache_key)
+            if let Some(report) = cache
+                .full
+                .as_ref()
+                .filter(|report| report.cache_key == cache_key)
             {
                 format_doctor_report(report, true)
             } else {
@@ -276,11 +281,21 @@ fn run_quick_doctor(model: &str) -> Result<DoctorReport, Box<dyn std::error::Err
         let tool_summary = run_doctor_turn(model, tool_prompt)?;
         let tool_names = collect_tool_uses(&tool_summary)
             .into_iter()
-            .filter_map(|entry| entry.get("name").and_then(|value| value.as_str()).map(str::to_string))
+            .filter_map(|entry| {
+                entry
+                    .get("name")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            })
             .collect::<Vec<_>>();
         let tool_outputs = collect_tool_results(&tool_summary)
             .into_iter()
-            .filter_map(|entry| entry.get("output").and_then(|value| value.as_str()).map(str::to_string))
+            .filter_map(|entry| {
+                entry
+                    .get("output")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            })
             .collect::<Vec<_>>();
         let tool_results = tool_outputs.join("\n");
         let tool_text = final_assistant_text(&tool_summary);
@@ -304,8 +319,7 @@ fn run_quick_doctor(model: &str) -> Result<DoctorReport, Box<dyn std::error::Err
                 DoctorCheckStatus::Fail
             },
             detail: if used_bash && !tool_results.trim().is_empty() {
-                concise_tool_output
-                    .unwrap_or_else(|| summarize_doctor_tool_output(&tool_results))
+                concise_tool_output.unwrap_or_else(|| summarize_doctor_tool_output(&tool_results))
             } else if used_bash {
                 format!(
                     "tools={} | {}",
@@ -313,7 +327,10 @@ fn run_quick_doctor(model: &str) -> Result<DoctorReport, Box<dyn std::error::Err
                     truncate_for_summary(&tool_text, 70)
                 )
             } else {
-                format!("no real tool call | {}", truncate_for_summary(&tool_text, 70))
+                format!(
+                    "no real tool call | {}",
+                    truncate_for_summary(&tool_text, 70)
+                )
             },
         });
     } else {
@@ -325,7 +342,8 @@ fn run_quick_doctor(model: &str) -> Result<DoctorReport, Box<dyn std::error::Err
     }
 
     if profile.is_thinking_model {
-        let thinking_summary = run_doctor_turn(model, "What is 2 + 2? Think step by step, then end with 4.")?;
+        let thinking_summary =
+            run_doctor_turn(model, "What is 2 + 2? Think step by step, then end with 4.")?;
         let thinking_text = final_assistant_text(&thinking_summary);
         checks.push(DoctorCheck {
             name: "thinking output".to_string(),
@@ -425,12 +443,14 @@ fn run_family_doctor_check(model: &str) -> Result<DoctorCheck, Box<dyn std::erro
                 .and_then(|value| value.as_str())
                 .is_some_and(|value| value == "bash")
         });
-        let saw_real_tool_result = collect_tool_results(&tool_summary).into_iter().any(|entry| {
-            entry
-                .get("output")
-                .and_then(|value| value.as_str())
-                .is_some_and(|value| normalized_contains(value, "DOCTOR_TOOL_OK"))
-        });
+        let saw_real_tool_result = collect_tool_results(&tool_summary)
+            .into_iter()
+            .any(|entry| {
+                entry
+                    .get("output")
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|value| normalized_contains(value, "DOCTOR_TOOL_OK"))
+            });
         let tool_status = if used_tool && saw_real_tool_result {
             DoctorCheckStatus::Pass
         } else if used_tool {
@@ -454,7 +474,8 @@ fn run_family_doctor_check(model: &str) -> Result<DoctorCheck, Box<dyn std::erro
     }
 
     if profile.is_thinking_model {
-        let thinking = run_doctor_turn(model, "What is 2 + 2? Think step by step, then end with 4.")?;
+        let thinking =
+            run_doctor_turn(model, "What is 2 + 2? Think step by step, then end with 4.")?;
         let thinking_text = final_assistant_text(&thinking);
         let thinking_status = if normalized_contains(&thinking_text, "4") {
             DoctorCheckStatus::Pass
@@ -540,9 +561,11 @@ fn doctor_tool_stdout(output: &str) -> Option<String> {
 }
 
 fn aggregate_doctor_status(checks: &[DoctorCheck]) -> DoctorCheckStatus {
-    checks.iter().fold(DoctorCheckStatus::Pass, |current, check| {
-        worst_doctor_status(current, check.status)
-    })
+    checks
+        .iter()
+        .fold(DoctorCheckStatus::Pass, |current, check| {
+            worst_doctor_status(current, check.status)
+        })
 }
 
 fn worst_doctor_status(current: DoctorCheckStatus, next: DoctorCheckStatus) -> DoctorCheckStatus {
@@ -581,7 +604,10 @@ fn format_doctor_report(report: &DoctorReport, from_cache: bool) -> String {
         format!("  Scope            {}", report.scope),
         format!("  Target           {}", report.target),
         format!("  Status           {}", report.status.badge()),
-        format!("  Cache            {}", if from_cache { "hit" } else { "refreshed" }),
+        format!(
+            "  Cache            {}",
+            if from_cache { "hit" } else { "refreshed" }
+        ),
         format!("  Ran at           {}", report.ran_at),
         format!("  Binary           {}", report.binary),
         "Checks".to_string(),

@@ -238,8 +238,9 @@ where
 
             for (tool_use_id, tool_name, input) in pending_tool_uses {
                 let (result_message, halt) = {
-                    let p: Option<&mut dyn PermissionPrompter> =
-                        prompter.as_mut().map(|x| &mut **x as &mut dyn PermissionPrompter);
+                    let p: Option<&mut dyn PermissionPrompter> = prompter
+                        .as_mut()
+                        .map(|x| &mut **x as &mut dyn PermissionPrompter);
                     self.execute_tool(tool_use_id, &tool_name, &input, p)
                 };
                 self.session.messages.push(result_message.clone());
@@ -279,7 +280,8 @@ where
         prompter: Option<&mut dyn PermissionPrompter>,
     ) -> (ConversationMessage, bool) {
         let permission_outcome = if let Some(prompt) = prompter {
-            self.permission_policy.authorize(tool_name, input, Some(prompt))
+            self.permission_policy
+                .authorize(tool_name, input, Some(prompt))
         } else {
             self.permission_policy.authorize(tool_name, input, None)
         };
@@ -298,17 +300,19 @@ where
                     (msg, false)
                 } else {
                     let mut halt = false;
-                    let (mut output, mut is_error) = match self.tool_executor.execute(tool_name, input) {
-                        Ok(out) => (out, false),
-                        Err(error) => {
-                            halt = error.is_fatal();
-                            (error.to_string(), true)
-                        }
-                    };
+                    let (mut output, mut is_error) =
+                        match self.tool_executor.execute(tool_name, input) {
+                            Ok(out) => (out, false),
+                            Err(error) => {
+                                halt = error.is_fatal();
+                                (error.to_string(), true)
+                            }
+                        };
                     output = merge_hook_feedback(pre_hook_result.messages(), output, false);
 
-                    let post_hook_result =
-                        self.hook_runner.run_post_tool_use(tool_name, input, &output, is_error);
+                    let post_hook_result = self
+                        .hook_runner
+                        .run_post_tool_use(tool_name, input, &output, is_error);
                     if post_hook_result.is_denied() {
                         is_error = true;
                     }
@@ -474,8 +478,7 @@ impl ToolExecutor for StaticToolExecutor {
 mod tests {
     use super::{
         ApiClient, ApiRequest, AssistantEvent, ConversationRuntime, RuntimeError,
-        StaticToolExecutor,
-        ToolError,
+        StaticToolExecutor, ToolError,
     };
     use crate::compact::CompactionConfig;
     use crate::config::{RuntimeFeatureConfig, RuntimeHookConfig};
@@ -674,7 +677,9 @@ mod tests {
                             AssistantEvent::MessageStop,
                         ])
                     }
-                    _ => Err(RuntimeError::new("fatal tool stop should prevent a follow-up API call")),
+                    _ => Err(RuntimeError::new(
+                        "fatal tool stop should prevent a follow-up API call",
+                    )),
                 }
             }
         }
@@ -683,7 +688,9 @@ mod tests {
             Session::new(),
             SingleCallApiClient { calls: 0 },
             StaticToolExecutor::new().register("stopper", |_input| {
-                Err(ToolError::fatal("stop requested while background task was running"))
+                Err(ToolError::fatal(
+                    "stop requested while background task was running",
+                ))
             }),
             PermissionPolicy::new(PermissionMode::DangerFullAccess),
             vec!["system".to_string()],

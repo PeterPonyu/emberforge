@@ -339,7 +339,10 @@ pub fn resolve_agent_tools(def: &AgentDefinition) -> BTreeSet<String> {
         return allow.iter().cloned().collect();
     }
 
-    let mut set: BTreeSet<String> = DEFAULT_AGENT_TOOLS.iter().map(|s| String::from(*s)).collect();
+    let mut set: BTreeSet<String> = DEFAULT_AGENT_TOOLS
+        .iter()
+        .map(|s| String::from(*s))
+        .collect();
 
     if let Some(ref deny) = def.disallowed_tools {
         for name in deny {
@@ -439,8 +442,7 @@ mod tests {
     fn temp_agents_dir(files: &[(&str, &str)]) -> PathBuf {
         let id = COUNTER.fetch_add(1, Ordering::SeqCst);
         let pid = std::process::id();
-        let dir = std::env::temp_dir()
-            .join(format!("ember_agent_test_{}_{}", pid, id));
+        let dir = std::env::temp_dir().join(format!("ember_agent_test_{}_{}", pid, id));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create temp dir");
         for (name, content) in files {
@@ -482,7 +484,10 @@ mod tests {
         assert_eq!(def.display_name.as_deref(), Some("Code Review"));
         assert_eq!(def.when_to_use.as_deref(), Some("Use for PR reviews"));
         assert_eq!(def.instructions.as_deref(), Some("Review code carefully."));
-        assert_eq!(def.tools, Some(vec!["read_file".into(), "grep_search".into()]));
+        assert_eq!(
+            def.tools,
+            Some(vec!["read_file".into(), "grep_search".into()])
+        );
         assert_eq!(def.model.as_deref(), Some("claude-opus-4-6"));
         assert_eq!(def.effort, Some(EffortLevel::Thorough));
         assert_eq!(def.max_turns, Some(10));
@@ -556,7 +561,10 @@ mod tests {
     #[test]
     fn load_agents_from_temp_dir() {
         let dir = temp_agents_dir(&[
-            ("alpha.json", r#"{"agentType":"alpha","displayName":"Alpha"}"#),
+            (
+                "alpha.json",
+                r#"{"agentType":"alpha","displayName":"Alpha"}"#,
+            ),
             ("beta.json", r#"{"agentType":"beta"}"#),
             ("readme.txt", "not json"),
         ]);
@@ -567,18 +575,26 @@ mod tests {
         assert_eq!(agents[1].agent_type, "beta");
         // source_file should be populated.
         assert!(agents[0].source_file.is_some());
-        assert!(agents[0].source_file.as_ref().unwrap().ends_with("alpha.json"));
+        assert!(agents[0]
+            .source_file
+            .as_ref()
+            .unwrap()
+            .ends_with("alpha.json"));
         cleanup(&dir);
     }
 
     // 7. Agent deduplication (project overrides user with same agent_type).
     #[test]
     fn deduplication_project_overrides_user() {
-        let project_dir = temp_agents_dir(&[
-            ("review.json", r#"{"agentType":"review","displayName":"Project Review"}"#),
-        ]);
+        let project_dir = temp_agents_dir(&[(
+            "review.json",
+            r#"{"agentType":"review","displayName":"Project Review"}"#,
+        )]);
         let user_dir = temp_agents_dir(&[
-            ("review.json", r#"{"agentType":"review","displayName":"User Review"}"#),
+            (
+                "review.json",
+                r#"{"agentType":"review","displayName":"User Review"}"#,
+            ),
             ("deploy.json", r#"{"agentType":"deploy"}"#),
         ]);
 
@@ -655,7 +671,10 @@ mod tests {
     #[test]
     fn find_agent_in_dir() {
         let dir = temp_agents_dir(&[
-            ("alpha.json", r#"{"agentType":"alpha","displayName":"Alpha Agent"}"#),
+            (
+                "alpha.json",
+                r#"{"agentType":"alpha","displayName":"Alpha Agent"}"#,
+            ),
             ("beta.json", r#"{"agentType":"beta"}"#),
         ]);
 

@@ -3,10 +3,12 @@ use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use crate::error::PluginError;
+use crate::manager::{
+    run_lifecycle_commands, validate_hook_paths, validate_lifecycle_paths, validate_tool_paths,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use crate::error::PluginError;
-use crate::manager::{validate_hook_paths, validate_lifecycle_paths, validate_tool_paths, run_lifecycle_commands};
 
 pub(crate) const EXTERNAL_MARKETPLACE: &str = "external";
 pub(crate) const BUILTIN_MARKETPLACE: &str = "builtin";
@@ -581,4 +583,3 @@ impl Plugin for PluginDefinition {
         }
     }
 }
-

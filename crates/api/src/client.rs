@@ -157,17 +157,32 @@ mod tests {
     #[test]
     fn ollama_models_detected_by_colon_tag() {
         assert_eq!(detect_provider_kind("qwen3:8b"), ProviderKind::Ollama);
-        assert_eq!(detect_provider_kind("llama3.1:8b-instruct-q8_0"), ProviderKind::Ollama);
-        assert_eq!(detect_provider_kind("gemma3:12b-it-q8_0"), ProviderKind::Ollama);
-        assert_eq!(detect_provider_kind("mistral:7b-instruct-v0.3-q4_K_M"), ProviderKind::Ollama);
+        assert_eq!(
+            detect_provider_kind("llama3.1:8b-instruct-q8_0"),
+            ProviderKind::Ollama
+        );
+        assert_eq!(
+            detect_provider_kind("gemma3:12b-it-q8_0"),
+            ProviderKind::Ollama
+        );
+        assert_eq!(
+            detect_provider_kind("mistral:7b-instruct-v0.3-q4_K_M"),
+            ProviderKind::Ollama
+        );
         assert_eq!(detect_provider_kind("phi4-mini"), ProviderKind::Ollama);
-        assert_eq!(detect_provider_kind("deepseek-r1:14b"), ProviderKind::Ollama);
+        assert_eq!(
+            detect_provider_kind("deepseek-r1:14b"),
+            ProviderKind::Ollama
+        );
     }
 
     #[test]
     fn ollama_models_not_confused_with_cloud() {
         // Cloud models should NOT route to Ollama
-        assert_eq!(detect_provider_kind("claude-opus-4-6"), ProviderKind::ClawApi);
+        assert_eq!(
+            detect_provider_kind("claude-opus-4-6"),
+            ProviderKind::ClawApi
+        );
         assert_eq!(detect_provider_kind("grok-3"), ProviderKind::Xai);
     }
 }

@@ -17,10 +17,7 @@ use serde::{Deserialize, Serialize};
 
 /// Run a git command and capture trimmed stdout.
 fn git_output(cwd: &Path, args: &[&str]) -> io::Result<String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()?;
+    let output = Command::new("git").args(args).current_dir(cwd).output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -32,10 +29,7 @@ fn git_output(cwd: &Path, args: &[&str]) -> io::Result<String> {
 
 /// Run a git command and check success.
 fn git_ok(cwd: &Path, args: &[&str]) -> io::Result<()> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()?;
+    let output = Command::new("git").args(args).current_dir(cwd).output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -145,7 +139,10 @@ pub fn get_default_branch(cwd: &Path) -> io::Result<String> {
     if git_succeeds(cwd, &["show-ref", "--verify", "--quiet", "refs/heads/main"]) {
         return Ok("main".to_string());
     }
-    if git_succeeds(cwd, &["show-ref", "--verify", "--quiet", "refs/heads/master"]) {
+    if git_succeeds(
+        cwd,
+        &["show-ref", "--verify", "--quiet", "refs/heads/master"],
+    ) {
         return Ok("master".to_string());
     }
 
@@ -439,7 +436,9 @@ fn parse_owner_repo(s: &str) -> Option<(String, String)> {
 
 /// Get the GitHub owner/repo for the current repository.
 pub fn get_github_repo(cwd: &Path) -> io::Result<Option<(String, String)>> {
-    let Some(url) = get_remote_url(cwd)? else { return Ok(None) };
+    let Some(url) = get_remote_url(cwd)? else {
+        return Ok(None);
+    };
     Ok(parse_github_remote(&url))
 }
 
@@ -629,10 +628,7 @@ mod tests {
 
     #[test]
     fn find_git_root_outside_repo() {
-        let dir = std::env::temp_dir().join(format!(
-            "emberforge-no-git-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("emberforge-no-git-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
 
@@ -658,10 +654,7 @@ mod tests {
 
     #[test]
     fn is_in_git_repo_false() {
-        let dir = std::env::temp_dir().join(format!(
-            "emberforge-not-repo-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("emberforge-not-repo-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
 

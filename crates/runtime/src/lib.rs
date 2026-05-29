@@ -1,28 +1,29 @@
-pub mod app_state;
 pub mod agent_loader;
-pub mod bash_security;
-pub mod bash_classifier;
+pub mod app_state;
 mod bash;
-pub mod bridge;
+pub mod bash_classifier;
+pub mod bash_security;
 mod bootstrap;
+pub mod bridge;
 mod compact;
-pub mod coordinator;
-pub mod context_collapse;
-pub mod cron;
 mod config;
+pub mod context_collapse;
 mod conversation;
+pub mod coordinator;
+pub mod cost_tracker;
+pub mod cron;
 pub mod file_history;
 mod file_ops;
 pub mod git;
 mod hooks;
 pub mod ide;
-pub mod model_profiles;
-pub mod model_router;
 mod json;
-pub mod memory;
 mod mcp;
 mod mcp_client;
 mod mcp_stdio;
+pub mod memory;
+pub mod model_profiles;
+pub mod model_router;
 mod oauth;
 pub mod output_mode;
 mod permissions;
@@ -32,40 +33,26 @@ pub mod sandbox;
 mod session;
 pub mod task_store;
 pub mod teleport;
-pub mod cost_tracker;
 pub mod transport;
 mod usage;
 
-pub use app_state::{AppState, TeamContext};
-pub use lsp::{
-    FileDiagnostics, LspContextEnrichment, LspError, LspManager, LspServerConfig,
-    SymbolLocation, WorkspaceDiagnostics,
-};
-pub use bash::{execute_bash, BashCommandInput, BashCommandOutput};
-pub use git::{
-    create_worktree, find_git_root, find_merge_base, get_branch, get_changed_files,
-    get_default_branch, get_git_state, get_github_repo, get_head, get_remote_url,
-    get_worktree_count, has_unpushed_commits, is_at_git_root, is_bare_repo, is_clean,
-    is_in_git_repo, is_shallow_clone, list_worktrees, parse_github_remote, remove_worktree,
-    safe_stash, stash_pop, FileChangeType, FileStatus, GitState, WorktreeInfo,
-};
 pub use agent_loader::{
-    discover_agents, find_agent, list_agent_summaries, load_agents_from_dir, resolve_agent_tools,
-    build_agent_prompt, project_agents_dir, user_agents_dir,
-    AgentDefinition, AgentMcpServerSpec, AgentSource, AgentSummary, IsolationMode, MemoryScope,
+    build_agent_prompt, discover_agents, find_agent, list_agent_summaries, load_agents_from_dir,
+    project_agents_dir, resolve_agent_tools, user_agents_dir, AgentDefinition, AgentMcpServerSpec,
+    AgentSource, AgentSummary, IsolationMode, MemoryScope,
+};
+pub use app_state::{AppState, TeamContext};
+pub use bash::{execute_bash, BashCommandInput, BashCommandOutput};
+pub use bash_classifier::{
+    classify_command, classify_command_api, classify_command_cached, clear_classification_cache,
+    is_auto_approvable, ApiClassificationResult, ClassificationResult, SafetyLabel,
 };
 pub use bash_security::{validate_bash_command, SecurityVerdict};
-pub use cron::{
-    create_task, delete_task, describe_schedule, format_task_summary, load_durable_tasks,
-    parse_cron, save_durable_tasks, schedule_matches, start_default_scheduler, start_scheduler,
-    tick, CronParseError, CronSchedule, ScheduledTask, SchedulerHandle, SchedulerTickResult,
-};
-pub use memory::{
-    build_memory_manifest, build_memory_prompt, ensure_memory_dir, load_entrypoint,
-    parse_frontmatter, project_memory_dir, scan_memory_dir, user_memory_dir, MemoryConfig,
-    MemoryFile, MemoryFrontmatter, MemoryIndex, MemoryType,
-};
 pub use bootstrap::{BootstrapPhase, BootstrapPlan};
+pub use bridge::{
+    BoundedUuidSet, BridgeMessage, BridgeSession, BridgeState, ControlRequestBody,
+    ControlResponseBody, ControlResponseStatus, InboundAction,
+};
 pub use compact::{
     auto_compact_session, calculate_token_warning, compact_session, create_pre_compact_checkpoint,
     estimate_session_tokens, format_compact_summary, get_compact_continuation_message,
@@ -75,33 +62,62 @@ pub use compact::{
     TokenWarningLevel, TokenWarningState,
 };
 pub use config::{
-    ConfigEntry, ConfigError, ConfigLoader, ConfigSource, McpManagedProxyServerConfig,
-    McpConfigCollection, McpOAuthConfig, McpRemoteServerConfig, McpSdkServerConfig,
+    ConfigEntry, ConfigError, ConfigLoader, ConfigSource, EffortLevel, McpConfigCollection,
+    McpManagedProxyServerConfig, McpOAuthConfig, McpRemoteServerConfig, McpSdkServerConfig,
     McpServerConfig, McpStdioServerConfig, McpTransport, McpWebSocketServerConfig, OAuthConfig,
     ResolvedPermissionMode, RuntimeConfig, RuntimeFeatureConfig, RuntimeHookConfig,
-    RuntimePluginConfig, RuntimeUiAnimationConfig, RuntimeUiAnimationMode,
-    RuntimeUiBannerConfig, RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig,
-    RuntimeUiHudConfig, RuntimeUiHudPreset, RuntimeUiMotionConfig, ScopedMcpServerConfig,
-    EffortLevel, ThemeMode, CLAW_SETTINGS_SCHEMA_NAME,
+    RuntimePluginConfig, RuntimeUiAnimationConfig, RuntimeUiAnimationMode, RuntimeUiBannerConfig,
+    RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig, RuntimeUiHudConfig,
+    RuntimeUiHudPreset, RuntimeUiMotionConfig, ScopedMcpServerConfig, ThemeMode,
+    CLAW_SETTINGS_SCHEMA_NAME,
+};
+pub use context_collapse::{
+    collapse_context, compute_importance, estimate_tokens, CollapseConfig, CollapseResult,
+    CollapseStrategy, ContextSegment,
 };
 pub use conversation::{
     ApiClient, ApiRequest, AssistantEvent, ConversationRuntime, RuntimeError, StaticToolExecutor,
     ToolError, ToolExecutor, TurnSummary,
 };
+pub use coordinator::{
+    coordinator_system_prompt, ensure_scratchpad_dir, is_scratchpad_path, is_task_notification,
+    parse_task_notification, BroadcastMessage, Coordinator, ScratchpadEntry,
+    TaskNotificationParsed, WorkerAgent, WorkerStatus, COORDINATOR_ONLY_TOOLS,
+    WORKER_ALLOWED_TOOLS, WORKER_DENIED_TOOLS,
+};
+pub use cost_tracker::{
+    format_tokens, load_session_costs, save_session_costs, CodeMetrics, CostTracker, ModelUsage,
+    TimingMetrics,
+};
+pub use cron::{
+    create_task, delete_task, describe_schedule, format_task_summary, load_durable_tasks,
+    parse_cron, save_durable_tasks, schedule_matches, start_default_scheduler, start_scheduler,
+    tick, CronParseError, CronSchedule, ScheduledTask, SchedulerHandle, SchedulerTickResult,
+};
+pub use file_history::{FileHistoryStore, FileSnapshot};
 pub use file_ops::{
     edit_file, glob_search, grep_search, read_file, write_file, EditFileOutput, GlobSearchOutput,
     GrepSearchInput, GrepSearchOutput, ReadFileOutput, StructuredPatchHunk, TextFilePayload,
     WriteFileOutput,
 };
-pub use hooks::{
-    HookBackend, HookDefinition, HookEvent, HookMatchRule, HookRunResult, HookRunner,
+pub use git::{
+    create_worktree, find_git_root, find_merge_base, get_branch, get_changed_files,
+    get_default_branch, get_git_state, get_github_repo, get_head, get_remote_url,
+    get_worktree_count, has_unpushed_commits, is_at_git_root, is_bare_repo, is_clean,
+    is_in_git_repo, is_shallow_clone, list_worktrees, parse_github_remote, remove_worktree,
+    safe_stash, stash_pop, FileChangeType, FileStatus, GitState, WorktreeInfo,
+};
+pub use hooks::{HookBackend, HookDefinition, HookEvent, HookMatchRule, HookRunResult, HookRunner};
+pub use lsp::{
+    FileDiagnostics, LspContextEnrichment, LspError, LspManager, LspServerConfig, SymbolLocation,
+    WorkspaceDiagnostics,
 };
 pub use mcp::{
     mcp_server_signature, mcp_tool_name, mcp_tool_prefix, normalize_name_for_mcp,
     scoped_mcp_config_hash, unwrap_ccr_proxy_url,
 };
 pub use mcp_client::{
-    McpManagedProxyTransport, McpClientAuth, McpClientBootstrap, McpClientTransport,
+    McpClientAuth, McpClientBootstrap, McpClientTransport, McpManagedProxyTransport,
     McpRemoteTransport, McpSdkTransport, McpStdioTransport,
 };
 pub use mcp_stdio::{
@@ -109,9 +125,13 @@ pub use mcp_stdio::{
     ManagedMcpTool, McpInitializeClientInfo, McpInitializeParams, McpInitializeResult,
     McpInitializeServerInfo, McpListResourcesParams, McpListResourcesResult, McpListToolsParams,
     McpListToolsResult, McpReadResourceParams, McpReadResourceResult, McpResource,
-    McpResourceContents, McpServerManager, McpServerManagerError, McpServerStatus,
-    McpStdioProcess, McpTool,
-    McpToolCallContent, McpToolCallParams, McpToolCallResult, UnsupportedMcpServer,
+    McpResourceContents, McpServerManager, McpServerManagerError, McpServerStatus, McpStdioProcess,
+    McpTool, McpToolCallContent, McpToolCallParams, McpToolCallResult, UnsupportedMcpServer,
+};
+pub use memory::{
+    build_memory_manifest, build_memory_prompt, ensure_memory_dir, load_entrypoint,
+    parse_frontmatter, project_memory_dir, scan_memory_dir, user_memory_dir, MemoryConfig,
+    MemoryFile, MemoryFrontmatter, MemoryIndex, MemoryType,
 };
 pub use oauth::{
     clear_oauth_credentials, code_challenge_s256, credentials_path, generate_pkce_pair,
@@ -120,18 +140,14 @@ pub use oauth::{
     OAuthCallbackParams, OAuthRefreshRequest, OAuthTokenExchangeRequest, OAuthTokenSet,
     PkceChallengeMethod, PkceCodePair,
 };
-pub use cost_tracker::{
-    format_tokens, load_session_costs, save_session_costs, CodeMetrics, CostTracker, ModelUsage,
-    TimingMetrics,
+pub use output_mode::{
+    build_json_response, message_to_output_events, OutputEvent, OutputMode, OutputWriter,
 };
 pub use permissions::{
     check_tool_permissions, format_rule_value, is_internal_writable_path, is_path_within_workspace,
     is_sensitive_path, parse_rule_value, parse_rules_from_settings, DenialTracker, PermissionMode,
     PermissionOutcome, PermissionPolicy, PermissionPromptDecision, PermissionPrompter,
     PermissionRequest, PermissionRule, RuleBehavior, RuleSource, ToolPermissionResult,
-};
-pub use output_mode::{
-    build_json_response, message_to_output_events, OutputEvent, OutputMode, OutputWriter,
 };
 pub use prompt::{
     load_system_prompt, prepend_bullets, ContextFile, ProjectContext, PromptBuildError,
@@ -143,33 +159,14 @@ pub use remote::{
     DEFAULT_SESSION_TOKEN_PATH, DEFAULT_SYSTEM_CA_BUNDLE, NO_PROXY_HOSTS, UPSTREAM_PROXY_ENV_KEYS,
 };
 pub use session::{ContentBlock, ConversationMessage, MessageRole, Session, SessionError};
-pub use usage::{
-    format_usd, pricing_for_model, ModelPricing, TokenUsage, UsageCostEstimate, UsageTracker,
-};
-pub use coordinator::{
-    coordinator_system_prompt, ensure_scratchpad_dir, is_scratchpad_path, is_task_notification,
-    parse_task_notification, BroadcastMessage, Coordinator, ScratchpadEntry,
-    TaskNotificationParsed, WorkerAgent, WorkerStatus, COORDINATOR_ONLY_TOOLS,
-    WORKER_ALLOWED_TOOLS, WORKER_DENIED_TOOLS,
+pub use task_store::{
+    create_task_manifest, drain_notifications, generate_task_id, list_manifests, load_manifest,
+    read_task_output, save_manifest, spawn_shell_task, stop_task, task_store_dir,
+    update_manifest_status, TaskKind, TaskManifest, TaskNotification, TaskStatus,
 };
 pub use teleport::{export_session, import_session, validate_bundle, TeleportBundle};
-pub use file_history::{FileHistoryStore, FileSnapshot};
-pub use context_collapse::{
-    collapse_context, compute_importance, estimate_tokens, CollapseConfig, CollapseResult,
-    CollapseStrategy, ContextSegment,
-};
-pub use bash_classifier::{
-    classify_command, classify_command_api, classify_command_cached, clear_classification_cache,
-    is_auto_approvable, ApiClassificationResult, ClassificationResult, SafetyLabel,
-};
-pub use bridge::{
-    BoundedUuidSet, BridgeMessage, BridgeSession, BridgeState, ControlRequestBody,
-    ControlResponseBody, ControlResponseStatus, InboundAction,
-};
-pub use task_store::{
-    create_task_manifest, drain_notifications, generate_task_id, list_manifests,
-    load_manifest, read_task_output, save_manifest, spawn_shell_task, stop_task,
-    task_store_dir, update_manifest_status, TaskKind, TaskManifest, TaskNotification, TaskStatus,
+pub use usage::{
+    format_usd, pricing_for_model, ModelPricing, TokenUsage, UsageCostEstimate, UsageTracker,
 };
 
 #[cfg(test)]

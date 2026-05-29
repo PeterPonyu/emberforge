@@ -10,13 +10,14 @@ use std::time::Duration;
 
 use crate::implementations::{
     agent_permission_policy, allowed_tools_for_subagent, execute_agent_with_spawn,
-    final_assistant_text, persist_agent_terminal_state,
-    push_output_block, SubagentToolExecutor,
+    final_assistant_text, persist_agent_terminal_state, push_output_block, SubagentToolExecutor,
 };
 use crate::types::{AgentInput, AgentJob};
 use crate::{execute_tool, mvp_tool_specs};
 use api::OutputContentBlock;
-use runtime::{ApiRequest, AssistantEvent, ConversationRuntime, RuntimeError, Session, ToolExecutor};
+use runtime::{
+    ApiRequest, AssistantEvent, ConversationRuntime, RuntimeError, Session, ToolExecutor,
+};
 use serde_json::json;
 
 fn env_lock() -> &'static Mutex<()> {
@@ -132,7 +133,10 @@ fn web_fetch_supports_plain_text_and_rejects_invalid_url() {
         }),
     )
     .expect_err("invalid URL should fail");
-    assert!(error.to_string().contains("relative URL without a base") || error.to_string().contains("invalid"));
+    assert!(
+        error.to_string().contains("relative URL without a base")
+            || error.to_string().contains("invalid")
+    );
 }
 
 #[test]
@@ -230,7 +234,10 @@ fn web_search_handles_generic_links_and_invalid_base_url() {
     let error = execute_tool("WebSearch", &json!({ "query": "generic links" }))
         .expect_err("invalid base URL should fail");
     std::env::remove_var("EMBER_WEB_SEARCH_BASE_URL");
-    assert!(error.to_string().contains("relative URL without a base") || error.to_string().contains("empty host"));
+    assert!(
+        error.to_string().contains("relative URL without a base")
+            || error.to_string().contains("empty host")
+    );
 }
 
 #[test]
@@ -345,8 +352,8 @@ fn todo_write_rejects_invalid_payloads_and_sets_verification_nudge() {
     let path = temp_path("todos-errors.json");
     std::env::set_var("CLAW_TODO_STORE", &path);
 
-    let empty = execute_tool("TodoWrite", &json!({ "todos": [] }))
-        .expect_err("empty todos should fail");
+    let empty =
+        execute_tool("TodoWrite", &json!({ "todos": [] })).expect_err("empty todos should fail");
     assert!(empty.to_string().contains("todos must not be empty"));
 
     // Multiple in_progress items are now allowed for parallel workflows
@@ -370,7 +377,9 @@ fn todo_write_rejects_invalid_payloads_and_sets_verification_nudge() {
         }),
     )
     .expect_err("blank content should fail");
-    assert!(blank_content.to_string().contains("todo content must not be empty"));
+    assert!(blank_content
+        .to_string()
+        .contains("todo content must not be empty"));
 
     let nudge = execute_tool(
         "TodoWrite",
@@ -462,8 +471,7 @@ fn tool_search_supports_keyword_and_select_queries() {
 
     let selected = execute_tool("ToolSearch", &json!({"query": "select:Agent,Skill"}))
         .expect("ToolSearch should succeed");
-    let selected_output: serde_json::Value =
-        serde_json::from_str(&selected).expect("valid json");
+    let selected_output: serde_json::Value = serde_json::from_str(&selected).expect("valid json");
     assert_eq!(selected_output["matches"][0], "Agent");
     assert_eq!(selected_output["matches"][1], "Skill");
 
@@ -518,7 +526,10 @@ fn agent_persists_handoff_metadata() {
     assert_eq!(manifest.version, 1);
     assert_eq!(manifest.task_kind, "subagent");
     assert_eq!(manifest.name, "ship-audit");
-    assert_eq!(manifest.prompt.as_deref(), Some("Check tests and outstanding work."));
+    assert_eq!(
+        manifest.prompt.as_deref(),
+        Some("Check tests and outstanding work.")
+    );
     assert_eq!(manifest.subagent_type.as_deref(), Some("Explore"));
     assert_eq!(manifest.status, "running");
     assert_eq!(manifest.parent_session_id.as_deref(), Some("session-alpha"));
@@ -539,7 +550,13 @@ fn agent_persists_handoff_metadata() {
     assert!(contents.contains("Check tests and outstanding work."));
     assert!(manifest_contents.contains("\"subagentType\": \"Explore\""));
     assert!(manifest_contents.contains("\"status\": \"running\""));
-    assert_eq!(manifest_json["activity"].as_array().expect("activity array").len(), 1);
+    assert_eq!(
+        manifest_json["activity"]
+            .as_array()
+            .expect("activity array")
+            .len(),
+        1
+    );
     assert_eq!(manifest_json["activity"][0]["kind"], "created");
     assert_eq!(manifest_json["activity"][0]["status"], "running");
     assert_eq!(
@@ -612,8 +629,8 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
     )
     .expect("completed agent should succeed");
 
-    let completed_manifest = std::fs::read_to_string(&completed.manifest_file)
-        .expect("completed manifest should exist");
+    let completed_manifest =
+        std::fs::read_to_string(&completed.manifest_file).expect("completed manifest should exist");
     let completed_json: serde_json::Value =
         serde_json::from_str(&completed_manifest).expect("completed manifest json");
     let completed_output =
@@ -634,7 +651,8 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
         .as_array()
         .expect("activity array")
         .iter()
-        .any(|entry| entry["kind"] == "restarted" && entry["message"] == "Restarted from interrupted task agent-parent"));
+        .any(|entry| entry["kind"] == "restarted"
+            && entry["message"] == "Restarted from interrupted task agent-parent"));
 
     let failed = execute_agent_with_spawn(
         AgentInput {
@@ -648,12 +666,7 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
             run_in_background: None,
         },
         |job| {
-            persist_agent_terminal_state(
-                &job.manifest,
-                "failed",
-                None,
-                Some("simulated failure"),
-            )
+            persist_agent_terminal_state(&job.manifest, "failed", None, Some("simulated failure"))
         },
     )
     .expect("failed agent should still spawn");
@@ -690,7 +703,9 @@ fn agent_fake_runner_can_persist_completion_and_failure() {
         |_| Err(String::from("thread creation failed")),
     )
     .expect_err("spawn errors should surface");
-    assert!(spawn_error.to_string().contains("failed to spawn sub-agent"));
+    assert!(spawn_error
+        .to_string()
+        .contains("failed to spawn sub-agent"));
     let spawn_error_manifest = std::fs::read_dir(&dir)
         .expect("agent dir should exist")
         .filter_map(Result::ok)
@@ -865,7 +880,9 @@ fn agent_rejects_blank_required_fields() {
         }),
     )
     .expect_err("blank description should fail");
-    assert!(missing_description.to_string().contains("description must not be empty"));
+    assert!(missing_description
+        .to_string()
+        .contains("description must not be empty"));
 
     let missing_prompt = execute_tool(
         "Agent",
@@ -875,7 +892,9 @@ fn agent_rejects_blank_required_fields() {
         }),
     )
     .expect_err("blank prompt should fail");
-    assert!(missing_prompt.to_string().contains("prompt must not be empty"));
+    assert!(missing_prompt
+        .to_string()
+        .contains("prompt must not be empty"));
 }
 
 #[test]
@@ -988,7 +1007,9 @@ fn notebook_edit_rejects_invalid_inputs() {
         }),
     )
     .expect_err("insert without source should fail");
-    assert!(missing_source.to_string().contains("new_source is required"));
+    assert!(missing_source
+        .to_string()
+        .contains("new_source is required"));
 
     let missing_cell = execute_tool(
         "NotebookEdit",
@@ -998,20 +1019,28 @@ fn notebook_edit_rejects_invalid_inputs() {
         }),
     )
     .expect_err("delete on empty notebook should fail");
-    assert!(missing_cell.to_string().contains("Notebook has no cells to edit"));
+    assert!(missing_cell
+        .to_string()
+        .contains("Notebook has no cells to edit"));
     let _ = fs::remove_file(empty_notebook);
 }
 
 #[test]
 fn bash_tool_reports_success_exit_failure_timeout_and_background() {
-    let success = execute_tool("bash", &json!({ "command": "printf 'hello'", "dangerouslyDisableSandbox": true }))
-        .expect("bash should succeed");
+    let success = execute_tool(
+        "bash",
+        &json!({ "command": "printf 'hello'", "dangerouslyDisableSandbox": true }),
+    )
+    .expect("bash should succeed");
     let success_output: serde_json::Value = serde_json::from_str(&success).expect("json");
     assert_eq!(success_output["stdout"], "hello");
     assert_eq!(success_output["interrupted"], false);
 
-    let failure = execute_tool("bash", &json!({ "command": "printf 'oops' >&2; exit 7", "dangerouslyDisableSandbox": true }))
-        .expect("bash failure should still return structured output");
+    let failure = execute_tool(
+        "bash",
+        &json!({ "command": "printf 'oops' >&2; exit 7", "dangerouslyDisableSandbox": true }),
+    )
+    .expect("bash failure should still return structured output");
     let failure_output: serde_json::Value = serde_json::from_str(&failure).expect("json");
     assert_eq!(failure_output["returnCodeInterpretation"], "exit_code:7");
     assert!(failure_output["stderr"]
@@ -1019,8 +1048,11 @@ fn bash_tool_reports_success_exit_failure_timeout_and_background() {
         .expect("stderr")
         .contains("oops"));
 
-    let timeout = execute_tool("bash", &json!({ "command": "sleep 1", "timeout": 10, "dangerouslyDisableSandbox": true }))
-        .expect("bash timeout should return output");
+    let timeout = execute_tool(
+        "bash",
+        &json!({ "command": "sleep 1", "timeout": 10, "dangerouslyDisableSandbox": true }),
+    )
+    .expect("bash timeout should return output");
     let timeout_output: serde_json::Value = serde_json::from_str(&timeout).expect("json");
     assert_eq!(timeout_output["interrupted"], true);
     assert_eq!(timeout_output["returnCodeInterpretation"], "timeout");
@@ -1054,8 +1086,7 @@ fn file_tools_cover_read_write_and_edit_behaviors() {
         &json!({ "path": "nested/demo.txt", "content": "alpha\nbeta\nalpha\n" }),
     )
     .expect("write create should succeed");
-    let write_create_output: serde_json::Value =
-        serde_json::from_str(&write_create).expect("json");
+    let write_create_output: serde_json::Value = serde_json::from_str(&write_create).expect("json");
     assert_eq!(write_create_output["type"], "create");
     assert!(root.join("nested/demo.txt").exists());
 
@@ -1064,8 +1095,7 @@ fn file_tools_cover_read_write_and_edit_behaviors() {
         &json!({ "path": "nested/demo.txt", "content": "alpha\nbeta\ngamma\n" }),
     )
     .expect("write update should succeed");
-    let write_update_output: serde_json::Value =
-        serde_json::from_str(&write_update).expect("json");
+    let write_update_output: serde_json::Value = serde_json::from_str(&write_update).expect("json");
     assert_eq!(write_update_output["type"], "update");
     assert_eq!(write_update_output["originalFile"], "alpha\nbeta\nalpha\n");
 
@@ -1170,8 +1200,7 @@ fn glob_and_grep_tools_cover_success_and_errors() {
 
     let current_dir = execute_tool("glob_search", &json!({ "pattern": "." }))
         .expect("current-directory shorthand should succeed");
-    let current_dir_output: serde_json::Value =
-        serde_json::from_str(&current_dir).expect("json");
+    let current_dir_output: serde_json::Value = serde_json::from_str(&current_dir).expect("json");
     assert_eq!(current_dir_output["numFiles"], 1);
     assert!(current_dir_output["filenames"][0]
         .as_str()
@@ -1204,8 +1233,7 @@ fn glob_and_grep_tools_cover_success_and_errors() {
         }),
     )
     .expect("grep content should succeed");
-    let grep_content_output: serde_json::Value =
-        serde_json::from_str(&grep_content).expect("json");
+    let grep_content_output: serde_json::Value = serde_json::from_str(&grep_content).expect("json");
     assert_eq!(grep_content_output["numFiles"], 0);
     assert!(grep_content_output["appliedLimit"].is_null());
     assert_eq!(grep_content_output["appliedOffset"], 1);
@@ -1236,8 +1264,7 @@ fn glob_and_grep_tools_cover_success_and_errors() {
 #[test]
 fn sleep_waits_and_reports_duration() {
     let started = std::time::Instant::now();
-    let result =
-        execute_tool("Sleep", &json!({"duration_ms": 20})).expect("Sleep should succeed");
+    let result = execute_tool("Sleep", &json!({"duration_ms": 20})).expect("Sleep should succeed");
     let elapsed = started.elapsed();
     let output: serde_json::Value = serde_json::from_str(&result).expect("json");
     assert_eq!(output["duration_ms"], 20);
@@ -1429,7 +1456,11 @@ printf 'pwsh:%s' "$1"
 
     let output: serde_json::Value = serde_json::from_str(&result).expect("json");
     assert_eq!(output["stdout"], "pwsh:Write-Output hello");
-    assert!(output["stderr"].as_str().expect("stderr").to_string().is_empty());
+    assert!(output["stderr"]
+        .as_str()
+        .expect("stderr")
+        .to_string()
+        .is_empty());
 
     let background_output: serde_json::Value = serde_json::from_str(&background).expect("json");
     assert!(background_output["backgroundTaskId"].as_str().is_some());
@@ -1619,8 +1650,8 @@ fn team_delete_cleans_files() {
 
 #[test]
 fn team_context_flows_through_app_state() {
-    use std::sync::Arc;
     use runtime::AppState;
+    use std::sync::Arc;
 
     // Use a tempdir as HOME so the real default_teams_dir resolves there
     // and we don't pollute the user's actual ~/.local/share/emberforge/teams.
@@ -1643,7 +1674,10 @@ fn team_context_flows_through_app_state() {
     };
     let create_result =
         crate::implementations::execute_team_create(create_input, Some(Arc::clone(&state)));
-    assert!(create_result.is_ok(), "team create failed: {create_result:?}");
+    assert!(
+        create_result.is_ok(),
+        "team create failed: {create_result:?}"
+    );
 
     let ctx_after_create = state.get_team_context();
     assert!(
@@ -1651,14 +1685,20 @@ fn team_context_flows_through_app_state() {
         "team_context should be Some(_) after execute_team_create"
     );
     assert!(
-        ctx_after_create.unwrap().team_name.starts_with("appstate-test-"),
+        ctx_after_create
+            .unwrap()
+            .team_name
+            .starts_with("appstate-test-"),
         "team_context.team_name should match the created team"
     );
 
     let delete_input = crate::types::TeamDeleteInput {};
     let delete_result =
         crate::implementations::execute_team_delete(delete_input, Some(Arc::clone(&state)));
-    assert!(delete_result.is_ok(), "team delete failed: {delete_result:?}");
+    assert!(
+        delete_result.is_ok(),
+        "team delete failed: {delete_result:?}"
+    );
 
     assert!(
         state.get_team_context().is_none(),
@@ -1684,10 +1724,7 @@ fn team_context_flows_through_app_state() {
 #[test]
 fn workflow_tool_dispatches() {
     use serde_json::json;
-    let result = crate::executor::execute_tool(
-        "Workflow",
-        &json!({"workflow_name": "test-flow"}),
-    );
+    let result = crate::executor::execute_tool("Workflow", &json!({"workflow_name": "test-flow"}));
     assert!(result.is_ok(), "workflow dispatch failed: {result:?}");
     let output = result.unwrap();
     assert!(
@@ -1724,7 +1761,10 @@ fn brief_tool_dispatches() {
 fn discover_skills_tool_dispatches() {
     use serde_json::json;
     let result = crate::executor::execute_tool("DiscoverSkills", &json!({}));
-    assert!(result.is_ok(), "discover_skills dispatch failed: {result:?}");
+    assert!(
+        result.is_ok(),
+        "discover_skills dispatch failed: {result:?}"
+    );
     let output = result.unwrap();
     assert!(
         output.contains("skills"),
@@ -1739,11 +1779,12 @@ fn discover_skills_tool_dispatches() {
 #[test]
 fn verify_plan_execution_tool_dispatches() {
     use serde_json::json;
-    let result = crate::executor::execute_tool(
-        "VerifyPlanExecution",
-        &json!({"plan_id": "plan-abc-123"}),
+    let result =
+        crate::executor::execute_tool("VerifyPlanExecution", &json!({"plan_id": "plan-abc-123"}));
+    assert!(
+        result.is_ok(),
+        "verify_plan_execution dispatch failed: {result:?}"
     );
-    assert!(result.is_ok(), "verify_plan_execution dispatch failed: {result:?}");
     let output = result.unwrap();
     assert!(
         output.contains("plan-abc-123"),

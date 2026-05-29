@@ -120,10 +120,7 @@ impl Session {
             ),
         );
         if self.plan_mode {
-            object.insert(
-                "plan_mode".to_string(),
-                JsonValue::Bool(true),
-            );
+            object.insert("plan_mode".to_string(), JsonValue::Bool(true));
         }
         JsonValue::Object(object)
     }
@@ -149,7 +146,11 @@ impl Session {
             .get("plan_mode")
             .and_then(JsonValue::as_bool)
             .unwrap_or(false);
-        Ok(Self { version, messages, plan_mode })
+        Ok(Self {
+            version,
+            messages,
+            plan_mode,
+        })
     }
 }
 

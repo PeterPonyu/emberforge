@@ -12,10 +12,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use runtime::{
-    BridgeState, ConversationMessage, InboundAction,
-    Session as RuntimeSession,
-};
+use runtime::{BridgeState, ConversationMessage, InboundAction, Session as RuntimeSession};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, RwLock};
 
@@ -176,7 +173,10 @@ pub fn app(state: AppState) -> Router {
         .route("/sessions/{id}/teleport", get(teleport_export))
         .route("/sessions/import", post(teleport_import))
         .route("/bridge", get(bridge_ws_handler))
-        .route("/bridge/sessions", post(create_bridge_session).get(list_bridge_sessions))
+        .route(
+            "/bridge/sessions",
+            post(create_bridge_session).get(list_bridge_sessions),
+        )
         .with_state(state)
 }
 
@@ -320,9 +320,7 @@ async fn create_bridge_session(
     )
 }
 
-async fn list_bridge_sessions(
-    State(state): State<AppState>,
-) -> Json<serde_json::Value> {
+async fn list_bridge_sessions(State(state): State<AppState>) -> Json<serde_json::Value> {
     let bridge = state.bridge.read().await;
     let sessions = bridge.list_sessions();
     Json(serde_json::json!({ "sessions": sessions }))
@@ -344,7 +342,9 @@ async fn handle_bridge_socket(mut socket: WebSocket, state: AppState) {
         "subtype": "bridge_init"
     });
     let _ = socket
-        .send(WsMessage::Text(serde_json::to_string(&init_msg).unwrap_or_default().into()))
+        .send(WsMessage::Text(
+            serde_json::to_string(&init_msg).unwrap_or_default().into(),
+        ))
         .await;
 
     // Keepalive + message loop
@@ -427,8 +427,14 @@ async fn teleport_export(
         exported_at: unix_timestamp_millis().to_string(),
         title: Some(format!("Teleported session {id}")),
     };
-    let bundle_json = serde_json::to_string(&bundle)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() })))?;
+    let bundle_json = serde_json::to_string(&bundle).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     Ok(Json(TeleportExportResponse {
         session_id: id,
@@ -440,8 +446,15 @@ async fn teleport_import(
     State(state): State<AppState>,
     Json(payload): Json<TeleportImportRequest>,
 ) -> ApiResult<(StatusCode, Json<TeleportImportResponse>)> {
-    let bundle: runtime::TeleportBundle = serde_json::from_str(&payload.bundle_json)
-        .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() })))?;
+    let bundle: runtime::TeleportBundle =
+        serde_json::from_str(&payload.bundle_json).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     runtime::validate_bundle(&bundle)
         .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e })))?;

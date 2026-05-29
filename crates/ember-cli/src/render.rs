@@ -376,7 +376,11 @@ impl TerminalRenderer {
                 state.append_raw(output, &format!("[{reference}]"), &self.color_theme);
             }
             Event::TaskListMarker(done) => {
-                state.append_raw(output, if done { "[x] " } else { "[ ] " }, &self.color_theme);
+                state.append_raw(
+                    output,
+                    if done { "[x] " } else { "[ ] " },
+                    &self.color_theme,
+                );
             }
             Event::InlineMath(math) | Event::DisplayMath(math) => {
                 state.append_raw(output, &math, &self.color_theme);
@@ -506,14 +510,26 @@ impl TerminalRenderer {
             format!(" {} ", label)
                 .bold()
                 .with(self.color_theme.inline_code),
-            format!("{}", "─".repeat(top_fill).bold().with(self.color_theme.code_block_border)),
+            format!(
+                "{}",
+                "─"
+                    .repeat(top_fill)
+                    .bold()
+                    .with(self.color_theme.code_block_border)
+            ),
             format!("{}", "╮".bold().with(self.color_theme.code_block_border))
         );
         let side = format!("{}", "│".with(self.color_theme.code_block_border));
         let bottom = format!(
             "{}{}{}",
             format!("{}", "╰".bold().with(self.color_theme.code_block_border)),
-            format!("{}", "─".repeat(content_width + 2).bold().with(self.color_theme.code_block_border)),
+            format!(
+                "{}",
+                "─"
+                    .repeat(content_width + 2)
+                    .bold()
+                    .with(self.color_theme.code_block_border)
+            ),
             format!("{}", "╯".bold().with(self.color_theme.code_block_border))
         );
 
@@ -594,13 +610,24 @@ impl TerminalRenderer {
         output
     }
 
-    fn render_table_border(&self, widths: &[usize], left: char, middle: char, right: char) -> String {
+    fn render_table_border(
+        &self,
+        widths: &[usize],
+        left: char,
+        middle: char,
+        right: char,
+    ) -> String {
         let left = format!("{}", left.to_string().with(self.color_theme.table_border));
         let right = format!("{}", right.to_string().with(self.color_theme.table_border));
         let middle = format!("{}", middle.to_string().with(self.color_theme.table_border));
         let segment = widths
             .iter()
-            .map(|width| format!("{}", "─".repeat(*width + 2).with(self.color_theme.table_border)))
+            .map(|width| {
+                format!(
+                    "{}",
+                    "─".repeat(*width + 2).with(self.color_theme.table_border)
+                )
+            })
             .collect::<Vec<_>>()
             .join(&middle);
         format!("{left}{segment}{right}")
@@ -897,9 +924,8 @@ mod tests {
     #[test]
     fn blockquotes_prefix_each_line() {
         let terminal_renderer = TerminalRenderer::new();
-        let markdown_output = terminal_renderer.render_markdown(
-            "> first line\n> second line\n>\n> tail"
-        );
+        let markdown_output =
+            terminal_renderer.render_markdown("> first line\n> second line\n>\n> tail");
         let plain_text = strip_ansi(&markdown_output);
 
         assert!(plain_text.contains("│ first line"));
@@ -936,7 +962,9 @@ mod tests {
         assert_eq!(state.push(&renderer, "| --- | --- |\n"), None);
         assert_eq!(state.push(&renderer, "| tool | TOOL_OK |\n"), None);
 
-        let table = state.push(&renderer, "\n").expect("blank line flushes table");
+        let table = state
+            .push(&renderer, "\n")
+            .expect("blank line flushes table");
         let plain_text = strip_ansi(&table);
 
         assert!(plain_text.contains("│ Key"));
@@ -953,7 +981,9 @@ mod tests {
         assert_eq!(state.push(&renderer, "| ---- | ----- |\n"), None);
         assert_eq!(state.push(&renderer, "| alpha | 1 |\n"), None);
 
-        let table = state.flush(&renderer).expect("flush renders trailing table");
+        let table = state
+            .flush(&renderer)
+            .expect("flush renders trailing table");
         let plain_text = strip_ansi(&table);
 
         assert!(plain_text.contains("│ Name"));

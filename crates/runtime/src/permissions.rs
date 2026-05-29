@@ -280,12 +280,8 @@ const SENSITIVE_ABSOLUTE_PATHS: &[&str] = &[
 ];
 
 /// Internal paths that are always writable (within workspace).
-const INTERNAL_WRITABLE_PREFIXES: &[&str] = &[
-    ".ember/",
-    ".ember-agents/",
-    ".claw/",
-    ".claw-agents/",
-];
+const INTERNAL_WRITABLE_PREFIXES: &[&str] =
+    &[".ember/", ".ember-agents/", ".claw/", ".claw-agents/"];
 
 /// Check if a path is within the workspace, resolving symlinks to prevent escapes.
 ///
@@ -294,7 +290,8 @@ const INTERNAL_WRITABLE_PREFIXES: &[&str] = &[
 #[must_use]
 pub fn is_path_within_workspace(path: &Path, workspace_root: &Path) -> bool {
     // Resolve symlinks for both paths
-    let resolved_root = fs::canonicalize(workspace_root).unwrap_or_else(|_| workspace_root.to_path_buf());
+    let resolved_root =
+        fs::canonicalize(workspace_root).unwrap_or_else(|_| workspace_root.to_path_buf());
     let resolved_path = resolve_path_safely(path, &resolved_root);
 
     resolved_path.starts_with(&resolved_root)
@@ -324,7 +321,10 @@ pub fn is_sensitive_path(path: &Path) -> bool {
 
     // Check for common sensitive file patterns
     let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let ext_is = |e: &str| path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case(e));
+    let ext_is = |e: &str| {
+        path.extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(e))
+    };
     if filename == ".env"
         || filename.starts_with(".env.")
         || filename == "credentials.json"
@@ -397,12 +397,8 @@ fn check_bash_permissions(input: &str, _workspace_root: &Path) -> ToolPermission
     // Use the existing bash_security module for hard deny checks
     let cwd = std::env::current_dir().unwrap_or_default();
     match crate::validate_bash_command(&command, &cwd, &crate::PermissionMode::WorkspaceWrite) {
-        crate::SecurityVerdict::Deny { reason, .. } => {
-            ToolPermissionResult::Deny { reason }
-        }
-        crate::SecurityVerdict::Warn { reason, .. } => {
-            ToolPermissionResult::Ask { reason }
-        }
+        crate::SecurityVerdict::Deny { reason, .. } => ToolPermissionResult::Deny { reason },
+        crate::SecurityVerdict::Warn { reason, .. } => ToolPermissionResult::Ask { reason },
         crate::SecurityVerdict::Allow => ToolPermissionResult::Passthrough,
     }
 }
@@ -624,7 +620,11 @@ impl PermissionPolicy {
         mut prompter: Option<&mut dyn PermissionPrompter>,
     ) -> PermissionOutcome {
         // ── Step 1: Check deny rules first (highest priority) ──
-        for rule in self.rules.iter().filter(|r| r.behavior == RuleBehavior::Deny) {
+        for rule in self
+            .rules
+            .iter()
+            .filter(|r| r.behavior == RuleBehavior::Deny)
+        {
             if rule.matches(tool_name, input) {
                 return PermissionOutcome::Deny {
                     reason: format!(
@@ -641,7 +641,11 @@ impl PermissionPolicy {
         }
 
         // ── Step 2: Check ask rules ──
-        for rule in self.rules.iter().filter(|r| r.behavior == RuleBehavior::Ask) {
+        for rule in self
+            .rules
+            .iter()
+            .filter(|r| r.behavior == RuleBehavior::Ask)
+        {
             if rule.matches(tool_name, input) {
                 let request = self.make_request(tool_name, input);
                 let fallback = format!(
@@ -651,7 +655,9 @@ impl PermissionPolicy {
                 return match prompter.as_mut() {
                     Some(p) => match p.decide(&request) {
                         PermissionPromptDecision::Allow => PermissionOutcome::Allow,
-                        PermissionPromptDecision::Deny { reason } => PermissionOutcome::Deny { reason },
+                        PermissionPromptDecision::Deny { reason } => {
+                            PermissionOutcome::Deny { reason }
+                        }
                     },
                     None => PermissionOutcome::Deny { reason: fallback },
                 };
@@ -659,7 +665,11 @@ impl PermissionPolicy {
         }
 
         // ── Step 3: Check allow rules ──
-        for rule in self.rules.iter().filter(|r| r.behavior == RuleBehavior::Allow) {
+        for rule in self
+            .rules
+            .iter()
+            .filter(|r| r.behavior == RuleBehavior::Allow)
+        {
             if rule.matches(tool_name, input) {
                 return PermissionOutcome::Allow;
             }
@@ -674,7 +684,9 @@ impl PermissionPolicy {
                 return match prompter.as_mut() {
                     Some(p) => match p.decide(&request) {
                         PermissionPromptDecision::Allow => PermissionOutcome::Allow,
-                        PermissionPromptDecision::Deny { reason: r } => PermissionOutcome::Deny { reason: r },
+                        PermissionPromptDecision::Deny { reason: r } => {
+                            PermissionOutcome::Deny { reason: r }
+                        }
                     },
                     None => PermissionOutcome::Deny { reason },
                 };
@@ -730,7 +742,6 @@ impl PermissionPolicy {
         }
     }
 }
-
 
 fn format_rule_source(source: RuleSource) -> &'static str {
     match source {
@@ -862,8 +873,8 @@ mod tests {
 
     #[test]
     fn deny_rule_blocks_even_with_full_access() {
-        let policy = PermissionPolicy::new(PermissionMode::DangerFullAccess)
-            .with_rule(PermissionRule {
+        let policy =
+            PermissionPolicy::new(PermissionMode::DangerFullAccess).with_rule(PermissionRule {
                 tool_name: "bash".to_string(),
                 content_pattern: Some("rm -rf".to_string()),
                 behavior: RuleBehavior::Deny,
@@ -878,8 +889,8 @@ mod tests {
 
     #[test]
     fn deny_rule_without_pattern_blocks_all_calls() {
-        let policy = PermissionPolicy::new(PermissionMode::DangerFullAccess)
-            .with_rule(PermissionRule {
+        let policy =
+            PermissionPolicy::new(PermissionMode::DangerFullAccess).with_rule(PermissionRule {
                 tool_name: "REPL".to_string(),
                 content_pattern: None,
                 behavior: RuleBehavior::Deny,
@@ -894,8 +905,8 @@ mod tests {
 
     #[test]
     fn unmatched_rule_falls_through() {
-        let policy = PermissionPolicy::new(PermissionMode::DangerFullAccess)
-            .with_rule(PermissionRule {
+        let policy =
+            PermissionPolicy::new(PermissionMode::DangerFullAccess).with_rule(PermissionRule {
                 tool_name: "bash".to_string(),
                 content_pattern: Some("rm".to_string()),
                 behavior: RuleBehavior::Deny,
@@ -995,11 +1006,12 @@ mod tests {
 
     #[test]
     fn parse_rules_from_settings_creates_rules() {
-        let entries = vec![
-            "Bash(npm install)".to_string(),
-            "write_file".to_string(),
-        ];
-        let rules = super::parse_rules_from_settings(&entries, RuleBehavior::Allow, RuleSource::ProjectSettings);
+        let entries = vec!["Bash(npm install)".to_string(), "write_file".to_string()];
+        let rules = super::parse_rules_from_settings(
+            &entries,
+            RuleBehavior::Allow,
+            RuleSource::ProjectSettings,
+        );
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].tool_name, "bash");
         assert_eq!(rules[0].content_pattern.as_deref(), Some("npm install"));
@@ -1018,11 +1030,19 @@ mod tests {
 
     #[test]
     fn sensitive_path_detection() {
-        assert!(super::is_sensitive_path(&PathBuf::from("/home/user/.ssh/id_rsa")));
+        assert!(super::is_sensitive_path(&PathBuf::from(
+            "/home/user/.ssh/id_rsa"
+        )));
         assert!(super::is_sensitive_path(&PathBuf::from("/etc/shadow")));
-        assert!(super::is_sensitive_path(&PathBuf::from("/home/user/project/.env")));
-        assert!(super::is_sensitive_path(&PathBuf::from("/tmp/../etc/passwd")));
-        assert!(!super::is_sensitive_path(&PathBuf::from("/home/user/project/src/main.rs")));
+        assert!(super::is_sensitive_path(&PathBuf::from(
+            "/home/user/project/.env"
+        )));
+        assert!(super::is_sensitive_path(&PathBuf::from(
+            "/tmp/../etc/passwd"
+        )));
+        assert!(!super::is_sensitive_path(&PathBuf::from(
+            "/home/user/project/src/main.rs"
+        )));
     }
 
     #[test]
@@ -1047,10 +1067,8 @@ mod tests {
     #[test]
     fn file_write_denies_sensitive_paths() {
         let cwd = PathBuf::from("/tmp");
-        let result = super::check_file_write_permissions(
-            r#"{"path": "/home/user/.ssh/id_rsa"}"#,
-            &cwd,
-        );
+        let result =
+            super::check_file_write_permissions(r#"{"path": "/home/user/.ssh/id_rsa"}"#, &cwd);
         assert!(matches!(result, super::ToolPermissionResult::Deny { .. }));
     }
 
@@ -1075,8 +1093,14 @@ mod tests {
     #[test]
     fn json_field_extraction() {
         let json = r#"{"command": "ls -la", "timeout": 30}"#;
-        assert_eq!(super::extract_json_field(json, "command").as_deref(), Some("ls -la"));
-        assert_eq!(super::extract_json_field(json, "timeout").as_deref(), Some("30"));
+        assert_eq!(
+            super::extract_json_field(json, "command").as_deref(),
+            Some("ls -la")
+        );
+        assert_eq!(
+            super::extract_json_field(json, "timeout").as_deref(),
+            Some("30")
+        );
         assert_eq!(super::extract_json_field(json, "missing"), None);
     }
 

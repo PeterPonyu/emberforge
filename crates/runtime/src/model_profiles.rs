@@ -51,7 +51,8 @@ impl ModelProfile {
     /// How many tokens to reserve for system prompt + tools + history.
     #[must_use]
     pub fn context_budget(&self) -> u32 {
-        self.context_window.saturating_sub(self.recommended_max_tokens())
+        self.context_window
+            .saturating_sub(self.recommended_max_tokens())
     }
 
     /// Should we trigger compaction? Returns true when estimated usage exceeds 80%.
@@ -63,7 +64,13 @@ impl ModelProfile {
 
 const THINKING_FAMILIES: &[&str] = &["qwen3", "deepseek-r1"];
 const NON_TOOL_FAMILIES: &[&str] = &[
-    "starcoder2", "yi", "solar", "falcon3", "internlm2", "exaone3.5", "aya-expanse",
+    "starcoder2",
+    "yi",
+    "solar",
+    "falcon3",
+    "internlm2",
+    "exaone3.5",
+    "aya-expanse",
 ];
 
 /// Query Ollama's `/api/show` endpoint for model metadata.
@@ -201,7 +208,8 @@ pub fn get_profile(model: &str) -> ModelProfile {
         return profile.clone();
     }
 
-    let profile = query_ollama_model_info(model).unwrap_or_else(|| ModelProfile::default_for(model));
+    let profile =
+        query_ollama_model_info(model).unwrap_or_else(|| ModelProfile::default_for(model));
     cache.insert(model.to_string(), profile.clone());
     profile
 }

@@ -52,15 +52,14 @@ use serde_json::json;
 use task_mgmt::{
     attach_to_task, count_running_background_tasks, find_task_by_prefix, load_task_manifests,
     render_task_list_report, render_task_logs_report, render_task_show_report,
-    request_task_restart, request_task_stop,
-    shorten_task_id, task_status_label,
+    request_task_restart, request_task_stop, shorten_task_id, task_status_label,
 };
-use tools::GlobalToolRegistry;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use tools::GlobalToolRegistry;
 use ui::animation::{
-    is_fire_spinner_running, play_intro_animation, should_play_intro_animation,
-    start_fire_spinner, stop_fire_spinner,
+    is_fire_spinner_running, play_intro_animation, should_play_intro_animation, start_fire_spinner,
+    stop_fire_spinner,
 };
 use ui::banner::{render_startup_banner, StartupBannerContext};
 use ui::capabilities::{detect_terminal_capabilities, TerminalCapabilities};
@@ -110,8 +109,7 @@ const PLACEHOLDER_PROVIDER_CREDENTIAL_KEYS: &[&str] = &[
 ];
 
 /// Shared flag: when true, show thinking/reasoning tokens during streaming.
-static VERBOSE_MODE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static VERBOSE_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const OLLAMA_DEFAULT_MODEL: &str = "qwen3:8b";
 
 fn initialize_process_env() {
@@ -237,8 +235,12 @@ fn looks_like_placeholder_secret(value: &str) -> bool {
         .to_ascii_lowercase();
     matches!(
         normalized.as_str(),
-        "" | "changeme" | "change_me" | "replace_me" | "replace-with-real-value"
-            | "placeholder" | "your_api_key_here"
+        "" | "changeme"
+            | "change_me"
+            | "replace_me"
+            | "replace-with-real-value"
+            | "placeholder"
+            | "your_api_key_here"
     ) || normalized.starts_with("your_") && normalized.ends_with("_here")
 }
 
@@ -296,8 +298,11 @@ fn max_tokens_for_model(model: &str) -> u32 {
     // For Ollama models, use cached metadata when present and otherwise fall
     // back immediately to a sensible default so the first user turn does not
     // block on a cold `/api/show` metadata fetch.
-    if model.contains("claude") || model.contains("opus") || model.contains("sonnet")
-        || model.contains("haiku") || model.contains("grok")
+    if model.contains("claude")
+        || model.contains("opus")
+        || model.contains("sonnet")
+        || model.contains("haiku")
+        || model.contains("grok")
     {
         return api::max_tokens_for_model(model);
     }
@@ -314,7 +319,7 @@ type AllowedToolSet = BTreeSet<String>;
 
 fn main() {
     initialize_process_env();
-        if let Err(error) = run() {
+    if let Err(error) = run() {
         eprintln!("{}", render_cli_error(&error.to_string()));
         std::process::exit(1);
     }
@@ -670,7 +675,8 @@ fn format_direct_slash_command_error(command: &str, is_unknown: bool) -> String 
     if is_unknown {
         append_slash_command_suggestions(&mut lines, trimmed);
     } else {
-        lines.push("  Try              Start `ember` to use interactive slash commands".to_string());
+        lines
+            .push("  Try              Start `ember` to use interactive slash commands".to_string());
         lines.push(
             "  Tip              Resume-safe commands also work with `ember --resume SESSION.json ...`"
                 .to_string(),
@@ -982,7 +988,10 @@ fn print_version() {
 
 fn print_models() {
     let model = default_model();
-    println!("{}", format_available_models_report(&model, &discover_available_models(&model)));
+    println!(
+        "{}",
+        format_available_models_report(&model, &discover_available_models(&model))
+    );
 }
 
 struct ScriptedToolTurnApiClient {
@@ -1020,9 +1029,7 @@ impl ApiClient for ScriptedToolTurnApiClient {
                     .ok_or_else(|| RuntimeError::new("tool result should be present"))?;
                 let (output, is_error) = match last_message.blocks.first() {
                     Some(ContentBlock::ToolResult {
-                        output,
-                        is_error,
-                        ..
+                        output, is_error, ..
                     }) => (output.clone(), *is_error),
                     _ => {
                         return Err(RuntimeError::new(
@@ -1042,7 +1049,9 @@ impl ApiClient for ScriptedToolTurnApiClient {
                     AssistantEvent::MessageStop,
                 ])
             }
-            _ => Err(RuntimeError::new("unexpected extra API call in render-smoke")),
+            _ => Err(RuntimeError::new(
+                "unexpected extra API call in render-smoke",
+            )),
         }
     }
 }
@@ -1297,7 +1306,10 @@ pub(crate) fn discover_available_models(current_model: &str) -> AvailableModelCa
             if ollama_models.is_empty() {
                 "reachable, but no local models were reported".to_string()
             } else {
-                format!("reachable - {} local model(s) detected", ollama_models.len())
+                format!(
+                    "reachable - {} local model(s) detected",
+                    ollama_models.len()
+                )
             }
         }
         Err(error) => {
@@ -1401,7 +1413,11 @@ fn format_permissions_report(mode: &str) -> String {
     ]
     .into_iter()
     .map(|(name, description, is_current)| {
-        let marker = if is_current { "* current" } else { "- available" };
+        let marker = if is_current {
+            "* current"
+        } else {
+            "- available"
+        };
         format!("  {name:<18} {marker:<11} {description}")
     })
     .collect::<Vec<_>>()
@@ -1699,7 +1715,10 @@ fn run_repl(
     if should_play_intro_animation(&cli.ui_config, &startup_capabilities) {
         let _ = play_intro_animation(&startup_capabilities);
     }
-    println!("{}", cli.startup_banner_with_capabilities(&startup_capabilities));
+    println!(
+        "{}",
+        cli.startup_banner_with_capabilities(&startup_capabilities)
+    );
     if let Some(hint) = doctor::startup_doctor_hint(&cli.model) {
         println!("{hint}\n");
     }
@@ -1872,7 +1891,8 @@ impl LiveCli {
             attrs
         });
 
-        let cold_start_hint = matches!(api::detect_provider_kind(&model), api::ProviderKind::Ollama);
+        let cold_start_hint =
+            matches!(api::detect_provider_kind(&model), api::ProviderKind::Ollama);
         let cli = Self {
             model,
             allowed_tools,
@@ -1922,7 +1942,10 @@ impl LiveCli {
         // Fire-and-forget in background — don't block startup.
         let model_name = self.model.clone();
         thread::spawn(move || {
-            if matches!(api::detect_provider_kind(&model_name), api::ProviderKind::Ollama) {
+            if matches!(
+                api::detect_provider_kind(&model_name),
+                api::ProviderKind::Ollama
+            ) {
                 runtime::model_profiles::warm_profile_cache(&model_name);
             }
             if let Ok(rt) = tokio::runtime::Runtime::new() {
@@ -1947,9 +1970,9 @@ impl LiveCli {
             || workspace_name.to_string(),
             |branch| format!("{workspace_name} - {branch}"),
         );
-        let has_project_guidance = cwd.as_ref().is_some_and(|path| {
-            path.join("EMBER.md").is_file() || path.join("CLAW.md").is_file()
-        });
+        let has_project_guidance = cwd
+            .as_ref()
+            .is_some_and(|path| path.join("EMBER.md").is_file() || path.join("CLAW.md").is_file());
         let quick_start = if has_project_guidance {
             "/help | /status"
         } else {
@@ -2065,7 +2088,9 @@ impl LiveCli {
 
         let _task_session_env = ScopedTaskSessionEnv::new(&self.session.id);
         let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
-        let result = self.runtime.run_turn(&enhanced_input, Some(&mut permission_prompter));
+        let result = self
+            .runtime
+            .run_turn(&enhanced_input, Some(&mut permission_prompter));
 
         // Ensure spinner stops and line is cleared
         stop_fire_spinner();
@@ -2094,10 +2119,7 @@ impl LiveCli {
                 self.tracer.record("turn_failed", {
                     let mut attrs = serde_json::Map::new();
                     attrs.insert("elapsed_ms".into(), serde_json::Value::from(elapsed_ms));
-                    attrs.insert(
-                        "error".into(),
-                        serde_json::Value::String(error.to_string()),
-                    );
+                    attrs.insert("error".into(), serde_json::Value::String(error.to_string()));
                     attrs
                 });
                 let secs = elapsed_ms as f64 / 1000.0;
@@ -2375,7 +2397,9 @@ impl LiveCli {
                         let servers = mcp.servers();
                         if servers.is_empty() {
                             println!("\x1b[2mNo MCP servers configured.\x1b[0m");
-                            println!("\x1b[2mAdd servers in .ember.json under \"mcpServers\".\x1b[0m");
+                            println!(
+                                "\x1b[2mAdd servers in .ember.json under \"mcpServers\".\x1b[0m"
+                            );
                         } else {
                             println!("\x1b[1mMCP servers\x1b[0m ({} configured)", servers.len());
                             for (name, _server) in servers {
@@ -2386,7 +2410,9 @@ impl LiveCli {
                             }
                         }
                     }
-                    Err(_) => println!("\x1b[2mNo MCP servers configured (no .ember.json found).\x1b[0m"),
+                    Err(_) => {
+                        println!("\x1b[2mNo MCP servers configured (no .ember.json found).\x1b[0m")
+                    }
                 }
                 false
             }
@@ -2438,10 +2464,7 @@ impl LiveCli {
                 if let Some(level_str) = level.as_deref() {
                     if let Some(new_level) = runtime::EffortLevel::parse(level_str) {
                         self.effort = new_level;
-                        println!(
-                            "\x1b[2mEffort level: \x1b[33m{}\x1b[0m",
-                            new_level.as_str()
-                        );
+                        println!("\x1b[2mEffort level: \x1b[33m{}\x1b[0m", new_level.as_str());
                     } else {
                         eprintln!(
                             "Unknown effort level '{}'. Use: relaxed, balanced, thorough",
@@ -2461,15 +2484,9 @@ impl LiveCli {
                 if let Some(mode_str) = mode.as_deref() {
                     if let Some(new_theme) = runtime::ThemeMode::parse(mode_str) {
                         self.ui_config = self.ui_config.clone().with_theme(new_theme);
-                        println!(
-                            "\x1b[2mTheme: \x1b[33m{}\x1b[0m",
-                            new_theme.as_str()
-                        );
+                        println!("\x1b[2mTheme: \x1b[33m{}\x1b[0m", new_theme.as_str());
                     } else {
-                        eprintln!(
-                            "Unknown theme '{}'. Use: dark, light",
-                            mode_str
-                        );
+                        eprintln!("Unknown theme '{}'. Use: dark, light", mode_str);
                     }
                 } else {
                     println!(
@@ -2495,7 +2512,9 @@ impl LiveCli {
                     }
                     "xai" => {
                         if std::env::var("XAI_API_KEY").is_ok_and(|k| !k.is_empty()) {
-                            println!("\x1b[32mAlready authenticated with xAI (API key set).\x1b[0m");
+                            println!(
+                                "\x1b[32mAlready authenticated with xAI (API key set).\x1b[0m"
+                            );
                         } else {
                             println!("To authenticate with xAI:");
                             println!("  export XAI_API_KEY=xai-...");
@@ -2538,16 +2557,32 @@ impl LiveCli {
                 match a {
                     "size" => {
                         let tokens = runtime::estimate_session_tokens(session);
-                        println!("Context size: {} messages, ~{} tokens", session.messages.len(), tokens);
+                        println!(
+                            "Context size: {} messages, ~{} tokens",
+                            session.messages.len(),
+                            tokens
+                        );
                     }
                     "clear" => {
                         println!("Use /compact to reduce context, or /clear to start fresh.");
                     }
                     _ => {
                         let tokens = runtime::estimate_session_tokens(session);
-                        let user_msgs = session.messages.iter().filter(|m| m.role == runtime::MessageRole::User).count();
-                        let assistant_msgs = session.messages.iter().filter(|m| m.role == runtime::MessageRole::Assistant).count();
-                        let tool_msgs = session.messages.iter().filter(|m| m.role == runtime::MessageRole::Tool).count();
+                        let user_msgs = session
+                            .messages
+                            .iter()
+                            .filter(|m| m.role == runtime::MessageRole::User)
+                            .count();
+                        let assistant_msgs = session
+                            .messages
+                            .iter()
+                            .filter(|m| m.role == runtime::MessageRole::Assistant)
+                            .count();
+                        let tool_msgs = session
+                            .messages
+                            .iter()
+                            .filter(|m| m.role == runtime::MessageRole::Tool)
+                            .count();
                         println!("Context");
                         println!("  Model            \x1b[33m{}\x1b[0m", self.model);
                         println!("  Messages         {} total", session.messages.len());
@@ -2555,7 +2590,10 @@ impl LiveCli {
                         println!("    Assistant       {assistant_msgs}");
                         println!("    Tool           {tool_msgs}");
                         println!("  Estimated tokens ~{tokens}");
-                        println!("  Plan mode        {}", if session.plan_mode { "active" } else { "off" });
+                        println!(
+                            "  Plan mode        {}",
+                            if session.plan_mode { "active" } else { "off" }
+                        );
                     }
                 }
                 false
@@ -2564,18 +2602,26 @@ impl LiveCli {
                 let text = match target.as_deref() {
                     Some("last") | None => {
                         // Get last assistant text
-                        self.runtime.session().messages.iter().rev()
+                        self.runtime
+                            .session()
+                            .messages
+                            .iter()
+                            .rev()
                             .find(|m| m.role == runtime::MessageRole::Assistant)
-                            .and_then(|m| m.blocks.iter().find_map(|b| match b {
-                                runtime::ContentBlock::Text { text } => Some(text.clone()),
-                                _ => None,
-                            }))
+                            .and_then(|m| {
+                                m.blocks.iter().find_map(|b| match b {
+                                    runtime::ContentBlock::Text { text } => Some(text.clone()),
+                                    _ => None,
+                                })
+                            })
                     }
                     Some(path) => std::fs::read_to_string(path).ok(),
                 };
                 if let Some(text) = text {
                     match copy_to_clipboard(&text) {
-                        Ok(()) => println!("\x1b[32mCopied {} chars to clipboard.\x1b[0m", text.len()),
+                        Ok(()) => {
+                            println!("\x1b[32mCopied {} chars to clipboard.\x1b[0m", text.len())
+                        }
                         Err(e) => eprintln!("Clipboard error: {e}"),
                     }
                 } else {
@@ -2591,14 +2637,27 @@ impl LiveCli {
                         items.sort_by_key(|e| e.file_name());
                         for entry in &items {
                             let name = entry.file_name();
-                            let ft = entry.file_type().map(|t| {
-                                if t.is_dir() { "/" } else if t.is_symlink() { "@" } else { "" }
-                            }).unwrap_or("");
+                            let ft = entry
+                                .file_type()
+                                .map(|t| {
+                                    if t.is_dir() {
+                                        "/"
+                                    } else if t.is_symlink() {
+                                        "@"
+                                    } else {
+                                        ""
+                                    }
+                                })
+                                .unwrap_or("");
                             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                             if ft == "/" {
                                 println!("  \x1b[34m{}{ft}\x1b[0m", name.to_string_lossy());
                             } else {
-                                println!("  {}{ft}  \x1b[2m({} bytes)\x1b[0m", name.to_string_lossy(), size);
+                                println!(
+                                    "  {}{ft}  \x1b[2m({} bytes)\x1b[0m",
+                                    name.to_string_lossy(),
+                                    size
+                                );
                             }
                         }
                         println!("\n  {} items", items.len());
@@ -2610,8 +2669,8 @@ impl LiveCli {
             SlashCommand::Tag { name } => {
                 if let Some(tag) = name {
                     // Write tag to session metadata file
-                    let tag_file = std::path::PathBuf::from(&self.session.path)
-                        .with_extension("tags");
+                    let tag_file =
+                        std::path::PathBuf::from(&self.session.path).with_extension("tags");
                     let mut tags = std::fs::read_to_string(&tag_file).unwrap_or_default();
                     if !tags.contains(&*tag) {
                         tags.push_str(&tag);
@@ -2621,8 +2680,8 @@ impl LiveCli {
                     println!("\x1b[32mTagged session as: \x1b[33m{tag}\x1b[0m");
                 } else {
                     // Show existing tags
-                    let tag_file = std::path::PathBuf::from(&self.session.path)
-                        .with_extension("tags");
+                    let tag_file =
+                        std::path::PathBuf::from(&self.session.path).with_extension("tags");
                     match std::fs::read_to_string(&tag_file) {
                         Ok(content) if !content.trim().is_empty() => {
                             println!("Tags: {}", content.trim().replace('\n', ", "));
@@ -2633,7 +2692,8 @@ impl LiveCli {
                 false
             }
             SlashCommand::Rewind { steps } => {
-                let count = steps.as_deref()
+                let count = steps
+                    .as_deref()
                     .and_then(|s| s.parse::<usize>().ok())
                     .unwrap_or(1);
                 let session = self.runtime.session();
@@ -2652,11 +2712,19 @@ impl LiveCli {
                             runtime::MessageRole::System => "system",
                             runtime::MessageRole::Tool => "tool",
                         };
-                        let preview = msg.blocks.iter().find_map(|b| match b {
-                            runtime::ContentBlock::Text { text } => Some(text.as_str()),
-                            _ => None,
-                        }).unwrap_or("(tool use)");
-                        let preview = if preview.len() > 80 { &preview[..80] } else { preview };
+                        let preview = msg
+                            .blocks
+                            .iter()
+                            .find_map(|b| match b {
+                                runtime::ContentBlock::Text { text } => Some(text.as_str()),
+                                _ => None,
+                            })
+                            .unwrap_or("(tool use)");
+                        let preview = if preview.len() > 80 {
+                            &preview[..80]
+                        } else {
+                            preview
+                        };
                         println!("  \x1b[33m{role}\x1b[0m: {preview}...");
                     }
                     println!("\n\x1b[2mUse /compact to reduce context. Direct message removal requires session editing.\x1b[0m");
@@ -2672,7 +2740,9 @@ impl LiveCli {
                 let turns = usage.turns();
                 let tokens = runtime::estimate_session_tokens(session);
 
-                let tool_uses: usize = session.messages.iter()
+                let tool_uses: usize = session
+                    .messages
+                    .iter()
                     .flat_map(|m| m.blocks.iter())
                     .filter(|b| matches!(b, runtime::ContentBlock::ToolUse { .. }))
                     .count();
@@ -2689,7 +2759,10 @@ impl LiveCli {
                 if cumulative.input_tokens > 0 {
                     if let Some(pricing) = runtime::pricing_for_model(&self.model) {
                         let estimate = cumulative.estimate_cost_usd_with_pricing(pricing);
-                        println!("  Est. cost        {}", runtime::format_usd(estimate.total_cost_usd()));
+                        println!(
+                            "  Est. cost        {}",
+                            runtime::format_usd(estimate.total_cost_usd())
+                        );
                     }
                 }
                 false
@@ -2699,7 +2772,8 @@ impl LiveCli {
                 let messages = &session.messages;
 
                 // Tool usage breakdown
-                let mut tool_counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+                let mut tool_counts: std::collections::BTreeMap<String, usize> =
+                    std::collections::BTreeMap::new();
                 for msg in messages {
                     for block in &msg.blocks {
                         if let runtime::ContentBlock::ToolUse { name, .. } = block {
@@ -2709,7 +2783,8 @@ impl LiveCli {
                 }
 
                 // Average message length
-                let text_lengths: Vec<usize> = messages.iter()
+                let text_lengths: Vec<usize> = messages
+                    .iter()
                     .filter(|m| m.role == runtime::MessageRole::Assistant)
                     .flat_map(|m| m.blocks.iter())
                     .filter_map(|b| match b {
@@ -2717,14 +2792,19 @@ impl LiveCli {
                         _ => None,
                     })
                     .collect();
-                let avg_len = if text_lengths.is_empty() { 0 } else {
+                let avg_len = if text_lengths.is_empty() {
+                    0
+                } else {
                     text_lengths.iter().sum::<usize>() / text_lengths.len()
                 };
 
                 // Error count
-                let errors = messages.iter()
+                let errors = messages
+                    .iter()
                     .flat_map(|m| m.blocks.iter())
-                    .filter(|b| matches!(b, runtime::ContentBlock::ToolResult { is_error: true, .. }))
+                    .filter(|b| {
+                        matches!(b, runtime::ContentBlock::ToolResult { is_error: true, .. })
+                    })
                     .count();
 
                 println!("Session Insights");
@@ -2751,11 +2831,17 @@ impl LiveCli {
                     println!("  Cache read       {}", cumulative.cache_read_input_tokens);
                 }
                 if cumulative.cache_creation_input_tokens > 0 {
-                    println!("  Cache write      {}", cumulative.cache_creation_input_tokens);
+                    println!(
+                        "  Cache write      {}",
+                        cumulative.cache_creation_input_tokens
+                    );
                 }
                 if let Some(pricing) = runtime::pricing_for_model(&self.model) {
                     let estimate = cumulative.estimate_cost_usd_with_pricing(pricing);
-                    println!("  Estimated cost   {}", runtime::format_usd(estimate.total_cost_usd()));
+                    println!(
+                        "  Estimated cost   {}",
+                        runtime::format_usd(estimate.total_cost_usd())
+                    );
                 }
                 println!("  Turns            {}", usage.turns());
                 false
@@ -2786,18 +2872,24 @@ impl LiveCli {
                 let s = scope.as_deref().unwrap_or("staged");
                 println!("Security review ({s}):");
                 // Run git diff and check for sensitive patterns
-                match std::process::Command::new("git").args(["diff", "--cached", "--name-only"]).output() {
+                match std::process::Command::new("git")
+                    .args(["diff", "--cached", "--name-only"])
+                    .output()
+                {
                     Ok(output) => {
                         let files = String::from_utf8_lossy(&output.stdout);
                         if files.trim().is_empty() {
                             println!("  No staged changes to review.");
                         } else {
-                            let sensitive_patterns = [".env", "credentials", "secret", "key", ".pem", "password"];
+                            let sensitive_patterns =
+                                [".env", "credentials", "secret", "key", ".pem", "password"];
                             let mut warnings = Vec::new();
                             for file in files.lines() {
                                 for pat in &sensitive_patterns {
                                     if file.to_lowercase().contains(pat) {
-                                        warnings.push(format!("  \x1b[31m⚠ Sensitive file staged: {file}\x1b[0m"));
+                                        warnings.push(format!(
+                                            "  \x1b[31m⚠ Sensitive file staged: {file}\x1b[0m"
+                                        ));
                                     }
                                 }
                             }
@@ -2807,7 +2899,10 @@ impl LiveCli {
                                 for w in &warnings {
                                     println!("{w}");
                                 }
-                                println!("\n  {} warning(s). Review before committing.", warnings.len());
+                                println!(
+                                    "\n  {} warning(s). Review before committing.",
+                                    warnings.len()
+                                );
                             }
                             println!("\n  Staged files:");
                             for file in files.lines() {
@@ -2822,7 +2917,9 @@ impl LiveCli {
             SlashCommand::Fork { prompt } => {
                 if let Some(p) = prompt {
                     println!("Forking sub-agent with prompt: {}", &p[..p.len().min(80)]);
-                    println!("\x1b[2mUse the Agent tool to spawn sub-agents programmatically.\x1b[0m");
+                    println!(
+                        "\x1b[2mUse the Agent tool to spawn sub-agents programmatically.\x1b[0m"
+                    );
                 } else {
                     println!("Usage: /fork <prompt>");
                     println!("Spawns a sub-agent with the given prompt.");
@@ -2860,7 +2957,9 @@ impl LiveCli {
                     "on" => {
                         println!("\x1b[33mCoordinator mode enabled.\x1b[0m");
                         println!("You are now a coordinator. Use Agent to spawn workers, SendMessage to continue them.");
-                        println!("Worker results arrive as <task-notification> XML in user messages.");
+                        println!(
+                            "Worker results arrive as <task-notification> XML in user messages."
+                        );
                     }
                     "off" => {
                         println!("\x1b[2mCoordinator mode disabled. Back to normal mode.\x1b[0m");
@@ -2943,9 +3042,7 @@ impl LiveCli {
                 );
                 local_model.clone()
             }
-            runtime::model_router::RoutingStrategy::Fixed(m) => {
-                resolve_model_alias(m).to_string()
-            }
+            runtime::model_router::RoutingStrategy::Fixed(m) => resolve_model_alias(m).to_string(),
         };
 
         if model == self.model {
@@ -2974,7 +3071,10 @@ impl LiveCli {
             None,
         )?;
         self.model.clone_from(&model);
-        self.cold_start_hint = matches!(api::detect_provider_kind(&self.model), api::ProviderKind::Ollama);
+        self.cold_start_hint = matches!(
+            api::detect_provider_kind(&self.model),
+            api::ProviderKind::Ollama
+        );
         println!(
             "{}",
             format_model_switch_report(&previous, &model, message_count)
@@ -3134,7 +3234,10 @@ impl LiveCli {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let cwd = env::current_dir()?;
         let tasks = load_task_manifests(&cwd)?;
-        let command = args.map(str::trim).filter(|value| !value.is_empty()).unwrap_or("list");
+        let command = args
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("list");
         let mut parts = command.split_whitespace();
         match parts.next().unwrap_or("list") {
             "" | "list" => println!("{}", render_task_list_report(&tasks, current_session_id)),
@@ -3144,7 +3247,10 @@ impl LiveCli {
                     return Ok(());
                 };
                 let task = find_task_by_prefix(&tasks, task_id)?;
-                println!("{}", render_task_show_report(task, current_session_id, Some(&tasks)));
+                println!(
+                    "{}",
+                    render_task_show_report(task, current_session_id, Some(&tasks))
+                );
             }
             "logs" => {
                 let Some(task_id) = parts.next() else {
@@ -3287,7 +3393,9 @@ impl LiveCli {
                                     };
                                     let preview = text
                                         .lines()
-                                        .find(|line| line.to_ascii_lowercase().contains(&query_lower))
+                                        .find(|line| {
+                                            line.to_ascii_lowercase().contains(&query_lower)
+                                        })
                                         .unwrap_or(text)
                                         .trim();
                                     let preview = if preview.len() > 120 {
@@ -3310,9 +3418,15 @@ impl LiveCli {
                     }
                 }
                 if found == 0 {
-                    println!("No matches found for '{query}' across {} session(s).", sessions.len());
+                    println!(
+                        "No matches found for '{query}' across {} session(s).",
+                        sessions.len()
+                    );
                 } else {
-                    println!("\n\x1b[2m{found} match(es) across {} session(s)\x1b[0m", sessions.len());
+                    println!(
+                        "\n\x1b[2m{found} match(es) across {} session(s)\x1b[0m",
+                        sessions.len()
+                    );
                 }
                 Ok(false)
             }
@@ -5234,9 +5348,7 @@ enum MachineReadableTurnResult {
     Summary(runtime::TurnSummary),
 }
 
-fn write_structured_json_line(
-    value: &serde_json::Value,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn write_structured_json_line(value: &serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", serde_json::to_string(value)?);
     Ok(())
 }
@@ -5317,7 +5429,8 @@ fn prompt_summary_ndjson_events(
         "type": "turn_started",
         "model": model,
     })];
-    let mut tool_results_by_id = std::collections::BTreeMap::<String, Vec<serde_json::Value>>::new();
+    let mut tool_results_by_id =
+        std::collections::BTreeMap::<String, Vec<serde_json::Value>>::new();
 
     for message in &summary.tool_results {
         for block in &message.blocks {
@@ -5394,20 +5507,20 @@ fn prompt_summary_ndjson_events(
 pub(crate) fn final_assistant_text(summary: &runtime::TurnSummary) -> String {
     sanitize_assistant_text(
         &summary
-        .assistant_messages
-        .last()
-        .map(|message| {
-            message
-                .blocks
-                .iter()
-                .filter_map(|block| match block {
-                    ContentBlock::Text { text } => Some(text.as_str()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("")
-        })
-        .unwrap_or_default(),
+            .assistant_messages
+            .last()
+            .map(|message| {
+                message
+                    .blocks
+                    .iter()
+                    .filter_map(|block| match block {
+                        ContentBlock::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("")
+            })
+            .unwrap_or_default(),
     )
 }
 
@@ -5540,9 +5653,7 @@ fn summarize_lsp_tool_result_for_message(value: &serde_json::Value) -> Option<St
         .or_else(|| payload.get("filePath"))
         .and_then(serde_json::Value::as_str);
     let line = payload.get("line").and_then(serde_json::Value::as_u64);
-    let character = payload
-        .get("character")
-        .and_then(serde_json::Value::as_u64);
+    let character = payload.get("character").and_then(serde_json::Value::as_u64);
 
     let mut parts = Vec::new();
     if let Some(action) = action {
@@ -6056,14 +6167,11 @@ impl CliToolExecutor {
         // Try to initialize MCP from config
         let cwd = env::current_dir().unwrap_or_default();
         let loader = runtime::ConfigLoader::default_for(&cwd);
-        let mcp_manager = loader
-            .load()
-            .ok()
-            .map(|config| {
-                Arc::new(Mutex::new(runtime::McpServerManager::from_runtime_config(
-                    &config,
-                )))
-            });
+        let mcp_manager = loader.load().ok().map(|config| {
+            Arc::new(Mutex::new(runtime::McpServerManager::from_runtime_config(
+                &config,
+            )))
+        });
         let async_runtime = mcp_manager
             .as_ref()
             .map(|_| Arc::new(tokio::runtime::Runtime::new().expect("tokio runtime")));
@@ -6196,8 +6304,8 @@ fn inject_file_context_into_tool_output(
     };
 
     let snippets = context::collect_file_context(&file_path);
-    let Some(injected_context) = context::render_context_section(&snippets)
-        .filter(|context| !context.trim().is_empty())
+    let Some(injected_context) =
+        context::render_context_section(&snippets).filter(|context| !context.trim().is_empty())
     else {
         return output.to_string();
     };
@@ -6246,9 +6354,8 @@ impl ToolExecutor for CliToolExecutor {
                             m.list_resources(server)
                                 .await
                                 .map(|result| {
-                                    let resources = result.result
-                                        .map(|r| r.resources)
-                                        .unwrap_or_default();
+                                    let resources =
+                                        result.result.map(|r| r.resources).unwrap_or_default();
                                     serde_json::json!({
                                         "server": server,
                                         "resources": resources.iter().map(|r| {
@@ -6291,7 +6398,10 @@ impl ToolExecutor for CliToolExecutor {
                     ))),
                 }
             }
-            _ => self.tool_registry.execute(tool_name, &value).map_err(|e| ToolError::new(e.to_string())),
+            _ => self
+                .tool_registry
+                .execute(tool_name, &value)
+                .map_err(|e| ToolError::new(e.to_string())),
         };
 
         match result {
@@ -6375,10 +6485,7 @@ fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
 
 fn print_help_to(out: &mut impl Write) -> io::Result<()> {
     writeln!(out, "Emberforge CLI v{VERSION}")?;
-    writeln!(
-        out,
-        "  Interactive coding tool for the current workspace."
-    )?;
+    writeln!(out, "  Interactive coding tool for the current workspace.")?;
     writeln!(out)?;
     writeln!(out, "Quick start")?;
     writeln!(
@@ -6465,7 +6572,10 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
         out,
         "  ember skills                           List installed skills"
     )?;
-    writeln!(out, "  ember system-prompt [--cwd PATH] [--date YYYY-MM-DD]")?;
+    writeln!(
+        out,
+        "  ember system-prompt [--cwd PATH] [--date YYYY-MM-DD]"
+    )?;
     writeln!(
         out,
         "  ember login                            Start the OAuth login flow"
@@ -6523,10 +6633,7 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
         out,
         "  ember --output-format json prompt \"explain src/main.rs\""
     )?;
-    writeln!(
-        out,
-        "  ember --output-format ndjson -p \"status\""
-    )?;
+    writeln!(out, "  ember --output-format ndjson -p \"status\"")?;
     writeln!(
         out,
         "  ember --allowedTools read,glob \"summarize Cargo.toml\""
@@ -6555,33 +6662,30 @@ mod tests {
     use super::{
         default_model_choice, describe_tool_progress, enrich_tool_error_for_model,
         filter_tool_specs, format_available_models_report, format_compact_report,
-        format_cost_report, format_internal_prompt_progress_line,
-        format_model_report, format_model_switch_report, format_permissions_report,
-        format_permissions_switch_report, format_resume_report, format_status_report,
-        inject_file_context_into_tool_output,
-        prompt_summary_ndjson_events, prompt_summary_payload,
-        format_thinking_preview, format_thinking_section, format_tool_call_start,
-        format_tool_result, sanitize_assistant_text, strip_terminal_escape_sequences,
-        initialize_process_env_from, is_builtin_status_query,
+        format_cost_report, format_internal_prompt_progress_line, format_model_report,
+        format_model_switch_report, format_permissions_report, format_permissions_switch_report,
+        format_resume_report, format_status_report, format_thinking_preview,
+        format_thinking_section, format_tool_call_start, format_tool_result,
+        initialize_process_env_from, inject_file_context_into_tool_output, is_builtin_status_query,
         looks_like_placeholder_secret, normalize_permission_mode, parse_args,
-        parse_git_status_metadata, permission_policy,
-        print_help_to, provider_label_for_model, push_output_block, render_config_report,
-        render_memory_report, render_repl_help, render_unknown_repl_command,
-        resolve_model_alias, response_to_events, resume_supported_slash_commands,
-        slash_command_completion_candidates, status_context, CliAction, CliOutputFormat,
-        AvailableModelCatalog, InternalPromptProgressEvent, InternalPromptProgressState, SlashCommand,
-        StatusUsage, THINKING_PREVIEW_MAX_CHARS,
-        ANTHROPIC_DEFAULT_MODEL, DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL, XAI_DEFAULT_MODEL,
+        parse_git_status_metadata, permission_policy, print_help_to, prompt_summary_ndjson_events,
+        prompt_summary_payload, provider_label_for_model, push_output_block, render_config_report,
+        render_memory_report, render_repl_help, render_unknown_repl_command, resolve_model_alias,
+        response_to_events, resume_supported_slash_commands, sanitize_assistant_text,
+        slash_command_completion_candidates, status_context, strip_terminal_escape_sequences,
+        AvailableModelCatalog, CliAction, CliOutputFormat, InternalPromptProgressEvent,
+        InternalPromptProgressState, SlashCommand, StatusUsage, ANTHROPIC_DEFAULT_MODEL,
+        DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL, THINKING_PREVIEW_MAX_CHARS, XAI_DEFAULT_MODEL,
     };
     use crate::doctor::{
-        DoctorCache, DoctorCheck, DoctorCheckStatus, DoctorMode, DoctorReport,
-        format_doctor_status, parse_doctor_mode,
+        format_doctor_status, parse_doctor_mode, DoctorCache, DoctorCheck, DoctorCheckStatus,
+        DoctorMode, DoctorReport,
     };
     use api::{MessageResponse, OutputContentBlock, Usage};
     use plugins::{PluginTool, PluginToolDefinition, PluginToolPermission};
     use runtime::{
-        AssistantEvent, ContentBlock, ConversationMessage, MessageRole, PermissionMode,
-        TokenUsage, TurnSummary,
+        AssistantEvent, ContentBlock, ConversationMessage, MessageRole, PermissionMode, TokenUsage,
+        TurnSummary,
     };
     use serde_json::json;
     use std::ffi::OsString;
@@ -6668,15 +6772,9 @@ mod tests {
 
     #[test]
     fn default_model_choice_prefers_configured_backends_then_local() {
-        assert_eq!(
-            default_model_choice(true, false),
-            ANTHROPIC_DEFAULT_MODEL
-        );
+        assert_eq!(default_model_choice(true, false), ANTHROPIC_DEFAULT_MODEL);
         assert_eq!(default_model_choice(false, true), XAI_DEFAULT_MODEL);
-        assert_eq!(
-            default_model_choice(false, false),
-            OLLAMA_DEFAULT_MODEL
-        );
+        assert_eq!(default_model_choice(false, false), OLLAMA_DEFAULT_MODEL);
     }
 
     #[test]
@@ -6688,9 +6786,13 @@ mod tests {
 
     #[test]
     fn builtin_status_query_matches_short_status_requests_only() {
-        assert!(is_builtin_status_query("Check the current project status ?"));
+        assert!(is_builtin_status_query(
+            "Check the current project status ?"
+        ));
         assert!(is_builtin_status_query("workspace status"));
-        assert!(is_builtin_status_query("What's the current project status?"));
+        assert!(is_builtin_status_query(
+            "What's the current project status?"
+        ));
         assert!(!is_builtin_status_query(
             "Check the current project status and summarize recent code changes"
         ));
@@ -6854,11 +6956,9 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
             .expect_err("structured output should require prompt mode");
         assert!(repl_error.contains("only supported with prompt mode"));
 
-        let subcommand_error = parse_args(&[
-            "--output-format=ndjson".to_string(),
-            "models".to_string(),
-        ])
-        .expect_err("structured output should reject non-prompt subcommands");
+        let subcommand_error =
+            parse_args(&["--output-format=ndjson".to_string(), "models".to_string()])
+                .expect_err("structured output should reject non-prompt subcommands");
         assert!(subcommand_error.contains("only supported with prompt mode"));
     }
 
@@ -6981,7 +7081,10 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
                 model: DEFAULT_MODEL.to_string(),
             }
         );
-        assert_eq!(parse_doctor_mode(None).expect("default mode"), DoctorMode::Quick);
+        assert_eq!(
+            parse_doctor_mode(None).expect("default mode"),
+            DoctorMode::Quick
+        );
         assert_eq!(
             parse_doctor_mode(Some("status")).expect("status mode"),
             DoctorMode::Status
@@ -7042,15 +7145,23 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
             CliAction::Agents { args: None }
         );
         assert_eq!(
-            parse_args(&["/tasks".to_string(), "logs".to_string(), "agent-123".to_string()])
-                .expect("/tasks logs should parse"),
+            parse_args(&[
+                "/tasks".to_string(),
+                "logs".to_string(),
+                "agent-123".to_string()
+            ])
+            .expect("/tasks logs should parse"),
             CliAction::Tasks {
                 args: Some("logs agent-123".to_string())
             }
         );
         assert_eq!(
-            parse_args(&["/tasks".to_string(), "restart".to_string(), "agent-123".to_string()])
-                .expect("/tasks restart should parse"),
+            parse_args(&[
+                "/tasks".to_string(),
+                "restart".to_string(),
+                "agent-123".to_string()
+            ])
+            .expect("/tasks restart should parse"),
             CliAction::Tasks {
                 args: Some("restart agent-123".to_string())
             }
@@ -7175,7 +7286,9 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
         assert!(help.contains("aliases: /plugins, /marketplace"));
         assert!(help.contains("/agents"));
         assert!(help.contains("/skills"));
-        assert!(help.contains("/tasks [list|show <id>|logs <id>|attach <id>|stop <id>|restart <id>]"));
+        assert!(
+            help.contains("/tasks [list|show <id>|logs <id>|attach <id>|stop <id>|restart <id>]")
+        );
         assert!(help.contains("/exit"));
         assert!(help.contains("Tab cycles slash command matches"));
     }
@@ -7364,7 +7477,8 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
         )
         .expect("manifest should exist");
 
-        let report = super::task_mgmt::request_task_stop(&root, "agent-456").expect("stop should succeed");
+        let report =
+            super::task_mgmt::request_task_stop(&root, "agent-456").expect("stop should succeed");
         assert!(report.contains("stop requested"));
         let persisted: serde_json::Value = serde_json::from_str(
             &fs::read_to_string(&manifest_path).expect("manifest should persist"),
@@ -7373,7 +7487,13 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
         assert_eq!(persisted["status"], "stopping");
         assert!(persisted["stopRequestedAt"].as_str().is_some());
         assert_eq!(persisted["stopReason"], "Requested from /tasks stop");
-        assert_eq!(persisted["activity"].as_array().expect("activity array").len(), 1);
+        assert_eq!(
+            persisted["activity"]
+                .as_array()
+                .expect("activity array")
+                .len(),
+            1
+        );
         assert_eq!(persisted["activity"][0]["kind"], "stop-requested");
         assert_eq!(persisted["activity"][0]["status"], "stopping");
 
@@ -8197,7 +8317,9 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
         };
 
         let payload = prompt_summary_payload("qwen3:4b", &summary);
-        let message = payload["message"].as_str().expect("message should be present");
+        let message = payload["message"]
+            .as_str()
+            .expect("message should be present");
 
         assert!(!message.contains("</think>"));
         assert!(message.contains("cannot prompt interactively"));
@@ -8227,7 +8349,10 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
             .map(|event| event["type"].as_str().unwrap_or(""))
             .collect::<Vec<_>>();
 
-        assert_eq!(event_types, vec!["turn_started", "tool_result", "usage", "turn_completed"]);
+        assert_eq!(
+            event_types,
+            vec!["turn_started", "tool_result", "usage", "turn_completed"]
+        );
         assert!(events[3]["message"]
             .as_str()
             .expect("turn_completed message should exist")

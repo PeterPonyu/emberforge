@@ -19,10 +19,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BridgeMessage {
     /// A user message (IDE → REPL).
-    User {
-        uuid: String,
-        content: String,
-    },
+    User { uuid: String, content: String },
     /// An assistant message (REPL → IDE).
     Assistant {
         uuid: String,
@@ -43,9 +40,7 @@ pub enum BridgeMessage {
         request: ControlRequestBody,
     },
     /// A control response from the REPL to the IDE.
-    ControlResponse {
-        response: ControlResponseBody,
-    },
+    ControlResponse { response: ControlResponseBody },
 }
 
 /// Body of a control request.
@@ -67,13 +62,9 @@ pub enum ControlRequestBody {
     /// Interrupt the current turn.
     Interrupt,
     /// Change the permission mode.
-    SetPermissionMode {
-        mode: String,
-    },
+    SetPermissionMode { mode: String },
     /// Set maximum thinking tokens.
-    SetMaxThinkingTokens {
-        max_tokens: Option<u64>,
-    },
+    SetMaxThinkingTokens { max_tokens: Option<u64> },
 }
 
 /// Body of a control response.
@@ -192,8 +183,14 @@ impl BridgeState {
         handlers.insert("initialize".to_string(), handle_initialize);
         handlers.insert("set_model".to_string(), handle_set_model);
         handlers.insert("interrupt".to_string(), |r| Ok(handle_interrupt(r)));
-        handlers.insert("set_permission_mode".to_string(), handle_set_permission_mode);
-        handlers.insert("set_max_thinking_tokens".to_string(), handle_set_max_thinking_tokens);
+        handlers.insert(
+            "set_permission_mode".to_string(),
+            handle_set_permission_mode,
+        );
+        handlers.insert(
+            "set_max_thinking_tokens".to_string(),
+            handle_set_max_thinking_tokens,
+        );
 
         Self {
             active: false,
@@ -300,11 +297,9 @@ impl BridgeState {
                 request_id: request_id.clone(),
                 request: request.clone(),
             }),
-            BridgeMessage::ControlResponse { response } => {
-                Some(InboundAction::ControlResponse {
-                    response: response.clone(),
-                })
-            }
+            BridgeMessage::ControlResponse { response } => Some(InboundAction::ControlResponse {
+                response: response.clone(),
+            }),
             _ => None,
         }
     }
@@ -375,9 +370,17 @@ impl Default for BridgeState {
 /// Action to take after processing an inbound message.
 #[derive(Debug, Clone)]
 pub enum InboundAction {
-    UserMessage { uuid: String, content: String },
-    ControlRequest { request_id: String, request: ControlRequestBody },
-    ControlResponse { response: ControlResponseBody },
+    UserMessage {
+        uuid: String,
+        content: String,
+    },
+    ControlRequest {
+        request_id: String,
+        request: ControlRequestBody,
+    },
+    ControlResponse {
+        response: ControlResponseBody,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -385,7 +388,11 @@ pub enum InboundAction {
 // ---------------------------------------------------------------------------
 
 fn handle_initialize(request: &ControlRequestBody) -> Result<serde_json::Value, String> {
-    if let ControlRequestBody::Initialize { ide_name, ide_version } = request {
+    if let ControlRequestBody::Initialize {
+        ide_name,
+        ide_version,
+    } = request
+    {
         Ok(serde_json::json!({
             "status": "initialized",
             "version": env!("CARGO_PKG_VERSION"),
@@ -415,18 +422,25 @@ fn handle_interrupt(_request: &ControlRequestBody) -> serde_json::Value {
     })
 }
 
-fn handle_set_permission_mode(
-    request: &ControlRequestBody,
-) -> Result<serde_json::Value, String> {
+fn handle_set_permission_mode(request: &ControlRequestBody) -> Result<serde_json::Value, String> {
     if let ControlRequestBody::SetPermissionMode { mode } = request {
-        let valid = ["read-only", "workspace-write", "danger-full-access", "prompt", "allow"];
+        let valid = [
+            "read-only",
+            "workspace-write",
+            "danger-full-access",
+            "prompt",
+            "allow",
+        ];
         if valid.contains(&mode.as_str()) {
             Ok(serde_json::json!({
                 "mode": mode,
                 "applied": true,
             }))
         } else {
-            Err(format!("Invalid permission mode: {mode}. Valid: {}", valid.join(", ")))
+            Err(format!(
+                "Invalid permission mode: {mode}. Valid: {}",
+                valid.join(", ")
+            ))
         }
     } else {
         Err("Invalid set_permission_mode request".to_string())
@@ -456,7 +470,11 @@ fn generate_uuid() -> String {
         .unwrap_or_default()
         .as_nanos();
     let pid = u128::from(std::process::id());
-    format!("{:016x}-{:08x}", nanos.wrapping_mul(pid.wrapping_add(7)), pid)
+    format!(
+        "{:016x}-{:08x}",
+        nanos.wrapping_mul(pid.wrapping_add(7)),
+        pid
+    )
 }
 
 fn iso8601_now() -> String {

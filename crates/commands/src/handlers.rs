@@ -630,7 +630,10 @@ pub fn render_plugins_report(plugins: &[PluginSummary]) -> String {
     lines.join("\n")
 }
 
-pub(crate) fn render_plugin_install_report(plugin_id: &str, plugin: Option<&PluginSummary>) -> String {
+pub(crate) fn render_plugin_install_report(
+    plugin_id: &str,
+    plugin: Option<&PluginSummary>,
+) -> String {
     let name = plugin.map_or(plugin_id, |plugin| plugin.metadata.name.as_str());
     let version = plugin.map_or("unknown", |plugin| plugin.metadata.version.as_str());
     let enabled = plugin.is_some_and(|plugin| plugin.enabled);
@@ -1214,4 +1217,3 @@ pub fn handle_slash_command(
         | SlashCommand::Unknown(_) => None,
     }
 }
-

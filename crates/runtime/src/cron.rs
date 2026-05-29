@@ -174,8 +174,8 @@ fn parse_atom(token: &str, lo: u8, hi: u8, name: &str) -> Result<Vec<u8>, CronPa
             return Ok((lo..=hi).collect());
         }
         if let Some(step_str) = token.strip_prefix("*/") {
-            let step = parse_u8(step_str)
-                .map_err(|()| make_err(format!("invalid step in '{token}'")))?;
+            let step =
+                parse_u8(step_str).map_err(|()| make_err(format!("invalid step in '{token}'")))?;
             if step == 0 {
                 return Err(make_err(format!("step must be > 0 in '{token}'")));
             }
@@ -188,8 +188,8 @@ fn parse_atom(token: &str, lo: u8, hi: u8, name: &str) -> Result<Vec<u8>, CronPa
     if token.contains('-') {
         let (range_part, step) = if token.contains('/') {
             let parts: Vec<&str> = token.splitn(2, '/').collect();
-            let s = parse_u8(parts[1])
-                .map_err(|()| make_err(format!("invalid step in '{token}'")))?;
+            let s =
+                parse_u8(parts[1]).map_err(|()| make_err(format!("invalid step in '{token}'")))?;
             if s == 0 {
                 return Err(make_err(format!("step must be > 0 in '{token}'")));
             }
@@ -220,8 +220,7 @@ fn parse_atom(token: &str, lo: u8, hi: u8, name: &str) -> Result<Vec<u8>, CronPa
     }
 
     // Exact value.
-    let val =
-        parse_u8(token).map_err(|()| make_err(format!("invalid value '{token}'")))?;
+    let val = parse_u8(token).map_err(|()| make_err(format!("invalid value '{token}'")))?;
     validate_bound(val, lo, hi, name, token)?;
     Ok(vec![val])
 }
@@ -312,9 +311,8 @@ pub fn load_durable_tasks(project_dir: &Path) -> io::Result<Vec<ScheduledTask>> 
         return Ok(Vec::new());
     }
     let data = std::fs::read_to_string(&path)?;
-    let tasks: Vec<ScheduledTask> = serde_json::from_str(&data).map_err(|e| {
-        io::Error::new(io::ErrorKind::InvalidData, e)
-    })?;
+    let tasks: Vec<ScheduledTask> =
+        serde_json::from_str(&data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     Ok(tasks)
 }
 
@@ -324,9 +322,8 @@ pub fn save_durable_tasks(project_dir: &Path, tasks: &[ScheduledTask]) -> io::Re
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let json = serde_json::to_string_pretty(tasks).map_err(|e| {
-        io::Error::new(io::ErrorKind::InvalidData, e)
-    })?;
+    let json = serde_json::to_string_pretty(tasks)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     std::fs::write(&path, json)
 }
 
@@ -490,7 +487,11 @@ fn utc_components(secs: u64) -> (u8, u8, u8, u8, u8) {
     let d = u8::try_from(day_of_year - (153 * mp + 2) / 5 + 1).unwrap_or(1);
     let m_u64 = if mp < 10 { mp + 3 } else { mp - 9 };
     let m = u8::try_from(m_u64).unwrap_or(1);
-    let _y = if m <= 2 { yoe_i64 + era * 400 + 1 } else { yoe_i64 + era * 400 };
+    let _y = if m <= 2 {
+        yoe_i64 + era * 400 + 1
+    } else {
+        yoe_i64 + era * 400
+    };
 
     (minute, hour, d, m, weekday)
 }
@@ -528,10 +529,7 @@ pub fn describe_schedule(schedule: &CronSchedule) -> String {
         && schedule.hours.len() > 1
     {
         if let Some(step) = detect_step(&schedule.hours) {
-            return format!(
-                "every {step} hours at :{:02}",
-                schedule.minutes[0]
-            );
+            return format!("every {step} hours at :{:02}", schedule.minutes[0]);
         }
     }
 
@@ -629,12 +627,20 @@ pub fn format_task_summary(task: &ScheduledTask) -> String {
         Err(_) => task.schedule.clone(),
     };
 
-    let status = if task.recurring { "recurring" } else { "one-shot" };
+    let status = if task.recurring {
+        "recurring"
+    } else {
+        "one-shot"
+    };
     let durability = if task.durable { "durable" } else { "ephemeral" };
     let runs = if task.run_count == 0 {
         "never run".to_string()
     } else {
-        format!("run {} time{}", task.run_count, if task.run_count == 1 { "" } else { "s" })
+        format!(
+            "run {} time{}",
+            task.run_count,
+            if task.run_count == 1 { "" } else { "s" }
+        )
     };
 
     format!(
@@ -898,7 +904,10 @@ mod tests {
     #[test]
     fn parse_wildcard_step() {
         let s = parse_cron("*/5 * * * *").unwrap();
-        assert_eq!(s.minutes, vec![0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]);
+        assert_eq!(
+            s.minutes,
+            vec![0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
+        );
     }
 
     #[test]
@@ -1262,10 +1271,7 @@ mod tests {
         let triggered_clone = triggered.clone();
 
         let mut handle = start_scheduler(dir.clone(), move |task| {
-            triggered_clone
-                .lock()
-                .unwrap()
-                .push(task.id.clone());
+            triggered_clone.lock().unwrap().push(task.id.clone());
         })
         .unwrap();
 

@@ -132,8 +132,12 @@ pub fn cleanup_team_directories(name: &str, teams_dir: &Path) -> Result<(), Stri
 // Unique name generation
 // ---------------------------------------------------------------------------
 
-const ADJECTIVES: &[&str] = &["brave", "calm", "dark", "fast", "keen", "mild", "neat", "bold", "wise", "warm"];
-const ANIMALS: &[&str] = &["bear", "crow", "deer", "duck", "elk", "fawn", "finch", "hawk", "kite", "lion"];
+const ADJECTIVES: &[&str] = &[
+    "brave", "calm", "dark", "fast", "keen", "mild", "neat", "bold", "wise", "warm",
+];
+const ANIMALS: &[&str] = &[
+    "bear", "crow", "deer", "duck", "elk", "fawn", "finch", "hawk", "kite", "lion",
+];
 
 /// Returns a slug like `"brave-tiger-42"`. Uses the current timestamp as an
 /// entropy source to avoid adding a new crate dependency.

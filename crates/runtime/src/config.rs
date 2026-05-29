@@ -317,7 +317,11 @@ pub struct RuntimeUiConfig {
 
 impl RuntimeUiConfig {
     #[must_use]
-    pub fn with_banner(mut self, mode: RuntimeUiBannerMode, variant: RuntimeUiBannerVariant) -> Self {
+    pub fn with_banner(
+        mut self,
+        mode: RuntimeUiBannerMode,
+        variant: RuntimeUiBannerVariant,
+    ) -> Self {
         self.banner = RuntimeUiBannerConfig::new(mode, variant);
         self
     }
@@ -776,7 +780,13 @@ pub fn default_config_home() -> PathBuf {
                 let home = PathBuf::from(home);
                 let ember = home.join(".ember");
                 let claw = home.join(".claw");
-                if ember.is_dir() { ember } else if claw.is_dir() { claw } else { ember }
+                if ember.is_dir() {
+                    ember
+                } else if claw.is_dir() {
+                    claw
+                } else {
+                    ember
+                }
             })
         })
         .unwrap_or_else(|| PathBuf::from(".ember"))
@@ -1152,10 +1162,7 @@ fn parse_ui_banner_config(
     Ok(RuntimeUiBannerConfig { mode, variant })
 }
 
-fn parse_ui_banner_mode(
-    value: &str,
-    context: &str,
-) -> Result<RuntimeUiBannerMode, ConfigError> {
+fn parse_ui_banner_mode(value: &str, context: &str) -> Result<RuntimeUiBannerMode, ConfigError> {
     match value {
         "classic" => Ok(RuntimeUiBannerMode::Classic),
         "pixel" => Ok(RuntimeUiBannerMode::Pixel),
@@ -1196,7 +1203,9 @@ fn parse_ui_animation_config(
     context: &str,
 ) -> Result<RuntimeUiAnimationConfig, ConfigError> {
     if let Some(mode) = value.as_str() {
-        return Ok(RuntimeUiAnimationConfig::new(parse_ui_animation_mode(mode, context)?));
+        return Ok(RuntimeUiAnimationConfig::new(parse_ui_animation_mode(
+            mode, context,
+        )?));
     }
 
     let animation = expect_object(value, context)?;
@@ -1226,7 +1235,9 @@ fn parse_ui_hud_config(
     context: &str,
 ) -> Result<RuntimeUiHudConfig, ConfigError> {
     if let Some(preset) = value.as_str() {
-        return Ok(RuntimeUiHudConfig::new(parse_ui_hud_preset(preset, context)?));
+        return Ok(RuntimeUiHudConfig::new(parse_ui_hud_preset(
+            preset, context,
+        )?));
     }
 
     let hud = expect_object(value, context)?;
@@ -1237,10 +1248,7 @@ fn parse_ui_hud_config(
     Ok(RuntimeUiHudConfig::new(preset))
 }
 
-fn parse_ui_hud_preset(
-    value: &str,
-    context: &str,
-) -> Result<RuntimeUiHudPreset, ConfigError> {
+fn parse_ui_hud_preset(value: &str, context: &str) -> Result<RuntimeUiHudPreset, ConfigError> {
     match value {
         "off" => Ok(RuntimeUiHudPreset::Off),
         "minimal" => Ok(RuntimeUiHudPreset::Minimal),
@@ -1495,8 +1503,7 @@ fn push_unique(target: &mut Vec<String>, value: String) {
 mod tests {
     use super::{
         ConfigLoader, ConfigSource, McpServerConfig, McpTransport, ResolvedPermissionMode,
-        RuntimeUiAnimationMode, RuntimeUiBannerMode, RuntimeUiBannerVariant,
-        RuntimeUiHudPreset,
+        RuntimeUiAnimationMode, RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiHudPreset,
         CLAW_SETTINGS_SCHEMA_NAME,
     };
     use crate::json::JsonValue;
@@ -1833,17 +1840,17 @@ mod tests {
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }
 
-        #[test]
-        fn parses_ui_config() {
-                let root = temp_dir();
-                let cwd = root.join("project");
-                let home = root.join("home").join(".ember");
-                fs::create_dir_all(&cwd).expect("project dir");
-                fs::create_dir_all(&home).expect("home config dir");
+    #[test]
+    fn parses_ui_config() {
+        let root = temp_dir();
+        let cwd = root.join("project");
+        let home = root.join("home").join(".ember");
+        fs::create_dir_all(&cwd).expect("project dir");
+        fs::create_dir_all(&home).expect("home config dir");
 
-                fs::write(
-                        cwd.join(".ember.json"),
-                        r#"{
+        fs::write(
+            cwd.join(".ember.json"),
+            r#"{
                             "ui": {
                                 "banner": {
                                     "mode": "pixel",
@@ -1860,30 +1867,24 @@ mod tests {
                                 }
                             }
                         }"#,
-                )
-                .expect("write ui settings");
+        )
+        .expect("write ui settings");
 
-                let loaded = ConfigLoader::new(&cwd, &home)
-                        .load()
-                        .expect("config should load");
+        let loaded = ConfigLoader::new(&cwd, &home)
+            .load()
+            .expect("config should load");
 
-                assert_eq!(loaded.ui().banner().mode(), RuntimeUiBannerMode::Pixel);
-                assert_eq!(
-                        loaded.ui().banner().variant(),
-                        RuntimeUiBannerVariant::Wide
-                );
-                assert_eq!(
-                    loaded.ui().animation().mode(),
-                    RuntimeUiAnimationMode::Intro
-                );
-                assert_eq!(
-                    loaded.ui().hud().preset(),
-                    RuntimeUiHudPreset::Full
-                );
-                assert!(loaded.ui().motion().reduced());
+        assert_eq!(loaded.ui().banner().mode(), RuntimeUiBannerMode::Pixel);
+        assert_eq!(loaded.ui().banner().variant(), RuntimeUiBannerVariant::Wide);
+        assert_eq!(
+            loaded.ui().animation().mode(),
+            RuntimeUiAnimationMode::Intro
+        );
+        assert_eq!(loaded.ui().hud().preset(), RuntimeUiHudPreset::Full);
+        assert!(loaded.ui().motion().reduced());
 
-                fs::remove_dir_all(root).expect("cleanup temp dir");
-        }
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
 
     #[test]
     fn rejects_invalid_mcp_server_shapes() {

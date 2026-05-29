@@ -86,7 +86,10 @@ mod tests {
 
     #[test]
     fn display_missing_content_length() {
-        assert_eq!(LspError::MissingContentLength.to_string(), "missing LSP Content-Length header");
+        assert_eq!(
+            LspError::MissingContentLength.to_string(),
+            "missing LSP Content-Length header"
+        );
     }
 
     #[test]

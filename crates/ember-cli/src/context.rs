@@ -4,8 +4,8 @@
 //! Supports multiple context sources: codebase map, directory READMEs,
 //! project rules, and custom injectors.
 
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 #[cfg(test)]
 use std::env;

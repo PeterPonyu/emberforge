@@ -4,8 +4,8 @@
 //! of the workspace before the first prompt. Inspired by oh-my-claudecode.
 
 use std::collections::BTreeSet;
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 #[cfg(test)]
 use std::env;
@@ -48,8 +48,8 @@ const SKIP_DIRS: &[&str] = &[
 
 /// File extensions to highlight as notable.
 const NOTABLE_EXTENSIONS: &[&str] = &[
-    "rs", "py", "ts", "tsx", "js", "jsx", "go", "java", "kt", "swift", "c", "cpp", "h",
-    "rb", "ex", "exs", "zig", "toml", "yaml", "yml", "json", "md",
+    "rs", "py", "ts", "tsx", "js", "jsx", "go", "java", "kt", "swift", "c", "cpp", "h", "rb", "ex",
+    "exs", "zig", "toml", "yaml", "yml", "json", "md",
 ];
 
 /// Build a compressed codebase map string suitable for prompt injection.
@@ -193,19 +193,30 @@ pub(crate) fn read_project_summary(cwd: &Path) -> Option<String> {
         let description = extract_toml_value(&content, "description");
         if let Some(name) = name {
             let desc = description.unwrap_or_default();
-            return Some(format!("{name} — {desc}").trim_end_matches(" — ").to_string());
+            return Some(
+                format!("{name} — {desc}")
+                    .trim_end_matches(" — ")
+                    .to_string(),
+            );
         }
     }
 
     // Try package.json
     if let Ok(content) = fs::read_to_string(cwd.join("package.json")) {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
-            let name = value.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let name = value
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             let desc = value
                 .get("description")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            return Some(format!("{name} — {desc}").trim_end_matches(" — ").to_string());
+            return Some(
+                format!("{name} — {desc}")
+                    .trim_end_matches(" — ")
+                    .to_string(),
+            );
         }
     }
 

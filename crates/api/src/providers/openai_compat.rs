@@ -103,8 +103,8 @@ impl OpenAiCompatClient {
     pub fn from_env(config: OpenAiCompatConfig) -> Result<Self, ApiError> {
         // Ollama doesn't require an API key — use a dummy placeholder
         if config.provider_name == "Ollama" {
-            let api_key = read_env_non_empty(config.api_key_env)?
-                .unwrap_or_else(|| "ollama".to_string());
+            let api_key =
+                read_env_non_empty(config.api_key_env)?.unwrap_or_else(|| "ollama".to_string());
             return Ok(Self::new(api_key, config));
         }
         let Some(api_key) = read_env_non_empty(config.api_key_env)? else {
@@ -392,7 +392,9 @@ impl StreamState {
                 self.reasoning_buffer.push_str(&reasoning);
                 events.push(StreamEvent::ContentBlockDelta(ContentBlockDeltaEvent {
                     index: 0,
-                    delta: ContentBlockDelta::ThinkingDelta { thinking: reasoning },
+                    delta: ContentBlockDelta::ThinkingDelta {
+                        thinking: reasoning,
+                    },
                 }));
             }
 

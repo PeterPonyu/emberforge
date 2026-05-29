@@ -61,8 +61,8 @@ pub fn export_session(
 /// Import a session from a teleport bundle file.
 pub fn import_session(src: &Path) -> io::Result<TeleportBundle> {
     let json = fs::read_to_string(src)?;
-    let bundle: TeleportBundle = serde_json::from_str(&json)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let bundle: TeleportBundle =
+        serde_json::from_str(&json).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     Ok(bundle)
 }
 
