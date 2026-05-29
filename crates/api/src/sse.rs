@@ -102,6 +102,10 @@ pub fn parse_frame(frame: &str) -> Result<Option<StreamEvent>, ApiError> {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::{parse_frame, SseParser};
     use crate::types::{ContentBlockDelta, MessageDelta, OutputContentBlock, StreamEvent, Usage};
 

@@ -280,34 +280,34 @@ impl ClawApiClient {
         request: &MessageRequest,
     ) -> Result<reqwest::Response, ApiError> {
         let mut attempts = 0;
-        let mut last_error: Option<ApiError>;
 
-        loop {
+        // The loop binds the most recent retryable error into `last_error` on
+        // the breaking branch, so the type system (not a runtime `expect`)
+        // guarantees an error is present when we build `RetriesExhausted`.
+        let last_error = loop {
             attempts += 1;
-            match self.send_raw_request(request).await {
+            let error = match self.send_raw_request(request).await {
                 Ok(response) => match expect_success(response).await {
                     Ok(response) => return Ok(response),
-                    Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
-                        last_error = Some(error);
-                    }
-                    Err(error) => return Err(error),
+                    Err(error) => error,
                 },
-                Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
-                    last_error = Some(error);
-                }
-                Err(error) => return Err(error),
+                Err(error) => error,
+            };
+
+            if !(error.is_retryable() && attempts <= self.max_retries + 1) {
+                return Err(error);
             }
 
             if attempts > self.max_retries {
-                break;
+                break error;
             }
 
             tokio::time::sleep(self.backoff_for_attempt(attempts)?).await;
-        }
+        };
 
         Err(ApiError::RetriesExhausted {
             attempts,
-            last_error: Box::new(last_error.expect("retry loop must capture an error")),
+            last_error: Box::new(last_error),
         })
     }
 
@@ -641,6 +641,10 @@ struct ApiErrorBody {
 
 #[cfg(test)]
 mod tests {
+    // Test code may panic freely; the error-handling policy (refs #11) targets
+    // non-test failure boundaries only.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::{ALT_REQUEST_ID_HEADER, REQUEST_ID_HEADER};
     use std::io::{Read, Write};
     use std::net::TcpListener;
