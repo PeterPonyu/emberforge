@@ -2,12 +2,12 @@
 
 Status: draft (worker-3, 2026-04-16)
 Scope: `emberforge` (Rust reference) vs. `emberforge-ts`, `emberforge-go`,
-`emberforge-cpp` sibling ports under `/home/zeyufu/Desktop/emberforge-translations/`.
+`emberforge-cpp` sibling ports under `<workspace>/emberforge-translations/`.
 Authoritative contract: [`CROSS_PORT_CONTRACT.md`](CROSS_PORT_CONTRACT.md).
 
 ## 1. CI gate snapshot
 
-Branch: `feature/buddy-reference-parity` (workspace root: `/home/zeyufu/Desktop/emberforge`).
+Branch: `feature/buddy-reference-parity` (workspace root: `<workspace>/emberforge`).
 The workflow in `.github/workflows/ci.yml` runs three gates on `ubuntu-latest`
 and `macos-latest`:
 

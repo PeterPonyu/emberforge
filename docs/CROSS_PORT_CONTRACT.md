@@ -172,7 +172,7 @@ A session is a persistent conversation transcript stored as JSON. It is the prim
 
 ### 1.3 Authoritative Rust Source
 
-- `/home/zeyufu/Desktop/emberforge/crates/runtime/src/session.rs` — `Session`, `ConversationMessage`, `ContentBlock`, `MessageRole`, `TokenUsage` structs
+- `<workspace>/emberforge/crates/runtime/src/session.rs` — `Session`, `ConversationMessage`, `ContentBlock`, `MessageRole`, `TokenUsage` structs
 - Serialization: `serde` with `#[serde(tag = "type", rename_all = "snake_case")]` on `ContentBlock`
 - On-disk format: UTF-8 JSON, formatted for readability
 
