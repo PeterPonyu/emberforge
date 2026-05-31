@@ -74,8 +74,8 @@ Evidence in Emberforge:
 
 Evidence in Claude Code:
 
-- `/home/zeyufu/Desktop/claude-code-src/main.tsx`
-- `/home/zeyufu/Desktop/claude-code-src/replLauncher.tsx`
+- `<workspace>/claude-code-src/main.tsx`
+- `<workspace>/claude-code-src/replLauncher.tsx`
 
 Current status:
 
@@ -96,8 +96,8 @@ Evidence in Emberforge:
 
 Evidence in Claude Code:
 
-- `/home/zeyufu/Desktop/claude-code-src/QueryEngine.ts`
-- `/home/zeyufu/Desktop/claude-code-src/Tool.ts`
+- `<workspace>/claude-code-src/QueryEngine.ts`
+- `<workspace>/claude-code-src/Tool.ts`
 
 Current status:
 
@@ -130,7 +130,7 @@ Evidence in Emberforge:
 
 Evidence in Claude Code:
 
-- `/home/zeyufu/Desktop/claude-code-src/plugins/builtinPlugins.ts`
+- `<workspace>/claude-code-src/plugins/builtinPlugins.ts`
 
 Current status:
 
@@ -168,9 +168,9 @@ Evidence in Emberforge:
 
 Evidence in Claude Code:
 
-- `/home/zeyufu/Desktop/claude-code-src/components/Markdown.tsx`
-- `/home/zeyufu/Desktop/claude-code-src/components/MarkdownTable.tsx`
-- `/home/zeyufu/Desktop/claude-code-src/components/messages/AssistantThinkingMessage.tsx`
+- `<workspace>/claude-code-src/components/Markdown.tsx`
+- `<workspace>/claude-code-src/components/MarkdownTable.tsx`
+- `<workspace>/claude-code-src/components/messages/AssistantThinkingMessage.tsx`
 
 Current status:
 
@@ -203,8 +203,8 @@ Evidence in Emberforge:
 
 Evidence in Claude Code:
 
-- `/home/zeyufu/Desktop/claude-code-src/tasks.ts`
-- `/home/zeyufu/Desktop/claude-code-src/bridge/bridgeMain.ts`
+- `<workspace>/claude-code-src/tasks.ts`
+- `<workspace>/claude-code-src/bridge/bridgeMain.ts`
 - daemon and bg surfaces referenced from `main.tsx`
 
 Current status:
@@ -222,8 +222,8 @@ Evidence in Emberforge:
 
 Evidence in Claude Code:
 
-- `/home/zeyufu/Desktop/claude-code-src/bridge/bridgeMain.ts`
-- `/home/zeyufu/Desktop/claude-code-src/cli/transports/HybridTransport.ts`
+- `<workspace>/claude-code-src/bridge/bridgeMain.ts`
+- `<workspace>/claude-code-src/cli/transports/HybridTransport.ts`
 
 Current status:
 
