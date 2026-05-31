@@ -186,11 +186,9 @@ impl GlobalToolRegistry {
                 allowed_tools
                     .is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
             })
-            .map(|tool| {
-                (
-                    tool.definition().name.clone(),
-                    permission_mode_from_plugin(tool.required_permission()),
-                )
+            .filter_map(|tool| {
+                permission_mode_from_plugin(tool.required_permission())
+                    .map(|mode| (tool.definition().name.clone(), mode))
             });
         builtin.chain(plugin).collect()
     }
@@ -218,11 +216,15 @@ fn normalize_tool_name(value: &str) -> String {
     value.trim().replace('-', "_").to_ascii_lowercase()
 }
 
-fn permission_mode_from_plugin(value: &str) -> PermissionMode {
+/// Maps a plugin-declared permission string to a [`PermissionMode`].
+///
+/// Returns `None` for unrecognized permission strings so that a malformed
+/// plugin declaration is skipped gracefully rather than crashing the process.
+fn permission_mode_from_plugin(value: &str) -> Option<PermissionMode> {
     match value {
-        "read-only" => PermissionMode::ReadOnly,
-        "workspace-write" => PermissionMode::WorkspaceWrite,
-        "danger-full-access" => PermissionMode::DangerFullAccess,
-        other => panic!("unsupported plugin permission: {other}"),
+        "read-only" => Some(PermissionMode::ReadOnly),
+        "workspace-write" => Some(PermissionMode::WorkspaceWrite),
+        "danger-full-access" => Some(PermissionMode::DangerFullAccess),
+        _ => None,
     }
 }
