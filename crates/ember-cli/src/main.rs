@@ -367,6 +367,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         CliAction::Login => run_login()?,
         CliAction::Logout => run_logout()?,
         CliAction::Init => run_init()?,
+        CliAction::Decide {
+            summary,
+            rationale,
+            kind,
+        } => run_decide(&summary, &rationale, &kind)?,
+        CliAction::ReleaseReceipt { action } => run_release_receipt(&action)?,
         CliAction::Repl {
             model,
             allowed_tools,
@@ -417,6 +423,16 @@ enum CliAction {
     Login,
     Logout,
     Init,
+    /// Record an append-only decision to `.ember/decisions.jsonl` (EFRUST-9).
+    Decide {
+        summary: String,
+        rationale: String,
+        kind: String,
+    },
+    /// Record or check verification receipts gating a release (EFRUST-10).
+    ReleaseReceipt {
+        action: ReleaseReceiptAction,
+    },
     Repl {
         model: String,
         allowed_tools: Option<AllowedToolSet>,
@@ -424,6 +440,20 @@ enum CliAction {
     },
     // prompt-mode formatting is only supported for non-interactive runs
     Help,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ReleaseReceiptAction {
+    /// Append a receipt for `version` with the named pass/fail checks.
+    Record {
+        version: String,
+        committer: String,
+        checks: Vec<(String, bool)>,
+    },
+    /// Check whether the latest receipt for `version` passes (release gate).
+    Check {
+        version: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -611,6 +641,8 @@ fn parse_args(args: &[String]) -> Result<CliAction, String> {
         "login" => Ok(CliAction::Login),
         "logout" => Ok(CliAction::Logout),
         "init" => Ok(CliAction::Init),
+        "decide" => parse_decide_args(&rest[1..]),
+        "release-receipt" => parse_release_receipt_args(&rest[1..]),
         "prompt" => {
             let prompt = rest[1..].join(" ");
             if prompt.trim().is_empty() {
@@ -645,6 +677,133 @@ fn join_optional_args(args: &[String]) -> Option<String> {
     let joined = args.join(" ");
     let trimmed = joined.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+/// Parse `decide "<summary>" [--rationale ...] [--kind ...]` (EFRUST-9).
+fn parse_decide_args(args: &[String]) -> Result<CliAction, String> {
+    let mut summary_parts = Vec::new();
+    let mut rationale = String::new();
+    let mut kind = "decision".to_string();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--rationale" => {
+                args.get(index + 1)
+                    .ok_or_else(|| "missing value for --rationale".to_string())?
+                    .clone_into(&mut rationale);
+                index += 2;
+            }
+            "--kind" => {
+                args.get(index + 1)
+                    .ok_or_else(|| "missing value for --kind".to_string())?
+                    .clone_into(&mut kind);
+                index += 2;
+            }
+            other => {
+                summary_parts.push(other.to_string());
+                index += 1;
+            }
+        }
+    }
+    let summary = summary_parts.join(" ").trim().to_string();
+    if summary.is_empty() {
+        return Err("decide requires a summary: ember decide \"<summary>\" [--rationale ...] [--kind ...]".to_string());
+    }
+    Ok(CliAction::Decide {
+        summary,
+        rationale,
+        kind,
+    })
+}
+
+/// Parse `release-receipt record|check ...` (EFRUST-10).
+///
+/// - `record <version> [--committer C] --check name=pass [--check ...]`
+/// - `check <version>`
+///
+/// The version is a positional argument (not a `--version` flag) so it never
+/// collides with the global `--version` flag handled earlier in `parse_args`.
+fn parse_release_receipt_args(args: &[String]) -> Result<CliAction, String> {
+    let sub = args
+        .first()
+        .map(String::as_str)
+        .ok_or_else(|| "release-receipt requires a subcommand: record | check".to_string())?;
+    match sub {
+        "record" => parse_release_receipt_record(&args[1..]),
+        "check" => {
+            let version = args
+                .get(1)
+                .filter(|v| !v.starts_with('-'))
+                .cloned()
+                .ok_or_else(|| "release-receipt check requires a <version>".to_string())?;
+            Ok(CliAction::ReleaseReceipt {
+                action: ReleaseReceiptAction::Check { version },
+            })
+        }
+        other => Err(format!(
+            "unknown release-receipt subcommand '{other}': expected record | check"
+        )),
+    }
+}
+
+fn parse_release_receipt_record(args: &[String]) -> Result<CliAction, String> {
+    let mut version: Option<String> = None;
+    let mut committer = "local".to_string();
+    let mut checks = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--committer" => {
+                args.get(index + 1)
+                    .ok_or_else(|| "missing value for --committer".to_string())?
+                    .clone_into(&mut committer);
+                index += 2;
+            }
+            "--check" => {
+                let raw = args
+                    .get(index + 1)
+                    .ok_or_else(|| "missing value for --check (expected name=true|false)".to_string())?;
+                checks.push(parse_check_spec(raw)?);
+                index += 2;
+            }
+            other if other.starts_with('-') => {
+                return Err(format!("unexpected argument '{other}' to release-receipt record"));
+            }
+            other if version.is_none() => {
+                version = Some(other.to_string());
+                index += 1;
+            }
+            other => return Err(format!("unexpected argument '{other}' to release-receipt record")),
+        }
+    }
+    let version = version
+        .ok_or_else(|| "release-receipt record requires a <version>".to_string())?;
+    if checks.is_empty() {
+        return Err("release-receipt record requires at least one --check name=true|false".to_string());
+    }
+    Ok(CliAction::ReleaseReceipt {
+        action: ReleaseReceiptAction::Record {
+            version,
+            committer,
+            checks,
+        },
+    })
+}
+
+fn parse_check_spec(raw: &str) -> Result<(String, bool), String> {
+    let (name, value) = raw
+        .split_once('=')
+        .ok_or_else(|| format!("invalid --check '{raw}': expected name=true|false"))?;
+    let pass = match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "pass" | "ok" | "1" | "yes" => true,
+        "false" | "fail" | "0" | "no" => false,
+        other => return Err(format!("invalid --check value '{other}': expected true|false")),
+    };
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(format!("invalid --check '{raw}': empty check name"));
+    }
+    Ok((name.to_string(), pass))
 }
 
 fn parse_direct_slash_cli_action(rest: &[String]) -> Result<CliAction, String> {
@@ -857,6 +1016,52 @@ fn default_oauth_config() -> OAuthConfig {
             String::from("user:inference"),
             String::from("user:sessions:claw_code"),
         ],
+    }
+}
+
+/// Record an append-only decision to `.ember/decisions.jsonl` (EFRUST-9).
+fn run_decide(summary: &str, rationale: &str, kind: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let cwd = env::current_dir()?;
+    let record = runtime::ledger::DecisionRecord::now(kind, summary, rationale);
+    runtime::ledger::append_decision(&cwd, &record)?;
+    let path = runtime::ledger::decisions_file(&cwd);
+    println!("Recorded decision [{}] {} -> {}", record.kind, record.summary, path.display());
+    Ok(())
+}
+
+/// Record or check verification receipts gating a release (EFRUST-10).
+fn run_release_receipt(action: &ReleaseReceiptAction) -> Result<(), Box<dyn std::error::Error>> {
+    let cwd = env::current_dir()?;
+    match action {
+        ReleaseReceiptAction::Record {
+            version,
+            committer,
+            checks,
+        } => {
+            let checks = checks
+                .iter()
+                .map(|(name, pass)| runtime::ledger::ReceiptCheck::new(name, *pass))
+                .collect();
+            let receipt = runtime::ledger::ReleaseReceipt::now(version, committer, checks);
+            runtime::ledger::append_receipt(&cwd, &receipt)?;
+            println!("{}", receipt.summary());
+            Ok(())
+        }
+        ReleaseReceiptAction::Check { version } => {
+            match runtime::ledger::latest_receipt_for(&cwd, version)? {
+                Some(receipt) => {
+                    println!("{}", receipt.summary());
+                    if receipt.pass {
+                        Ok(())
+                    } else {
+                        Err(format!("release gate FAILED: latest receipt for v{version} did not pass").into())
+                    }
+                }
+                None => {
+                    Err(format!("release gate FAILED: no receipt recorded for v{version}").into())
+                }
+            }
+        }
     }
 }
 
@@ -6615,6 +6820,18 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
         out,
         "  ember init                             Scaffold EMBER.md + local files"
     )?;
+    writeln!(
+        out,
+        "  ember decide \"<summary>\" [--rationale ..] [--kind ..]  Append a decision to .ember/decisions.jsonl"
+    )?;
+    writeln!(
+        out,
+        "  ember release-receipt record V --check name=pass     Record a release-verification receipt"
+    )?;
+    writeln!(
+        out,
+        "  ember release-receipt check V          Gate a release on the latest passing receipt"
+    )?;
     writeln!(out)?;
     writeln!(out, "Flags")?;
     writeln!(
@@ -6702,6 +6919,7 @@ mod tests {
         response_to_events, resume_supported_slash_commands, sanitize_assistant_text,
         slash_command_completion_candidates, status_context, strip_terminal_escape_sequences,
         AvailableModelCatalog, CliAction, CliOutputFormat, InternalPromptProgressEvent,
+        ReleaseReceiptAction,
         InternalPromptProgressState, SlashCommand, StatusUsage, ANTHROPIC_DEFAULT_MODEL,
         DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL, THINKING_PREVIEW_MAX_CHARS, XAI_DEFAULT_MODEL,
     };
@@ -7090,6 +7308,68 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
                 date: "2026-04-01".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn parses_decide_subcommand() {
+        assert_eq!(
+            parse_args(&[
+                "decide".to_string(),
+                "port the ledger".to_string(),
+                "--rationale".to_string(),
+                "parity".to_string(),
+                "--kind".to_string(),
+                "architecture".to_string(),
+            ])
+            .expect("decide should parse"),
+            CliAction::Decide {
+                summary: "port the ledger".to_string(),
+                rationale: "parity".to_string(),
+                kind: "architecture".to_string(),
+            }
+        );
+        assert!(parse_args(&["decide".to_string()]).is_err());
+    }
+
+    #[test]
+    fn parses_release_receipt_subcommands() {
+        assert_eq!(
+            parse_args(&[
+                "release-receipt".to_string(),
+                "record".to_string(),
+                "0.1.0".to_string(),
+                "--check".to_string(),
+                "build=true".to_string(),
+                "--check".to_string(),
+                "tests=false".to_string(),
+            ])
+            .expect("record should parse"),
+            CliAction::ReleaseReceipt {
+                action: ReleaseReceiptAction::Record {
+                    version: "0.1.0".to_string(),
+                    committer: "local".to_string(),
+                    checks: vec![
+                        ("build".to_string(), true),
+                        ("tests".to_string(), false),
+                    ],
+                },
+            }
+        );
+        assert_eq!(
+            parse_args(&[
+                "release-receipt".to_string(),
+                "check".to_string(),
+                "0.1.0".to_string(),
+            ])
+            .expect("check should parse"),
+            CliAction::ReleaseReceipt {
+                action: ReleaseReceiptAction::Check {
+                    version: "0.1.0".to_string(),
+                },
+            }
+        );
+        // record requires a version and at least one check.
+        assert!(parse_args(&["release-receipt".to_string(), "record".to_string()]).is_err());
     }
 
     #[test]
