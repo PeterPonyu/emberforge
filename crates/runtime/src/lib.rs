@@ -18,6 +18,7 @@ pub mod git;
 mod hooks;
 pub mod ide;
 mod json;
+pub mod ledger;
 mod mcp;
 mod mcp_client;
 mod mcp_stdio;
