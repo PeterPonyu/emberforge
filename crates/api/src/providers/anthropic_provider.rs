@@ -664,9 +664,9 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use super::{ALT_REQUEST_ID_HEADER, REQUEST_ID_HEADER};
+    use serial_test::serial;
     use std::io::{Read, Write};
     use std::net::TcpListener;
-    use std::sync::{Mutex, OnceLock};
     use std::thread;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -678,12 +678,12 @@ mod tests {
     };
     use crate::types::{ContentBlockDelta, MessageRequest};
 
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
+    // These tests mutate process-wide env vars (`EMBER_CONFIG_HOME`,
+    // `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`). They are serialized under a
+    // shared `config_home` key so they never run concurrently with the other
+    // env-mutating tests in this crate (prompt_cache / openai_compat), which
+    // would otherwise race on the same shared process state under parallel
+    // `cargo test`.
 
     fn temp_config_home() -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
@@ -741,8 +741,8 @@ mod tests {
     // negative-path assertion fails. Other tests in this module use the same
     // `temp_config_home()` helper.
     #[test]
+    #[serial(config_home)]
     fn read_api_key_requires_presence() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
         std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
@@ -757,8 +757,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn read_api_key_requires_non_empty_value() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
         std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::set_var("ANTHROPIC_AUTH_TOKEN", "");
@@ -774,8 +774,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn read_api_key_prefers_api_key_env() {
-        let _guard = env_lock();
         std::env::set_var("ANTHROPIC_AUTH_TOKEN", "auth-token");
         std::env::set_var("ANTHROPIC_API_KEY", "legacy-key");
         assert_eq!(
@@ -787,8 +787,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn read_auth_token_reads_auth_token_env() {
-        let _guard = env_lock();
         std::env::set_var("ANTHROPIC_AUTH_TOKEN", "auth-token");
         assert_eq!(super::read_auth_token().as_deref(), Some("auth-token"));
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
@@ -807,8 +807,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn auth_source_from_env_combines_api_key_and_bearer_token() {
-        let _guard = env_lock();
         std::env::set_var("ANTHROPIC_AUTH_TOKEN", "auth-token");
         std::env::set_var("ANTHROPIC_API_KEY", "legacy-key");
         let auth = AuthSource::from_env().expect("env auth");
@@ -819,8 +819,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn auth_source_from_saved_oauth_when_env_absent() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
         std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
@@ -858,8 +858,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn resolve_saved_oauth_token_refreshes_expired_credentials() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
         std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
@@ -890,8 +890,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn resolve_startup_auth_source_uses_saved_oauth_without_loading_config() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
         std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
@@ -914,8 +914,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn resolve_startup_auth_source_errors_when_refreshable_token_lacks_config() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
         std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
@@ -946,8 +946,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn resolve_saved_oauth_token_preserves_refresh_token_when_refresh_response_omits_it() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
         std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");

@@ -525,7 +525,7 @@ mod tests {
     // non-test failure boundaries only.
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-    use std::sync::{Mutex, OnceLock};
+    use serial_test::serial;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use super::{
@@ -534,12 +534,10 @@ mod tests {
     };
     use crate::types::{InputMessage, MessageRequest, MessageResponse, OutputContentBlock, Usage};
 
-    fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
+    // The completion-cache tests below mutate the process-wide
+    // `EMBER_CONFIG_HOME` env var. They share the `config_home` serialization
+    // key with the other env-mutating tests in this crate so they never run
+    // concurrently under parallel `cargo test`.
 
     #[test]
     fn path_builder_sanitizes_session_identifier() {
@@ -611,8 +609,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn completion_cache_round_trip_persists_recent_response() {
-        let _guard = test_env_lock();
         let temp_root = std::env::temp_dir().join(format!(
             "prompt-cache-test-{}-{}",
             std::process::id(),
@@ -649,8 +647,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn distinct_requests_do_not_collide_in_completion_cache() {
-        let _guard = test_env_lock();
         let temp_root = std::env::temp_dir().join(format!(
             "prompt-cache-distinct-{}-{}",
             std::process::id(),
@@ -674,8 +672,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn expired_completion_entries_are_not_reused() {
-        let _guard = test_env_lock();
         let temp_root = std::env::temp_dir().join(format!(
             "prompt-cache-expired-{}-{}",
             std::process::id(),
