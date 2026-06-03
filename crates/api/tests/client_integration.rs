@@ -217,8 +217,8 @@ async fn provider_client_dispatches_api_requests() {
     )
     .expect("api provider client should be constructed");
     let client = match client {
-        ProviderClient::ClawApi(client) => {
-            ProviderClient::ClawApi(client.with_base_url(server.base_url()))
+        ProviderClient::AnthropicApi(client) => {
+            ProviderClient::AnthropicApi(client.with_base_url(server.base_url()))
         }
         other => panic!("expected default provider, got {other:?}"),
     };

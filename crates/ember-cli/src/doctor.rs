@@ -560,7 +560,7 @@ fn provider_probe_targets(model: &str) -> Vec<ProviderProbeTarget> {
     // Also probe the provider backing the currently selected model so a
     // misconfigured remote base URL is caught for cloud-only sessions.
     match api::detect_provider_kind(model) {
-        api::ProviderKind::ClawApi => {
+        api::ProviderKind::AnthropicApi => {
             raw.push(("Anthropic".to_string(), api::read_base_url()));
         }
         api::ProviderKind::Xai => {

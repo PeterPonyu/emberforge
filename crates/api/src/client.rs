@@ -1,5 +1,5 @@
 use crate::error::ApiError;
-use crate::providers::claw_provider::{self, AuthSource, ClawApiClient};
+use crate::providers::anthropic_provider::{self, AnthropicApiClient, AuthSource};
 use crate::providers::openai_compat::{self, OpenAiCompatClient, OpenAiCompatConfig};
 use crate::providers::{self, Provider, ProviderKind};
 use crate::types::{MessageRequest, MessageResponse, StreamEvent};
@@ -20,7 +20,7 @@ async fn stream_via_provider<P: Provider>(
 
 #[derive(Debug, Clone)]
 pub enum ProviderClient {
-    ClawApi(ClawApiClient),
+    AnthropicApi(AnthropicApiClient),
     Xai(OpenAiCompatClient),
     OpenAi(OpenAiCompatClient),
     Ollama(OpenAiCompatClient),
@@ -41,9 +41,9 @@ impl ProviderClient {
     ) -> Result<Self, ApiError> {
         let resolved_model = providers::resolve_model_alias(model);
         match providers::detect_provider_kind(&resolved_model) {
-            ProviderKind::ClawApi => Ok(Self::ClawApi(match default_auth {
-                Some(auth) => ClawApiClient::from_auth(auth),
-                None => ClawApiClient::from_env()?,
+            ProviderKind::AnthropicApi => Ok(Self::AnthropicApi(match default_auth {
+                Some(auth) => AnthropicApiClient::from_auth(auth),
+                None => AnthropicApiClient::from_env()?,
             })),
             ProviderKind::Xai => Ok(Self::Xai(OpenAiCompatClient::from_env(
                 OpenAiCompatConfig::xai(),
@@ -60,7 +60,7 @@ impl ProviderClient {
     #[must_use]
     pub const fn provider_kind(&self) -> ProviderKind {
         match self {
-            Self::ClawApi(_) => ProviderKind::ClawApi,
+            Self::AnthropicApi(_) => ProviderKind::AnthropicApi,
             Self::Xai(_) => ProviderKind::Xai,
             Self::OpenAi(_) => ProviderKind::OpenAi,
             Self::Ollama(_) => ProviderKind::Ollama,
@@ -74,7 +74,7 @@ impl ProviderClient {
         request: &MessageRequest,
     ) -> Result<MessageResponse, ApiError> {
         match self {
-            Self::ClawApi(client) => send_via_provider(client, request).await,
+            Self::AnthropicApi(client) => send_via_provider(client, request).await,
             Self::Xai(client) | Self::OpenAi(client) | Self::Ollama(client) => {
                 send_via_provider(client, request).await
             }
@@ -88,9 +88,9 @@ impl ProviderClient {
         request: &MessageRequest,
     ) -> Result<MessageStream, ApiError> {
         match self {
-            Self::ClawApi(client) => stream_via_provider(client, request)
+            Self::AnthropicApi(client) => stream_via_provider(client, request)
                 .await
-                .map(MessageStream::ClawApi),
+                .map(MessageStream::AnthropicApi),
             Self::Xai(client) | Self::OpenAi(client) | Self::Ollama(client) => {
                 stream_via_provider(client, request)
                     .await
@@ -102,7 +102,7 @@ impl ProviderClient {
 
 #[derive(Debug)]
 pub enum MessageStream {
-    ClawApi(claw_provider::MessageStream),
+    AnthropicApi(anthropic_provider::MessageStream),
     OpenAiCompat(openai_compat::MessageStream),
 }
 
@@ -110,7 +110,7 @@ impl MessageStream {
     #[must_use]
     pub fn request_id(&self) -> Option<&str> {
         match self {
-            Self::ClawApi(stream) => stream.request_id(),
+            Self::AnthropicApi(stream) => stream.request_id(),
             Self::OpenAiCompat(stream) => stream.request_id(),
         }
     }
@@ -119,18 +119,18 @@ impl MessageStream {
     /// Returns an [`ApiError`] if the stream fails or a frame cannot be parsed.
     pub async fn next_event(&mut self) -> Result<Option<StreamEvent>, ApiError> {
         match self {
-            Self::ClawApi(stream) => stream.next_event().await,
+            Self::AnthropicApi(stream) => stream.next_event().await,
             Self::OpenAiCompat(stream) => stream.next_event().await,
         }
     }
 }
 
-pub use claw_provider::{
+pub use anthropic_provider::{
     oauth_token_is_expired, resolve_saved_oauth_token, resolve_startup_auth_source, OAuthTokenSet,
 };
 #[must_use]
 pub fn read_base_url() -> String {
-    claw_provider::read_base_url()
+    anthropic_provider::read_base_url()
 }
 
 #[must_use]
@@ -164,7 +164,7 @@ mod tests {
         assert_eq!(detect_provider_kind("grok-3"), ProviderKind::Xai);
         assert_eq!(
             detect_provider_kind("claude-sonnet-4-6"),
-            ProviderKind::ClawApi
+            ProviderKind::AnthropicApi
         );
     }
 
@@ -195,7 +195,7 @@ mod tests {
         // Cloud models should NOT route to Ollama
         assert_eq!(
             detect_provider_kind("claude-opus-4-6"),
-            ProviderKind::ClawApi
+            ProviderKind::AnthropicApi
         );
         assert_eq!(detect_provider_kind("grok-3"), ProviderKind::Xai);
     }
