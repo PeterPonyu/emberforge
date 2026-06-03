@@ -45,7 +45,7 @@ fn provider_client_uses_explicit_auth_without_env_lookup() {
     )
     .expect("explicit auth should avoid env lookup");
 
-    assert_eq!(client.provider_kind(), ProviderKind::ClawApi);
+    assert_eq!(client.provider_kind(), ProviderKind::AnthropicApi);
 }
 
 #[test]

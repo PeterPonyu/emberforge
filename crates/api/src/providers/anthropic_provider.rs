@@ -46,7 +46,7 @@ impl AuthSource {
             (Some(api_key), None) => Ok(Self::ApiKey(api_key)),
             (None, Some(bearer_token)) => Ok(Self::BearerToken(bearer_token)),
             (None, None) => Err(ApiError::missing_credentials(
-                "Claw",
+                "Anthropic",
                 &["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"],
             )),
         }
@@ -108,7 +108,7 @@ impl From<OAuthTokenSet> for AuthSource {
 }
 
 #[derive(Debug, Clone)]
-pub struct ClawApiClient {
+pub struct AnthropicApiClient {
     http: reqwest::Client,
     auth: AuthSource,
     base_url: String,
@@ -117,7 +117,7 @@ pub struct ClawApiClient {
     max_backoff: Duration,
 }
 
-impl ClawApiClient {
+impl AnthropicApiClient {
     #[must_use]
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -382,7 +382,7 @@ impl AuthSource {
             }
             Ok(Some(token_set)) => Ok(Self::BearerToken(token_set.access_token)),
             Ok(None) => Err(ApiError::missing_credentials(
-                "Claw",
+                "Anthropic",
                 &["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"],
             )),
             Err(error) => Err(error),
@@ -433,7 +433,7 @@ where
 
     let Some(token_set) = load_saved_oauth_token()? else {
         return Err(ApiError::missing_credentials(
-            "Claw",
+            "Anthropic",
             &["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"],
         ));
     };
@@ -464,7 +464,7 @@ fn resolve_saved_oauth_token_set(
     let Some(refresh_token) = token_set.refresh_token.clone() else {
         return Err(ApiError::ExpiredOAuthToken);
     };
-    let client = ClawApiClient::from_auth(AuthSource::None).with_base_url(read_base_url());
+    let client = AnthropicApiClient::from_auth(AuthSource::None).with_base_url(read_base_url());
     let refreshed = client_runtime_block_on(async {
         client
             .refresh_oauth_token(
@@ -533,7 +533,7 @@ fn read_api_key() -> Result<String, ApiError> {
         .or_else(|| auth.bearer_token())
         .map(ToOwned::to_owned)
         .ok_or(ApiError::missing_credentials(
-            "Claw",
+            "Anthropic",
             &["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"],
         ))
 }
@@ -558,7 +558,7 @@ fn request_id_from_headers(headers: &reqwest::header::HeaderMap) -> Option<Strin
         .map(ToOwned::to_owned)
 }
 
-impl Provider for ClawApiClient {
+impl Provider for AnthropicApiClient {
     type Stream = MessageStream;
 
     fn send_message<'a>(
@@ -664,9 +664,9 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use super::{ALT_REQUEST_ID_HEADER, REQUEST_ID_HEADER};
+    use serial_test::serial;
     use std::io::{Read, Write};
     use std::net::TcpListener;
-    use std::sync::{Mutex, OnceLock};
     use std::thread;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -674,16 +674,16 @@ mod tests {
 
     use super::{
         now_unix_timestamp, oauth_token_is_expired, resolve_saved_oauth_token,
-        resolve_startup_auth_source, AuthSource, ClawApiClient, OAuthTokenSet,
+        resolve_startup_auth_source, AnthropicApiClient, AuthSource, OAuthTokenSet,
     };
     use crate::types::{ContentBlockDelta, MessageRequest};
 
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
+    // These tests mutate process-wide env vars (`EMBER_CONFIG_HOME`,
+    // `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`). They are serialized under a
+    // shared `config_home` key so they never run concurrently with the other
+    // env-mutating tests in this crate (prompt_cache / openai_compat), which
+    // would otherwise race on the same shared process state under parallel
+    // `cargo test`.
 
     fn temp_config_home() -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
@@ -734,17 +734,17 @@ mod tests {
         format!("http://{address}/oauth/token")
     }
 
-    // Both tests redirect `CLAW_CONFIG_HOME` to a freshly-created empty temp
+    // Both tests redirect `EMBER_CONFIG_HOME` to a freshly-created empty temp
     // directory so `AuthSource::from_env_or_saved` cannot fall back to a
     // saved auth file under `$HOME` (Unix) or `%APPDATA%` (Windows). Without
     // that, the Windows CI runner picks up an unrelated cached config and the
     // negative-path assertion fails. Other tests in this module use the same
     // `temp_config_home()` helper.
     #[test]
+    #[serial(config_home)]
     fn read_api_key_requires_presence() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
         std::env::remove_var("ANTHROPIC_API_KEY");
         let error = super::read_api_key().expect_err("missing key should error");
@@ -752,15 +752,15 @@ mod tests {
             error,
             crate::error::ApiError::MissingCredentials { .. }
         ));
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("EMBER_CONFIG_HOME");
         cleanup_temp_config_home(&config_home);
     }
 
     #[test]
+    #[serial(config_home)]
     fn read_api_key_requires_non_empty_value() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::set_var("ANTHROPIC_AUTH_TOKEN", "");
         std::env::remove_var("ANTHROPIC_API_KEY");
         let error = super::read_api_key().expect_err("empty key should error");
@@ -769,13 +769,13 @@ mod tests {
             crate::error::ApiError::MissingCredentials { .. }
         ));
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("EMBER_CONFIG_HOME");
         cleanup_temp_config_home(&config_home);
     }
 
     #[test]
+    #[serial(config_home)]
     fn read_api_key_prefers_api_key_env() {
-        let _guard = env_lock();
         std::env::set_var("ANTHROPIC_AUTH_TOKEN", "auth-token");
         std::env::set_var("ANTHROPIC_API_KEY", "legacy-key");
         assert_eq!(
@@ -787,8 +787,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn read_auth_token_reads_auth_token_env() {
-        let _guard = env_lock();
         std::env::set_var("ANTHROPIC_AUTH_TOKEN", "auth-token");
         assert_eq!(super::read_auth_token().as_deref(), Some("auth-token"));
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
@@ -807,8 +807,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn auth_source_from_env_combines_api_key_and_bearer_token() {
-        let _guard = env_lock();
         std::env::set_var("ANTHROPIC_AUTH_TOKEN", "auth-token");
         std::env::set_var("ANTHROPIC_API_KEY", "legacy-key");
         let auth = AuthSource::from_env().expect("env auth");
@@ -819,10 +819,10 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn auth_source_from_saved_oauth_when_env_absent() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
         std::env::remove_var("ANTHROPIC_API_KEY");
         save_oauth_credentials(&runtime::OAuthTokenSet {
@@ -837,7 +837,7 @@ mod tests {
         assert_eq!(auth.bearer_token(), Some("saved-access-token"));
 
         clear_oauth_credentials().expect("clear credentials");
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("EMBER_CONFIG_HOME");
         cleanup_temp_config_home(&config_home);
     }
 
@@ -858,10 +858,10 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn resolve_saved_oauth_token_refreshes_expired_credentials() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
         std::env::remove_var("ANTHROPIC_API_KEY");
         save_oauth_credentials(&runtime::OAuthTokenSet {
@@ -885,15 +885,15 @@ mod tests {
         assert_eq!(stored.access_token, "refreshed-token");
 
         clear_oauth_credentials().expect("clear credentials");
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("EMBER_CONFIG_HOME");
         cleanup_temp_config_home(&config_home);
     }
 
     #[test]
+    #[serial(config_home)]
     fn resolve_startup_auth_source_uses_saved_oauth_without_loading_config() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
         std::env::remove_var("ANTHROPIC_API_KEY");
         save_oauth_credentials(&runtime::OAuthTokenSet {
@@ -909,15 +909,15 @@ mod tests {
         assert_eq!(auth.bearer_token(), Some("saved-access-token"));
 
         clear_oauth_credentials().expect("clear credentials");
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("EMBER_CONFIG_HOME");
         cleanup_temp_config_home(&config_home);
     }
 
     #[test]
+    #[serial(config_home)]
     fn resolve_startup_auth_source_errors_when_refreshable_token_lacks_config() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
         std::env::remove_var("ANTHROPIC_API_KEY");
         save_oauth_credentials(&runtime::OAuthTokenSet {
@@ -941,15 +941,15 @@ mod tests {
         assert_eq!(stored.refresh_token.as_deref(), Some("refresh-token"));
 
         clear_oauth_credentials().expect("clear credentials");
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("EMBER_CONFIG_HOME");
         cleanup_temp_config_home(&config_home);
     }
 
     #[test]
+    #[serial(config_home)]
     fn resolve_saved_oauth_token_preserves_refresh_token_when_refresh_response_omits_it() {
-        let _guard = env_lock();
         let config_home = temp_config_home();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::set_var("EMBER_CONFIG_HOME", &config_home);
         std::env::remove_var("ANTHROPIC_AUTH_TOKEN");
         std::env::remove_var("ANTHROPIC_API_KEY");
         save_oauth_credentials(&runtime::OAuthTokenSet {
@@ -974,7 +974,7 @@ mod tests {
         assert_eq!(stored.refresh_token.as_deref(), Some("refresh-token"));
 
         clear_oauth_credentials().expect("clear credentials");
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("EMBER_CONFIG_HOME");
         cleanup_temp_config_home(&config_home);
     }
 
@@ -995,7 +995,7 @@ mod tests {
 
     #[test]
     fn backoff_doubles_until_maximum() {
-        let client = ClawApiClient::new("test-key").with_retry_policy(
+        let client = AnthropicApiClient::new("test-key").with_retry_policy(
             3,
             Duration::from_millis(10),
             Duration::from_millis(25),

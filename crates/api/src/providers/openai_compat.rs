@@ -1037,7 +1037,7 @@ mod tests {
         ToolResultContentBlock,
     };
     use serde_json::json;
-    use std::sync::{Mutex, OnceLock};
+    use serial_test::serial;
 
     #[test]
     fn request_translation_uses_openai_compatible_shape() {
@@ -1097,8 +1097,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_home)]
     fn missing_xai_api_key_is_provider_specific() {
-        let _lock = env_lock();
         std::env::remove_var("XAI_API_KEY");
         let error = OpenAiCompatClient::from_env(OpenAiCompatConfig::xai())
             .expect_err("missing key should error");
@@ -1125,13 +1125,6 @@ mod tests {
             chat_completions_endpoint("https://api.x.ai/v1/chat/completions"),
             "https://api.x.ai/v1/chat/completions"
         );
-    }
-
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("env lock")
     }
 
     #[test]

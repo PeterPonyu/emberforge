@@ -72,9 +72,15 @@ impl RemoteSessionContext {
     #[must_use]
     pub fn from_env_map(env_map: &BTreeMap<String, String>) -> Self {
         Self {
-            enabled: env_truthy(env_map.get("CLAW_CODE_REMOTE")),
+            // Emberforge env vars (preferred) with legacy Claw fallback.
+            enabled: env_truthy(
+                env_map
+                    .get("EMBER_REMOTE")
+                    .or_else(|| env_map.get("CLAW_CODE_REMOTE")),
+            ),
             session_id: env_map
-                .get("CLAW_CODE_REMOTE_SESSION_ID")
+                .get("EMBER_REMOTE_SESSION_ID")
+                .or_else(|| env_map.get("CLAW_CODE_REMOTE_SESSION_ID"))
                 .filter(|value| !value.is_empty())
                 .cloned(),
             base_url: env_map

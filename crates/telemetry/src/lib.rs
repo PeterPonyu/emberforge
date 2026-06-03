@@ -10,8 +10,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 pub const DEFAULT_ANTHROPIC_VERSION: &str = "2023-06-01";
-pub const DEFAULT_APP_NAME: &str = "claude-code";
+pub const DEFAULT_APP_NAME: &str = "emberforge";
 pub const DEFAULT_RUNTIME: &str = "rust";
+// NOTE: `claude-code-20250219` is an Anthropic API *capability* token sent in the
+// `anthropic-beta` header to enable agentic features / prompt caching on
+// api.anthropic.com. It is a functional feature-flag recognized by the live API,
+// not product branding — changing it would silently disable those API capabilities.
+// It is intentionally kept verbatim.
 pub const DEFAULT_AGENTIC_BETA: &str = "claude-code-20250219";
 pub const DEFAULT_PROMPT_CACHING_SCOPE_BETA: &str = "prompt-caching-scope-2026-01-05";
 
@@ -453,7 +458,7 @@ mod tests {
     #[test]
     fn request_profile_emits_headers_and_merges_body() {
         let profile = AnthropicRequestProfile::new(
-            ClientIdentity::new("claude-code", "1.2.3").with_runtime("rust-cli"),
+            ClientIdentity::new("emberforge", "1.2.3").with_runtime("rust-cli"),
         )
         .with_beta("tools-2026-04-01")
         .with_extra_body("metadata", serde_json::json!({"source": "test"}));
@@ -465,7 +470,7 @@ mod tests {
                     "anthropic-version".to_string(),
                     DEFAULT_ANTHROPIC_VERSION.to_string()
                 ),
-                ("user-agent".to_string(), "claude-code/1.2.3".to_string()),
+                ("user-agent".to_string(), "emberforge/1.2.3".to_string()),
                 (
                     "anthropic-beta".to_string(),
                     "claude-code-20250219,prompt-caching-scope-2026-01-05,tools-2026-04-01"

@@ -6,6 +6,26 @@
 
 Emberforge is a terminal coding tool for local models through Ollama. When you need hosted models, it can use those too. The project includes an interactive REPL, one-shot prompt mode, built-in tools, session management, plugins, and support for multiple model backends.
 
+## Prerequisites: Ollama
+
+Emberforge's default backend is a local [Ollama](https://ollama.com) model, so
+install and start Ollama before running the local model examples below.
+
+```bash
+# 1. Install Ollama (official Linux installer)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 2. Start the Ollama server (or `sudo systemctl start ollama` when using systemd)
+ollama serve
+
+# 3. Pull the default model used by Emberforge
+ollama pull qwen3:8b
+```
+
+By default Emberforge talks to Ollama at `http://localhost:11434/v1`; override it
+with `OLLAMA_BASE_URL` if your daemon listens elsewhere. Hosted backends
+(Anthropic, xAI) do not require Ollama — see [Model Support](#model-support).
+
 ## Quick Start
 
 ```bash

@@ -217,8 +217,8 @@ async fn provider_client_dispatches_api_requests() {
     )
     .expect("api provider client should be constructed");
     let client = match client {
-        ProviderClient::ClawApi(client) => {
-            ProviderClient::ClawApi(client.with_base_url(server.base_url()))
+        ProviderClient::AnthropicApi(client) => {
+            ProviderClient::AnthropicApi(client.with_base_url(server.base_url()))
         }
         other => panic!("expected default provider, got {other:?}"),
     };
@@ -293,7 +293,9 @@ async fn live_stream_smoke_test() {
     let client = ApiClient::from_env().expect("ANTHROPIC_API_KEY must be set");
     let mut stream = client
         .stream_message(&MessageRequest {
-            model: std::env::var("CLAW_MODEL").unwrap_or_else(|_| "claude-sonnet-4-6".to_string()),
+            model: std::env::var("EMBER_MODEL")
+                .or_else(|_| std::env::var("CLAW_MODEL"))
+                .unwrap_or_else(|_| "claude-sonnet-4-6".to_string()),
             max_tokens: 32,
             messages: vec![InputMessage::user_text(
                 "Reply with exactly: hello from rust",

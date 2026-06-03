@@ -26,9 +26,10 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use api::{
-    resolve_startup_auth_source, AuthSource, ClawApiClient, ContentBlockDelta, InputContentBlock,
-    InputMessage, MessageRequest, MessageResponse, OutputContentBlock, ProviderClient,
-    StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition, ToolResultContentBlock, Usage,
+    resolve_startup_auth_source, AnthropicApiClient, AuthSource, ContentBlockDelta,
+    InputContentBlock, InputMessage, MessageRequest, MessageResponse, OutputContentBlock,
+    ProviderClient, StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition,
+    ToolResultContentBlock, Usage,
 };
 
 use commands::{
@@ -273,12 +274,19 @@ fn default_model_choice(has_anthropic_auth: bool, has_xai_auth: bool) -> &'stati
 
 #[cfg(not(test))]
 fn default_model() -> String {
+    // Explicit override via the Emberforge env var takes precedence.
+    if let Ok(model) = env::var("EMBER_MODEL") {
+        let trimmed = model.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
     default_model_choice(has_anthropic_auth(), has_xai_auth()).to_string()
 }
 
 fn provider_label_for_model(model: &str) -> &'static str {
     match api::detect_provider_kind(model) {
-        api::ProviderKind::ClawApi => "Anthropic",
+        api::ProviderKind::AnthropicApi => "Anthropic",
         api::ProviderKind::Xai => "xAI",
         api::ProviderKind::OpenAi => "OpenAI",
         api::ProviderKind::Ollama => "Ollama",
@@ -451,9 +459,7 @@ enum ReleaseReceiptAction {
         checks: Vec<(String, bool)>,
     },
     /// Check whether the latest receipt for `version` passes (release gate).
-    Check {
-        version: String,
-    },
+    Check { version: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -707,7 +713,10 @@ fn parse_decide_args(args: &[String]) -> Result<CliAction, String> {
     }
     let summary = summary_parts.join(" ").trim().to_string();
     if summary.is_empty() {
-        return Err("decide requires a summary: ember decide \"<summary>\" [--rationale ...] [--kind ...]".to_string());
+        return Err(
+            "decide requires a summary: ember decide \"<summary>\" [--rationale ...] [--kind ...]"
+                .to_string(),
+        );
     }
     Ok(CliAction::Decide {
         summary,
@@ -760,26 +769,34 @@ fn parse_release_receipt_record(args: &[String]) -> Result<CliAction, String> {
                 index += 2;
             }
             "--check" => {
-                let raw = args
-                    .get(index + 1)
-                    .ok_or_else(|| "missing value for --check (expected name=true|false)".to_string())?;
+                let raw = args.get(index + 1).ok_or_else(|| {
+                    "missing value for --check (expected name=true|false)".to_string()
+                })?;
                 checks.push(parse_check_spec(raw)?);
                 index += 2;
             }
             other if other.starts_with('-') => {
-                return Err(format!("unexpected argument '{other}' to release-receipt record"));
+                return Err(format!(
+                    "unexpected argument '{other}' to release-receipt record"
+                ));
             }
             other if version.is_none() => {
                 version = Some(other.to_string());
                 index += 1;
             }
-            other => return Err(format!("unexpected argument '{other}' to release-receipt record")),
+            other => {
+                return Err(format!(
+                    "unexpected argument '{other}' to release-receipt record"
+                ))
+            }
         }
     }
-    let version = version
-        .ok_or_else(|| "release-receipt record requires a <version>".to_string())?;
+    let version =
+        version.ok_or_else(|| "release-receipt record requires a <version>".to_string())?;
     if checks.is_empty() {
-        return Err("release-receipt record requires at least one --check name=true|false".to_string());
+        return Err(
+            "release-receipt record requires at least one --check name=true|false".to_string(),
+        );
     }
     Ok(CliAction::ReleaseReceipt {
         action: ReleaseReceiptAction::Record {
@@ -797,7 +814,11 @@ fn parse_check_spec(raw: &str) -> Result<(String, bool), String> {
     let pass = match value.trim().to_ascii_lowercase().as_str() {
         "true" | "pass" | "ok" | "1" | "yes" => true,
         "false" | "fail" | "0" | "no" => false,
-        other => return Err(format!("invalid --check value '{other}': expected true|false")),
+        other => {
+            return Err(format!(
+                "invalid --check value '{other}': expected true|false"
+            ))
+        }
     };
     let name = name.trim();
     if name.is_empty() {
@@ -1020,12 +1041,21 @@ fn default_oauth_config() -> OAuthConfig {
 }
 
 /// Record an append-only decision to `.ember/decisions.jsonl` (EFRUST-9).
-fn run_decide(summary: &str, rationale: &str, kind: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn run_decide(
+    summary: &str,
+    rationale: &str,
+    kind: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let record = runtime::ledger::DecisionRecord::now(kind, summary, rationale);
     runtime::ledger::append_decision(&cwd, &record)?;
     let path = runtime::ledger::decisions_file(&cwd);
-    println!("Recorded decision [{}] {} -> {}", record.kind, record.summary, path.display());
+    println!(
+        "Recorded decision [{}] {} -> {}",
+        record.kind,
+        record.summary,
+        path.display()
+    );
     Ok(())
 }
 
@@ -1054,7 +1084,10 @@ fn run_release_receipt(action: &ReleaseReceiptAction) -> Result<(), Box<dyn std:
                     if receipt.pass {
                         Ok(())
                     } else {
-                        Err(format!("release gate FAILED: latest receipt for v{version} did not pass").into())
+                        Err(format!(
+                            "release gate FAILED: latest receipt for v{version} did not pass"
+                        )
+                        .into())
                     }
                 }
                 None => {
@@ -1102,7 +1135,8 @@ fn run_login() -> Result<(), Box<dyn std::error::Error>> {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "oauth state mismatch").into());
     }
 
-    let client = ClawApiClient::from_auth(AuthSource::None).with_base_url(api::read_base_url());
+    let client =
+        AnthropicApiClient::from_auth(AuthSource::None).with_base_url(api::read_base_url());
     let exchange_request =
         OAuthTokenExchangeRequest::from_config(oauth, code, state, pkce.verifier, redirect_uri);
     let runtime = tokio::runtime::Runtime::new()?;
@@ -6919,9 +6953,9 @@ mod tests {
         response_to_events, resume_supported_slash_commands, sanitize_assistant_text,
         slash_command_completion_candidates, status_context, strip_terminal_escape_sequences,
         AvailableModelCatalog, CliAction, CliOutputFormat, InternalPromptProgressEvent,
-        ReleaseReceiptAction,
-        InternalPromptProgressState, SlashCommand, StatusUsage, ANTHROPIC_DEFAULT_MODEL,
-        DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL, THINKING_PREVIEW_MAX_CHARS, XAI_DEFAULT_MODEL,
+        InternalPromptProgressState, ReleaseReceiptAction, SlashCommand, StatusUsage,
+        ANTHROPIC_DEFAULT_MODEL, DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL, THINKING_PREVIEW_MAX_CHARS,
+        XAI_DEFAULT_MODEL,
     };
     use crate::doctor::{
         format_doctor_status, parse_doctor_mode, DoctorCache, DoctorCheck, DoctorCheckStatus,
@@ -7348,10 +7382,7 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
                 action: ReleaseReceiptAction::Record {
                     version: "0.1.0".to_string(),
                     committer: "local".to_string(),
-                    checks: vec![
-                        ("build".to_string(), true),
-                        ("tests".to_string(), false),
-                    ],
+                    checks: vec![("build".to_string(), true), ("tests".to_string(), false),],
                 },
             }
         );
