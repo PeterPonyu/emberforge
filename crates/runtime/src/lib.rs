@@ -70,7 +70,7 @@ pub use config::{
     RuntimePluginConfig, RuntimeUiAnimationConfig, RuntimeUiAnimationMode, RuntimeUiBannerConfig,
     RuntimeUiBannerMode, RuntimeUiBannerVariant, RuntimeUiConfig, RuntimeUiHudConfig,
     RuntimeUiHudPreset, RuntimeUiMotionConfig, ScopedMcpServerConfig, ThemeMode,
-    CLAW_SETTINGS_SCHEMA_NAME,
+    EMBER_SETTINGS_SCHEMA_NAME,
 };
 pub use context_collapse::{
     collapse_context, compute_importance, estimate_tokens, CollapseConfig, CollapseResult,

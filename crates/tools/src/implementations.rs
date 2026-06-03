@@ -515,22 +515,26 @@ fn resolve_skill_path(skill: &str) -> Result<std::path::PathBuf, String> {
 
     let mut candidates = Vec::new();
 
-    // Project-local skill roots (match /skills command discovery)
+    // Project-local skill roots (match /skills command discovery).
+    // Emberforge's own `.ember` dir takes precedence; codex/claw are optional interop.
     if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join(".ember").join("skills"));
         candidates.push(cwd.join(".codex").join("skills"));
         candidates.push(cwd.join(".claw").join("skills"));
-        candidates.push(cwd.join(".ember").join("skills"));
     }
 
-    // User-global skill roots
+    // User-global skill roots (Emberforge sources first).
+    if let Ok(ember_home) = std::env::var("EMBER_CONFIG_HOME") {
+        candidates.push(std::path::PathBuf::from(ember_home).join("skills"));
+    }
     if let Ok(codex_home) = std::env::var("CODEX_HOME") {
         candidates.push(std::path::PathBuf::from(codex_home).join("skills"));
     }
     if let Ok(home) = std::env::var("HOME") {
         let home = std::path::PathBuf::from(home);
+        candidates.push(home.join(".ember").join("skills"));
         candidates.push(home.join(".codex").join("skills"));
         candidates.push(home.join(".claw").join("skills"));
-        candidates.push(home.join(".ember").join("skills"));
         candidates.push(home.join(".agents").join("skills"));
         candidates.push(home.join(".config").join("opencode").join("skills"));
     }
@@ -2215,16 +2219,35 @@ fn config_file_for_scope(scope: ConfigScope) -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
     Ok(match scope {
         ConfigScope::Global => config_home_dir()?.join("settings.json"),
-        ConfigScope::Settings => cwd.join(".claw").join("settings.local.json"),
+        ConfigScope::Settings => project_config_dir(&cwd).join("settings.local.json"),
     })
 }
 
+/// Resolve the project-local config dir, preferring `.ember` and falling back
+/// to the legacy `.claw` dir only when it already exists.
+fn project_config_dir(cwd: &Path) -> PathBuf {
+    let legacy = cwd.join(".claw");
+    if legacy.is_dir() && !cwd.join(".ember").is_dir() {
+        return legacy;
+    }
+    cwd.join(".ember")
+}
+
 fn config_home_dir() -> Result<PathBuf, String> {
+    // Emberforge env var (preferred) with legacy Claw fallback.
+    if let Ok(path) = std::env::var("EMBER_CONFIG_HOME") {
+        return Ok(PathBuf::from(path));
+    }
     if let Ok(path) = std::env::var("CLAW_CONFIG_HOME") {
         return Ok(PathBuf::from(path));
     }
     let home = std::env::var("HOME").map_err(|_| String::from("HOME is not set"))?;
-    Ok(PathBuf::from(home).join(".claw"))
+    let ember = PathBuf::from(&home).join(".ember");
+    let legacy = PathBuf::from(&home).join(".claw");
+    if legacy.is_dir() && !ember.is_dir() {
+        return Ok(legacy);
+    }
+    Ok(ember)
 }
 
 fn read_json_object(path: &Path) -> Result<serde_json::Map<String, Value>, String> {

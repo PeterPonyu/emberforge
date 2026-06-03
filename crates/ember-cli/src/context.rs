@@ -55,7 +55,7 @@ pub(crate) fn collect_session_context(cwd: &Path) -> Vec<ContextSnippet> {
         });
     }
 
-    // 4. Project rules from .claude/rules/ or .ember/rules/.
+    // 4. Project rules from .ember/rules/ (primary), with optional interop fallbacks.
     snippets.extend(collect_project_rules(cwd));
 
     // Sort by priority (highest first) and truncate to budget.
@@ -127,9 +127,11 @@ fn read_directory_readme(dir: &Path) -> Option<String> {
 /// Collect project rules from standard locations.
 fn collect_project_rules(cwd: &Path) -> Vec<ContextSnippet> {
     let mut snippets = Vec::new();
+    // Emberforge's own `.ember/rules/` is primary; `.claude/rules/` is kept
+    // only as an optional interop fallback.
     let rule_dirs = [
-        cwd.join(".claude").join("rules"),
         cwd.join(".ember").join("rules"),
+        cwd.join(".claude").join("rules"),
         cwd.join(".github").join("instructions"),
     ];
 

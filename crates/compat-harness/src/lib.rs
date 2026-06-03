@@ -65,14 +65,20 @@ fn resolve_upstream_repo_root(primary_repo_root: &Path) -> PathBuf {
 fn upstream_repo_candidates(primary_repo_root: &Path) -> Vec<PathBuf> {
     let mut candidates = vec![primary_repo_root.to_path_buf()];
 
-    if let Some(explicit) = std::env::var_os("CLAW_CODE_UPSTREAM") {
+    // Emberforge env var (preferred) with legacy fallback.
+    if let Some(explicit) = std::env::var_os("EMBER_UPSTREAM_SRC")
+        .or_else(|| std::env::var_os("CLAW_CODE_UPSTREAM"))
+    {
         candidates.push(PathBuf::from(explicit));
     }
 
     for ancestor in primary_repo_root.ancestors().take(4) {
+        candidates.push(ancestor.join("upstream-src"));
         candidates.push(ancestor.join("claw-code"));
     }
 
+    candidates.push(primary_repo_root.join("reference-source").join("upstream-src"));
+    candidates.push(primary_repo_root.join("vendor").join("upstream-src"));
     candidates.push(primary_repo_root.join("reference-source").join("claw-code"));
     candidates.push(primary_repo_root.join("vendor").join("claw-code"));
 

@@ -274,6 +274,13 @@ fn default_model_choice(has_anthropic_auth: bool, has_xai_auth: bool) -> &'stati
 
 #[cfg(not(test))]
 fn default_model() -> String {
+    // Explicit override via the Emberforge env var takes precedence.
+    if let Ok(model) = env::var("EMBER_MODEL") {
+        let trimmed = model.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
     default_model_choice(has_anthropic_auth(), has_xai_auth()).to_string()
 }
 

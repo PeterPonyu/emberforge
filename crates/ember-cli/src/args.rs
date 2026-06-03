@@ -5,7 +5,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[derive(Debug, Clone, Parser, PartialEq, Eq)]
 #[command(name = "emberforge", version, about = "Emberforge CLI")]
 pub struct Cli {
-    #[arg(long, default_value = "claude-opus-4-6")]
+    /// Model id to use. Defaults to the local-first Ollama model `qwen3:8b`
+    /// and can be overridden via the `EMBER_MODEL` environment variable.
+    #[arg(long, env = "EMBER_MODEL", default_value = "qwen3:8b")]
     pub model: String,
 
     #[arg(long, value_enum, default_value_t = PermissionMode::DangerFullAccess)]
@@ -59,7 +61,7 @@ mod tests {
     #[test]
     fn parses_requested_flags() {
         let cli = Cli::parse_from([
-            "claw-cli",
+            "ember",
             "--model",
             "claude-haiku-4-5-20251213",
             "--permission-mode",
@@ -90,16 +92,16 @@ mod tests {
 
     #[test]
     fn parses_login_and_logout_commands() {
-        let login = Cli::parse_from(["claw-cli", "login"]);
+        let login = Cli::parse_from(["ember", "login"]);
         assert_eq!(login.command, Some(Command::Login));
 
-        let logout = Cli::parse_from(["claw-cli", "logout"]);
+        let logout = Cli::parse_from(["ember", "logout"]);
         assert_eq!(logout.command, Some(Command::Logout));
     }
 
     #[test]
     fn defaults_to_danger_full_access_permission_mode() {
-        let cli = Cli::parse_from(["claw-cli"]);
+        let cli = Cli::parse_from(["ember"]);
         assert_eq!(cli.permission_mode, PermissionMode::DangerFullAccess);
     }
 }

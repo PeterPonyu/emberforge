@@ -26,6 +26,11 @@ pub struct PluginsCommandResult {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum DefinitionSource {
+    // Emberforge's own sources take precedence (listed first).
+    ProjectEmber,
+    UserEmberHome,
+    UserEmber,
+    // Legacy / optional interop sources (lower precedence).
     ProjectCodex,
     ProjectClaw,
     UserCodexHome,
@@ -36,6 +41,9 @@ pub(crate) enum DefinitionSource {
 impl DefinitionSource {
     fn label(self) -> &'static str {
         match self {
+            Self::ProjectEmber => "Project (.ember)",
+            Self::UserEmberHome => "User ($EMBER_CONFIG_HOME)",
+            Self::UserEmber => "User (~/.ember)",
             Self::ProjectCodex => "Project (.codex)",
             Self::ProjectClaw => "Project (.claw)",
             Self::UserCodexHome => "User ($CODEX_HOME)",
@@ -719,6 +727,16 @@ fn resolve_plugin_target(
 fn discover_definition_roots(cwd: &Path, leaf: &str) -> Vec<(DefinitionSource, PathBuf)> {
     let mut roots = Vec::new();
 
+    // Emberforge's own project sources take precedence.
+    for ancestor in cwd.ancestors() {
+        push_unique_root(
+            &mut roots,
+            DefinitionSource::ProjectEmber,
+            ancestor.join(".ember").join(leaf),
+        );
+    }
+
+    // Legacy / optional interop project sources.
     for ancestor in cwd.ancestors() {
         push_unique_root(
             &mut roots,
@@ -732,6 +750,14 @@ fn discover_definition_roots(cwd: &Path, leaf: &str) -> Vec<(DefinitionSource, P
         );
     }
 
+    if let Some(ember_home) = env::var_os("EMBER_CONFIG_HOME") {
+        push_unique_root(
+            &mut roots,
+            DefinitionSource::UserEmberHome,
+            PathBuf::from(ember_home).join(leaf),
+        );
+    }
+
     if let Ok(codex_home) = env::var("CODEX_HOME") {
         push_unique_root(
             &mut roots,
@@ -742,6 +768,11 @@ fn discover_definition_roots(cwd: &Path, leaf: &str) -> Vec<(DefinitionSource, P
 
     if let Some(home) = env::var_os("HOME") {
         let home = PathBuf::from(home);
+        push_unique_root(
+            &mut roots,
+            DefinitionSource::UserEmber,
+            home.join(".ember").join(leaf),
+        );
         push_unique_root(
             &mut roots,
             DefinitionSource::UserCodex,
@@ -760,6 +791,23 @@ fn discover_definition_roots(cwd: &Path, leaf: &str) -> Vec<(DefinitionSource, P
 fn discover_skill_roots(cwd: &Path) -> Vec<SkillRoot> {
     let mut roots = Vec::new();
 
+    // Emberforge's own project sources take precedence.
+    for ancestor in cwd.ancestors() {
+        push_unique_skill_root(
+            &mut roots,
+            DefinitionSource::ProjectEmber,
+            ancestor.join(".ember").join("skills"),
+            SkillOrigin::SkillsDir,
+        );
+        push_unique_skill_root(
+            &mut roots,
+            DefinitionSource::ProjectEmber,
+            ancestor.join(".ember").join("commands"),
+            SkillOrigin::LegacyCommandsDir,
+        );
+    }
+
+    // Legacy / optional interop project sources.
     for ancestor in cwd.ancestors() {
         push_unique_skill_root(
             &mut roots,
@@ -787,6 +835,22 @@ fn discover_skill_roots(cwd: &Path) -> Vec<SkillRoot> {
         );
     }
 
+    if let Some(ember_home) = env::var_os("EMBER_CONFIG_HOME") {
+        let ember_home = PathBuf::from(ember_home);
+        push_unique_skill_root(
+            &mut roots,
+            DefinitionSource::UserEmberHome,
+            ember_home.join("skills"),
+            SkillOrigin::SkillsDir,
+        );
+        push_unique_skill_root(
+            &mut roots,
+            DefinitionSource::UserEmberHome,
+            ember_home.join("commands"),
+            SkillOrigin::LegacyCommandsDir,
+        );
+    }
+
     if let Ok(codex_home) = env::var("CODEX_HOME") {
         let codex_home = PathBuf::from(codex_home);
         push_unique_skill_root(
@@ -805,6 +869,18 @@ fn discover_skill_roots(cwd: &Path) -> Vec<SkillRoot> {
 
     if let Some(home) = env::var_os("HOME") {
         let home = PathBuf::from(home);
+        push_unique_skill_root(
+            &mut roots,
+            DefinitionSource::UserEmber,
+            home.join(".ember").join("skills"),
+            SkillOrigin::SkillsDir,
+        );
+        push_unique_skill_root(
+            &mut roots,
+            DefinitionSource::UserEmber,
+            home.join(".ember").join("commands"),
+            SkillOrigin::LegacyCommandsDir,
+        );
         push_unique_skill_root(
             &mut roots,
             DefinitionSource::UserCodex,
@@ -1064,6 +1140,9 @@ pub(crate) fn render_agents_report(agents: &[AgentSummary]) -> String {
     ];
 
     for source in [
+        DefinitionSource::ProjectEmber,
+        DefinitionSource::UserEmberHome,
+        DefinitionSource::UserEmber,
         DefinitionSource::ProjectCodex,
         DefinitionSource::ProjectClaw,
         DefinitionSource::UserCodexHome,
@@ -1122,6 +1201,9 @@ pub(crate) fn render_skills_report(skills: &[SkillSummary]) -> String {
     ];
 
     for source in [
+        DefinitionSource::ProjectEmber,
+        DefinitionSource::UserEmberHome,
+        DefinitionSource::UserEmber,
         DefinitionSource::ProjectCodex,
         DefinitionSource::ProjectClaw,
         DefinitionSource::UserCodexHome,
@@ -1166,7 +1248,8 @@ fn render_agents_usage(unexpected: Option<&str>) -> String {
         "Agents".to_string(),
         "  Usage            /agents".to_string(),
         "  Direct CLI       ember agents".to_string(),
-        "  Sources          .codex/agents, .claw/agents, $CODEX_HOME/agents".to_string(),
+        "  Sources          .ember/agents, $EMBER_CONFIG_HOME/agents".to_string(),
+        "  Compat sources   .codex/agents, .claw/agents (optional interop)".to_string(),
     ];
     if let Some(args) = unexpected {
         lines.push(format!("  Unexpected       {args}"));
@@ -1179,7 +1262,8 @@ fn render_skills_usage(unexpected: Option<&str>) -> String {
         "Skills".to_string(),
         "  Usage            /skills".to_string(),
         "  Direct CLI       ember skills".to_string(),
-        "  Sources          .codex/skills, .claw/skills, legacy /commands".to_string(),
+        "  Sources          .ember/skills, $EMBER_CONFIG_HOME/skills".to_string(),
+        "  Compat sources   .codex/skills, .claw/skills, legacy /commands".to_string(),
     ];
     if let Some(args) = unexpected {
         lines.push(format!("  Unexpected       {args}"));
