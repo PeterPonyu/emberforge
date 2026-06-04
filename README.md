@@ -45,6 +45,31 @@ cargo build --release
 ./target/release/ember prompt "explain this codebase"
 ```
 
+To put `ember` on your PATH, run `cargo install --path crates/ember-cli`.
+
+## One-shot prompt mode (the direct loop)
+
+`ember prompt "<text>"` runs a single non-interactive agent turn through the same
+runtime as the REPL (model + tool dispatch), prints the result, and exits — ideal for
+scripting and automation. Three equivalent entry points exist:
+
+```bash
+ember prompt "summarize crates/runtime"   # explicit subcommand
+ember "summarize crates/runtime"          # bare prompt
+ember -p "summarize crates/runtime"        # compatibility flag
+```
+
+Prompt mode supports structured output (text is the default):
+
+```bash
+ember prompt "status" --output-format json     # single JSON object
+ember prompt "status" --output-format ndjson   # newline-delimited event stream
+```
+
+Additional prompt-mode flags: `--model <name>`, `--permission-mode <read-only|workspace-write|danger-full-access>`,
+and `--allowed-tools <list>`. Agents driving this tool should read [AGENTS.md](AGENTS.md)
+for the full operating contract.
+
 ## What You Get
 
 - Runs against local Ollama models, so you can work without API keys for local-only setups
