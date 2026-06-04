@@ -957,9 +957,16 @@ pub fn read_base_url(config: OpenAiCompatConfig) -> String {
 fn chat_completions_endpoint(base_url: &str) -> String {
     let trimmed = base_url.trim_end_matches('/');
     if trimmed.ends_with("/chat/completions") {
+        // A full endpoint was supplied — use it verbatim.
         trimmed.to_string()
-    } else {
+    } else if trimmed.ends_with("/v1") {
+        // Base already carries the OpenAI-compat version segment.
         format!("{trimmed}/chat/completions")
+    } else {
+        // Root base URL with no version segment: derive the standard
+        // `/v1/chat/completions` path so both `http://host:port` and
+        // `http://host:port/v1` resolve to the same endpoint, for any host.
+        format!("{trimmed}/v1/chat/completions")
     }
 }
 
@@ -1124,6 +1131,38 @@ mod tests {
         assert_eq!(
             chat_completions_endpoint("https://api.x.ai/v1/chat/completions"),
             "https://api.x.ai/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn endpoint_builder_normalizes_root_and_v1_bases_idempotently() {
+        // A root base URL (no version segment) and a `/v1`-suffixed base must
+        // resolve to the SAME OpenAI-compat endpoint, for any host — no
+        // hardcoded host/port. This is the Ollama `OLLAMA_BASE_URL` case.
+        let expected = "http://localhost:11434/v1/chat/completions";
+        assert_eq!(
+            chat_completions_endpoint("http://localhost:11434"),
+            expected
+        );
+        assert_eq!(
+            chat_completions_endpoint("http://localhost:11434/"),
+            expected
+        );
+        assert_eq!(
+            chat_completions_endpoint("http://localhost:11434/v1"),
+            expected
+        );
+        assert_eq!(
+            chat_completions_endpoint("http://localhost:11434/v1/"),
+            expected
+        );
+
+        // Generic host:port (not localhost) behaves identically.
+        let remote = "http://192.0.2.10:8080/v1/chat/completions";
+        assert_eq!(chat_completions_endpoint("http://192.0.2.10:8080"), remote);
+        assert_eq!(
+            chat_completions_endpoint("http://192.0.2.10:8080/v1"),
+            remote
         );
     }
 
