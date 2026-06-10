@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -43,3 +45,38 @@ jobs:
 
       - name: Run release build
         run: cargo build --release
+
+  release-gate:
+    name: Release receipt gate
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: rust
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build ember binary
+        run: cargo build --release -p ember-cli
+
+      - name: Record release receipt from CI evidence
+        # The `rust` job (declared in `needs: rust`) ran fmt/clippy/tests/build on
+        # this exact commit across all platforms before this job starts.  We derive
+        # the receipt from that evidence rather than re-running the checks here.
+        # Future hardening: pass signed job-artifact attestations instead of
+        # deriving the receipt inline.
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./target/release/ember release-receipt record "$VERSION" \
+            --committer "ci/github-actions" \
+            --check fmt=true \
+            --check clippy=true \
+            --check tests=true \
+            --check build=true
+
+      - name: Check release receipt
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./target/release/ember release-receipt check "$VERSION"

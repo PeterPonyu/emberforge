@@ -54,7 +54,8 @@ async fn send_message_uses_openai_compatible_endpoint_and_auth() {
 
     let captured = state.lock().await;
     let request = captured.first().expect("server should capture request");
-    assert_eq!(request.path, "/chat/completions");
+    // A root base URL (no `/v1`) must resolve to the full OpenAI-compat path.
+    assert_eq!(request.path, "/v1/chat/completions");
     assert_eq!(
         request.headers.get("authorization").map(String::as_str),
         Some("Bearer xai-test-key")
@@ -194,7 +195,8 @@ async fn stream_message_normalizes_text_and_multiple_tool_calls() {
 
     let captured = state.lock().await;
     let request = captured.first().expect("captured request");
-    assert_eq!(request.path, "/chat/completions");
+    // A root base URL (no `/v1`) must resolve to the full OpenAI-compat path.
+    assert_eq!(request.path, "/v1/chat/completions");
     assert!(request.body.contains("\"stream\":true"));
 }
 
@@ -228,7 +230,8 @@ async fn provider_client_dispatches_xai_requests_from_env() {
 
     let captured = state.lock().await;
     let request = captured.first().expect("captured request");
-    assert_eq!(request.path, "/chat/completions");
+    // A root base URL (no `/v1`) must resolve to the full OpenAI-compat path.
+    assert_eq!(request.path, "/v1/chat/completions");
     assert_eq!(
         request.headers.get("authorization").map(String::as_str),
         Some("Bearer xai-test-key")

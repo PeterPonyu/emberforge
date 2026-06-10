@@ -5,7 +5,7 @@ Thanks for contributing to Emberforge.
 ## Development setup
 
 - Install the stable Rust toolchain.
-- Work from the repository root in this Rust workspace. If you started from the parent repo root, `cd rust/` first.
+- Work from the repository root (this is the Rust workspace root).
 
 ## Build
 

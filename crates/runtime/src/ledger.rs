@@ -39,7 +39,11 @@ impl DecisionRecord {
     /// Build a decision stamped with the current UTC time and `status` of
     /// `"accepted"`.
     #[must_use]
-    pub fn now(kind: impl Into<String>, summary: impl Into<String>, rationale: impl Into<String>) -> Self {
+    pub fn now(
+        kind: impl Into<String>,
+        summary: impl Into<String>,
+        rationale: impl Into<String>,
+    ) -> Self {
         Self {
             ts: iso8601_now(),
             kind: kind.into(),
@@ -89,7 +93,11 @@ impl ReleaseReceipt {
     /// Build a receipt for `version` from `checks`, stamped with the current UTC
     /// time. `pass` is derived as the conjunction of every check.
     #[must_use]
-    pub fn now(version: impl Into<String>, committer: impl Into<String>, checks: Vec<ReceiptCheck>) -> Self {
+    pub fn now(
+        version: impl Into<String>,
+        committer: impl Into<String>,
+        checks: Vec<ReceiptCheck>,
+    ) -> Self {
         let pass = !checks.is_empty() && checks.iter().all(|c| c.pass);
         Self {
             version: version.into(),
@@ -177,7 +185,10 @@ pub fn read_receipts(project_dir: &Path) -> std::io::Result<Vec<ReleaseReceipt>>
 /// # Errors
 ///
 /// Returns an [`std::io::Error`] if the ledger exists but cannot be read.
-pub fn latest_receipt_for(project_dir: &Path, version: &str) -> std::io::Result<Option<ReleaseReceipt>> {
+pub fn latest_receipt_for(
+    project_dir: &Path,
+    version: &str,
+) -> std::io::Result<Option<ReleaseReceipt>> {
     let receipts = read_receipts(project_dir)?;
     Ok(receipts.into_iter().rev().find(|r| r.version == version))
 }
@@ -277,7 +288,11 @@ mod tests {
         let dir = temp_dir("decisions");
         assert!(read_decisions(&dir).unwrap().is_empty());
 
-        let a = DecisionRecord::now("architecture", "port ledger to rust", "parity with antigravity");
+        let a = DecisionRecord::now(
+            "architecture",
+            "port ledger to rust",
+            "parity with antigravity",
+        );
         let b = DecisionRecord::now("process", "gate releases on receipts", "no silent releases");
         append_decision(&dir, &a).unwrap();
         append_decision(&dir, &b).unwrap();
@@ -299,7 +314,10 @@ mod tests {
 
         // Simulate a crash mid-append: a blank line and a half-written record.
         let path = decisions_file(&dir);
-        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
         writeln!(f).unwrap();
         write!(f, "{{\"ts\":\"2026-01-01T00:00:00Z\",\"kind\":\"arch").unwrap();
         drop(f);
@@ -339,7 +357,10 @@ mod tests {
         let failing = ReleaseReceipt::now(
             "0.1.0",
             "ci",
-            vec![ReceiptCheck::new("build", true), ReceiptCheck::new("tests", false)],
+            vec![
+                ReceiptCheck::new("build", true),
+                ReceiptCheck::new("tests", false),
+            ],
         );
         assert!(!failing.pass);
 

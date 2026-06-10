@@ -1029,7 +1029,12 @@ mod tests {
 
     #[test]
     fn probe_reports_unreachable_for_unresolvable_host() {
-        match probe_provider_endpoint("invalid.host.does-not-exist.example", 80) {
+        // Use the RFC 6761 `.invalid` TLD, which resolvers are required to treat
+        // as permanently unresolvable. The `.example` TLD is only reserved for
+        // documentation and is hijacked into a synthetic A record by some
+        // NXDOMAIN-rewriting resolvers, which would make this probe spuriously
+        // "Reachable" in those environments.
+        match probe_provider_endpoint("host.does-not-exist.invalid", 80) {
             ProbeOutcome::Unreachable(_) => {}
             ProbeOutcome::Reachable => panic!("nonexistent host should not be reachable"),
         }

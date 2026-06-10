@@ -45,6 +45,31 @@ cargo build --release
 ./target/release/ember prompt "explain this codebase"
 ```
 
+To put `ember` on your PATH, run `cargo install --path crates/ember-cli`.
+
+## One-shot prompt mode (the direct loop)
+
+`ember prompt "<text>"` runs a single non-interactive agent turn through the same
+runtime as the REPL (model + tool dispatch), prints the result, and exits — ideal for
+scripting and automation. Three equivalent entry points exist:
+
+```bash
+ember prompt "summarize crates/runtime"   # explicit subcommand
+ember "summarize crates/runtime"          # bare prompt
+ember -p "summarize crates/runtime"        # compatibility flag
+```
+
+Prompt mode supports structured output (text is the default):
+
+```bash
+ember prompt "status" --output-format json     # single JSON object
+ember prompt "status" --output-format ndjson   # newline-delimited event stream
+```
+
+Additional prompt-mode flags: `--model <name>`, `--permission-mode <read-only|workspace-write|danger-full-access>`,
+and `--allowed-tools <list>`. Agents driving this tool should read [AGENTS.md](AGENTS.md)
+for the full operating contract.
+
 ## What You Get
 
 - Runs against local Ollama models, so you can work without API keys for local-only setups
@@ -138,11 +163,42 @@ python3 tests/test_terminal_startup.py --live-render --refresh-live-render
 
 ## Telemetry and local traces
 
-Emberforge writes local JSONL session traces under `.ember/telemetry/` so a run can be debugged without a remote service. These files stay on disk and are covered by the project `.gitignore` defaults. Set `EMBER_TELEMETRY=off` (or `EMBER_TELEMETRY=0`) to disable the JSONL sink and keep telemetry in memory only for the current process.
+Telemetry is **on by default**. Emberforge writes local JSONL session traces under
+`.ember/telemetry/` so a run can be debugged without a remote service. No data is sent
+to any remote endpoint — the files stay on your local disk and are covered by the project
+`.gitignore` defaults.
+
+To disable the JSONL sink, set `EMBER_TELEMETRY=off` (or `EMBER_TELEMETRY=0`); telemetry
+is then kept in memory only for the duration of the current process and nothing is written
+to disk.
 
 ## Release process
 
-Release notes live in `docs/releases/`. Before cutting a release, run `cargo check --workspace`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`, and `cargo build --release`, then update the next release note with known gaps and verification evidence.
+Release notes live in `docs/releases/`. Before cutting a release, run
+`cargo check --workspace`, `cargo clippy --workspace --all-targets`,
+`cargo test --workspace`, and `cargo build --release`, then update the next
+release note with known gaps and verification evidence.
+
+Maintainers may also record and verify a release receipt locally before tagging:
+
+```bash
+# Record a receipt for the version you are about to tag (repeat --check for each gate)
+ember release-receipt record 0.2.0 \
+  --committer "$(git config user.name)" \
+  --check fmt=true \
+  --check clippy=true \
+  --check tests=true \
+  --check build=true
+
+# Verify the receipt passes the gate
+ember release-receipt check 0.2.0
+```
+
+The receipt ledger lives at `.ember/release-receipts.jsonl` (covered by
+`.gitignore`).  **On every `v*` tag push CI records a receipt automatically**
+from the passing `rust` job (fmt / clippy / tests / build) and then checks it —
+the `release-gate` CI job will fail if the receipt is missing or any check did
+not pass.
 
 ## Development
 
