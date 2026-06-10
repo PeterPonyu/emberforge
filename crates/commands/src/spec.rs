@@ -96,7 +96,7 @@ pub(crate) const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
         name: "model",
         aliases: &[],
         summary: "Show, list, or switch the active model",
-        argument_hint: Some("[auto|<model>|list]"),
+        argument_hint: Some("[auto|hybrid|<model>|list]"),
         resume_supported: false,
         category: SlashCommandCategory::Core,
     },

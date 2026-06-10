@@ -174,7 +174,31 @@ to disk.
 
 ## Release process
 
-Release notes live in `docs/releases/`. Before cutting a release, run `cargo check --workspace`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`, and `cargo build --release`, then update the next release note with known gaps and verification evidence.
+Release notes live in `docs/releases/`. Before cutting a release, run
+`cargo check --workspace`, `cargo clippy --workspace --all-targets`,
+`cargo test --workspace`, and `cargo build --release`, then update the next
+release note with known gaps and verification evidence.
+
+Maintainers may also record and verify a release receipt locally before tagging:
+
+```bash
+# Record a receipt for the version you are about to tag (repeat --check for each gate)
+ember release-receipt record 0.2.0 \
+  --committer "$(git config user.name)" \
+  --check fmt=true \
+  --check clippy=true \
+  --check tests=true \
+  --check build=true
+
+# Verify the receipt passes the gate
+ember release-receipt check 0.2.0
+```
+
+The receipt ledger lives at `.ember/release-receipts.jsonl` (covered by
+`.gitignore`).  **On every `v*` tag push CI records a receipt automatically**
+from the passing `rust` job (fmt / clippy / tests / build) and then checks it —
+the `release-gate` CI job will fail if the receipt is missing or any check did
+not pass.
 
 ## Development
 

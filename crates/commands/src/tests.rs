@@ -375,7 +375,7 @@ fn renders_help_from_shared_specs() {
     assert!(help.contains("/ultraplan [task]"));
     assert!(help.contains("/teleport <symbol-or-path>"));
     assert!(help.contains("/debug-tool-call"));
-    assert!(help.contains("/model [auto|<model>|list]"));
+    assert!(help.contains("/model [auto|hybrid|<model>|list]"));
     assert!(help.contains("/permissions [read-only|workspace-write|danger-full-access]"));
     assert!(help.contains("/clear [--confirm]"));
     assert!(help.contains("/cost"));

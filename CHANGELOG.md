@@ -20,7 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [0.1.0] — 2026-04
+## [0.1.0] — release candidate (unreleased)
 
 ### Summary
 
@@ -50,5 +50,7 @@ configuration loading, sessions, plugins, and local agent/skill discovery.
 - Some integration coverage is opt-in (live provider credentials required)
 - Public interfaces may continue to evolve during the `0.x` release line
 
+<!-- Link references will be added once v0.1.0 is tagged and published.
 [Unreleased]: https://github.com/PeterPonyu/emberforge/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/PeterPonyu/emberforge/releases/tag/v0.1.0
+-->
