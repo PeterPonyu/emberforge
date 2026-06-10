@@ -163,7 +163,14 @@ python3 tests/test_terminal_startup.py --live-render --refresh-live-render
 
 ## Telemetry and local traces
 
-Emberforge writes local JSONL session traces under `.ember/telemetry/` so a run can be debugged without a remote service. These files stay on disk and are covered by the project `.gitignore` defaults. Set `EMBER_TELEMETRY=off` (or `EMBER_TELEMETRY=0`) to disable the JSONL sink and keep telemetry in memory only for the current process.
+Telemetry is **on by default**. Emberforge writes local JSONL session traces under
+`.ember/telemetry/` so a run can be debugged without a remote service. No data is sent
+to any remote endpoint — the files stay on your local disk and are covered by the project
+`.gitignore` defaults.
+
+To disable the JSONL sink, set `EMBER_TELEMETRY=off` (or `EMBER_TELEMETRY=0`); telemetry
+is then kept in memory only for the duration of the current process and nothing is written
+to disk.
 
 ## Release process
 

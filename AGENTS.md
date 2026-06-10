@@ -83,6 +83,9 @@ Note: the default permission mode is `danger-full-access` unless overridden by
 Useful slash commands inside the REPL: `/help`, `/status`, `/doctor`, `/model`,
 `/permissions`, `/compact`, `/commit`, `/pr`, `/init`. Press `Tab` to complete commands.
 
+`/model` accepts `auto` (task-based routing), a specific model name or alias
+(e.g. `qwen3:8b`, `opus`, `grok-3`), or `list` to show all available models.
+
 ## Providers & required env vars
 
 Emberforge is local-first (Ollama) and can also use hosted providers when credentials are
