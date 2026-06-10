@@ -235,6 +235,13 @@ fn discover_instruction_files(cwd: &Path) -> std::io::Result<Vec<ContextFile>> {
 fn push_context_file(files: &mut Vec<ContextFile>, path: PathBuf) -> std::io::Result<()> {
     match fs::read_to_string(&path) {
         Ok(content) if !content.trim().is_empty() => {
+            if path.components().any(|c| c.as_os_str() == ".claw") {
+                eprintln!(
+                    "warning: legacy .claw/ path loaded ({}); \
+                     migrate to .ember/ — .claw/ support will be removed in a future release",
+                    path.display()
+                );
+            }
             files.push(ContextFile { path, content });
             Ok(())
         }
