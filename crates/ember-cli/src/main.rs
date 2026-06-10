@@ -7607,7 +7607,7 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
         assert!(help.contains("/help"));
         assert!(help.contains("/status"));
         assert!(help.contains("/doctor"));
-        assert!(help.contains("/model [model|list]"));
+        assert!(help.contains("/model [auto|hybrid|<model>|list]"));
         assert!(help.contains("/permissions [read-only|workspace-write|danger-full-access]"));
         assert!(help.contains("/clear [--confirm]"));
         assert!(help.contains("/cost"));
