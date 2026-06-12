@@ -118,6 +118,7 @@ Emberforge reads configuration in this order:
 Environment variables:
 
 - `EMBER_CONFIG_HOME` — override config directory
+- `EMBER_ENABLE_LEGACY_CLAUDE_RULES=1` — opt in to reading legacy `.claude/rules/` project instructions for interop; by default Emberforge reads `.ember/rules/` and `.github/instructions/` only
 - `OLLAMA_BASE_URL` — custom Ollama endpoint (default: `http://localhost:11434/v1`)
 - `ANTHROPIC_API_KEY` — Anthropic API credentials
 - `XAI_API_KEY` — xAI API credentials

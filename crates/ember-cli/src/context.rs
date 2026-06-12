@@ -4,11 +4,9 @@
 //! Supports multiple context sources: codebase map, directory READMEs,
 //! project rules, and custom injectors.
 
+use std::env;
 use std::fs;
 use std::path::Path;
-
-#[cfg(test)]
-use std::env;
 
 use crate::codebase_map;
 
@@ -127,13 +125,11 @@ fn read_directory_readme(dir: &Path) -> Option<String> {
 /// Collect project rules from standard locations.
 fn collect_project_rules(cwd: &Path) -> Vec<ContextSnippet> {
     let mut snippets = Vec::new();
-    // Emberforge's own `.ember/rules/` is primary; `.claude/rules/` is kept
-    // only as an optional interop fallback.
-    let rule_dirs = [
-        cwd.join(".ember").join("rules"),
-        cwd.join(".claude").join("rules"),
-        cwd.join(".github").join("instructions"),
-    ];
+    let mut rule_dirs = vec![cwd.join(".ember").join("rules")];
+    if legacy_claude_rules_enabled() {
+        rule_dirs.push(cwd.join(".claude").join("rules"));
+    }
+    rule_dirs.push(cwd.join(".github").join("instructions"));
 
     for rule_dir in &rule_dirs {
         if !rule_dir.is_dir() {
@@ -165,6 +161,17 @@ fn collect_project_rules(cwd: &Path) -> Vec<ContextSnippet> {
     }
 
     snippets
+}
+
+fn legacy_claude_rules_enabled() -> bool {
+    env::var("EMBER_ENABLE_LEGACY_CLAUDE_RULES")
+        .map(|value| {
+            value == "1"
+                || value.eq_ignore_ascii_case("true")
+                || value.eq_ignore_ascii_case("yes")
+                || value.eq_ignore_ascii_case("on")
+        })
+        .unwrap_or(false)
 }
 
 /// Truncate content to a character limit, adding a notice.
@@ -205,6 +212,70 @@ fn truncate_to_budget(snippets: &mut Vec<ContextSnippet>, budget: usize) {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
+
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = env::temp_dir().join(format!(
+            "emberforge-context-{name}-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn with_legacy_claude_rules_env(value: Option<&str>, test: impl FnOnce()) {
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap();
+        let previous = env::var_os("EMBER_ENABLE_LEGACY_CLAUDE_RULES");
+        match value {
+            Some(value) => env::set_var("EMBER_ENABLE_LEGACY_CLAUDE_RULES", value),
+            None => env::remove_var("EMBER_ENABLE_LEGACY_CLAUDE_RULES"),
+        }
+        test();
+        match previous {
+            Some(previous) => env::set_var("EMBER_ENABLE_LEGACY_CLAUDE_RULES", previous),
+            None => env::remove_var("EMBER_ENABLE_LEGACY_CLAUDE_RULES"),
+        }
+    }
+
+    #[test]
+    fn collect_project_rules_ignores_legacy_claude_rules_by_default() {
+        with_legacy_claude_rules_env(None, || {
+            let dir = unique_temp_dir("default");
+            let ember_rules = dir.join(".ember").join("rules");
+            let claude_rules = dir.join(".claude").join("rules");
+            fs::create_dir_all(&ember_rules).unwrap();
+            fs::create_dir_all(&claude_rules).unwrap();
+            fs::write(ember_rules.join("project.md"), "ember rule").unwrap();
+            fs::write(claude_rules.join("legacy.md"), "legacy claude rule").unwrap();
+
+            let snippets = collect_project_rules(&dir);
+            let rendered = render_context_section(&snippets).unwrap();
+            assert!(rendered.contains("ember rule"));
+            assert!(!rendered.contains("legacy claude rule"));
+
+            fs::remove_dir_all(dir).unwrap();
+        });
+    }
+
+    #[test]
+    fn collect_project_rules_reads_legacy_claude_rules_when_opted_in() {
+        with_legacy_claude_rules_env(Some("1"), || {
+            let dir = unique_temp_dir("legacy");
+            let claude_rules = dir.join(".claude").join("rules");
+            fs::create_dir_all(&claude_rules).unwrap();
+            fs::write(claude_rules.join("legacy.md"), "legacy claude rule").unwrap();
+
+            let snippets = collect_project_rules(&dir);
+            let rendered = render_context_section(&snippets).unwrap();
+            assert!(rendered.contains("legacy claude rule"));
+
+            fs::remove_dir_all(dir).unwrap();
+        });
+    }
 
     #[test]
     fn truncate_to_budget_respects_limit() {
