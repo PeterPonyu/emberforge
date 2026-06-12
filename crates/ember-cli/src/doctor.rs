@@ -1014,9 +1014,13 @@ mod tests {
         );
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn probe_reports_unreachable_for_closed_local_port() {
-        // Bind then immediately drop the listener so the port is closed.
+        // Bind then immediately drop the listener so the port is closed. Windows
+        // CI can transiently reuse or report a just-freed loopback port as
+        // connectable, so the platform-independent unreachable branch remains
+        // covered by `probe_reports_unreachable_for_unresolvable_host`.
         let port = {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             listener.local_addr().unwrap().port()
