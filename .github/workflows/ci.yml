@@ -7,8 +7,7 @@ on:
     tags:
       - 'v*'
   pull_request:
-    branches:
-      - main
+    # Stacked pull requests also need the matrix before their base reaches main.
 
 jobs:
   rust:
