@@ -1,5 +1,10 @@
 # Claude Code Coverage Audit
 
+> **Note (2026-06-09):** This document describes the Emberforge feature surface as it
+> stood on **2026-04-04** and may not reflect subsequent changes. For the current
+> operating contract, authoritative command surface, and up-to-date agent instructions
+> see [AGENTS.md](../AGENTS.md).
+
 Last updated: 2026-04-04
 
 Scope: compare the current Rust `emberforge` branch with the attached TypeScript

@@ -540,8 +540,16 @@ fn resolve_skill_path(skill: &str) -> Result<std::path::PathBuf, String> {
     }
 
     for root in candidates {
+        let is_legacy_claw = root.components().any(|c| c.as_os_str() == ".claw");
         let direct = root.join(requested).join("SKILL.md");
         if direct.exists() {
+            if is_legacy_claw {
+                eprintln!(
+                    "warning: skill loaded from legacy .claw/ path ({}); \
+                     migrate to .ember/skills/ — .claw/ support will be removed in a future release",
+                    direct.display()
+                );
+            }
             return Ok(direct);
         }
 
@@ -556,6 +564,13 @@ fn resolve_skill_path(skill: &str) -> Result<std::path::PathBuf, String> {
                     .to_string_lossy()
                     .eq_ignore_ascii_case(requested)
                 {
+                    if is_legacy_claw {
+                        eprintln!(
+                            "warning: skill loaded from legacy .claw/ path ({}); \
+                             migrate to .ember/skills/ — .claw/ support will be removed in a future release",
+                            path.display()
+                        );
+                    }
                     return Ok(path);
                 }
             }
